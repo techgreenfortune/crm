@@ -39,7 +39,6 @@ createResource({
 export const aisensyEnabled = ref(false)
 createResource({
   url: 'crm.integrations.aisensy.api.is_aisensy_enabled',
-  cache: 'Is AISensy Enabled',
   auto: true,
   onSuccess: (data) => {
     aisensyEnabled.value = Boolean(data)
