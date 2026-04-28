@@ -117,7 +117,10 @@ import { usersStore } from '@/stores/users'
 import { createResource, toast } from 'frappe-ui'
 import { computed } from 'vue'
 
-const { document: brevo } = useDocument('CRM Brevo Settings', 'CRM Brevo Settings')
+const { document: brevo } = useDocument(
+  'CRM Brevo Settings',
+  'CRM Brevo Settings',
+)
 const { getUser } = usersStore()
 
 const sendTest = createResource({

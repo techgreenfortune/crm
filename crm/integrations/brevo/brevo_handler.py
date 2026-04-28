@@ -1,7 +1,6 @@
 import frappe
 import requests
 
-
 BREVO_SMTP_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
