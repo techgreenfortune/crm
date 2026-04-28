@@ -378,7 +378,7 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
-import { whatsappEnabled, callEnabled } from '@/composables/settings'
+import { whatsappEnabled, callEnabled, aisensyEnabled } from '@/composables/settings'
 import { useBroadcast } from '@/composables/useBroadcast'
 import {
   createResource,
@@ -599,6 +599,12 @@ const tabs = computed(() => {
       label: __('WhatsApp'),
       icon: WhatsAppIcon,
       condition: () => whatsappEnabled.value,
+    },
+    {
+      name: 'AISensy',
+      label: __('WhatsApp (AISensy)'),
+      icon: WhatsAppIcon,
+      condition: () => aisensyEnabled.value,
     },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))

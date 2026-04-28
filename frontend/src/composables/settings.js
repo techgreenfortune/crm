@@ -36,6 +36,16 @@ createResource({
   },
 })
 
+export const aisensyEnabled = ref(false)
+createResource({
+  url: 'crm.integrations.aisensy.api.is_aisensy_enabled',
+  cache: 'Is AISensy Enabled',
+  auto: true,
+  onSuccess: (data) => {
+    aisensyEnabled.value = Boolean(data)
+  },
+})
+
 export const brevoEnabled = ref(false)
 createResource({
   url: 'crm.integrations.brevo.api.is_brevo_enabled',
