@@ -54,10 +54,10 @@ def send_email(recipients, subject, html_content, sender_email=None, sender_name
 
 def send_invitation_email(recipient_email, invite_link):
 	title = "Frappe CRM"
-	html_content = frappe.render_template(
-		"crm/templates/emails/crm_invitation.html",
-		{"title": title, "invite_link": invite_link},
-	)
+	html_content = f"""
+		<p>You have been invited to join {title}</p>
+		<p><a href="{invite_link}">Accept Invitation</a></p>
+	"""
 	return send_email(
 		recipients=recipient_email,
 		subject=f"You have been invited to join {title}",
