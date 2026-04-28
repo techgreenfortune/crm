@@ -36,6 +36,16 @@ createResource({
   },
 })
 
+export const brevoEnabled = ref(false)
+createResource({
+  url: 'crm.integrations.brevo.api.is_brevo_enabled',
+  cache: 'Is Brevo Enabled',
+  auto: true,
+  onSuccess: (data) => {
+    brevoEnabled.value = Boolean(data)
+  },
+})
+
 export const mobileSidebarOpened = ref(false)
 
 export const isMobileView = computed(() => window.innerWidth < 768)

@@ -39,16 +39,19 @@ class CRMInvitation(Document):
 		if frappe.local.dev_server:
 			print(f"Invite link for {self.email}: {invite_link}")  # nosemgrep
 
-		title = "Frappe CRM"
-		template = "crm_invitation"
+		from crm.integrations.brevo.brevo_handler import is_brevo_enabled, send_invitation_email
 
-		frappe.sendmail(
-			recipients=self.email,
-			subject=f"You have been invited to join {title}",
-			template=template,
-			args={"title": title, "invite_link": invite_link},
-			now=True,
-		)
+		if is_brevo_enabled():
+			send_invitation_email(self.email, invite_link)
+		else:
+			title = "Frappe CRM"
+			frappe.sendmail(
+				recipients=self.email,
+				subject=f"You have been invited to join {title}",
+				template="crm_invitation",
+				args={"title": title, "invite_link": invite_link},
+				now=True,
+			)
 		self.db_set("email_sent_at", frappe.utils.now())
 
 	@frappe.whitelist()
