@@ -1,16 +1,19 @@
 name: Build Container Image
+
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - custom/develop
+      - custom/staging
+      - custom/uat
+      - custom/production
     tags:
       - "*"
 
 jobs:
   build:
     name: Build
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -18,7 +21,7 @@ jobs:
         arch: [amd64, arm64]
 
     steps:
-      - name: Checkout Entire Repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up QEMU
@@ -36,30 +39,96 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set Branch
+      - name: Set Environment Variables
         run: |
-          export APPS_JSON='[{"url": "https://github.com/frappe/crm","branch": "main"}]'
-          echo "APPS_JSON_BASE64=$(echo $APPS_JSON | base64 -w 0)" >> $GITHUB_ENV
+          REF="${{ github.ref_name }}"
+
+          case "$REF" in
+            "custom/develop")
+              APP_BRANCH="custom/develop"
+              IMAGE_TAG="develop"
+              ;;
+            "custom/staging")
+              APP_BRANCH="custom/staging"
+              IMAGE_TAG="staging"
+              ;;
+            "custom/uat")
+              APP_BRANCH="custom/uat"
+              IMAGE_TAG="uat"
+              ;;
+            "custom/production")
+              APP_BRANCH="custom/production"
+              IMAGE_TAG="stable"
+              ;;
+            *)
+              # git tag push
+              APP_BRANCH="custom/production"
+              IMAGE_TAG="${REF}"
+              ;;
+          esac
+
+          APPS_JSON="[{\"url\": \"https://github.com/techgreenfortune/crm\", \"branch\": \"${APP_BRANCH}\"}]"
+          SANITIZED_REF=$(echo "$REF" | tr '/' '-')
+
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "SANITIZED_REF=${SANITIZED_REF}" >> $GITHUB_ENV
           echo "FRAPPE_BRANCH=version-15" >> $GITHUB_ENV
+          echo "APPS_JSON_BASE64=$(echo ${APPS_JSON} | base64 -w 0)" >> $GITHUB_ENV
 
-      - name: Set Image Tag
-        run: |
-          echo "IMAGE_TAG=stable" >> $GITHUB_ENV
-
-      - uses: actions/checkout@v4
+      - name: Checkout frappe_docker
+        uses: actions/checkout@v4
         with:
           repository: frappe/frappe_docker
           path: builds
 
-      - name: Build and push
+      - name: Build and Push
         uses: docker/build-push-action@v6
         with:
           push: true
           context: builds
           file: builds/images/layered/Containerfile
-          tags: >
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }},
+          tags: |
             ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository }}:${{ env.SANITIZED_REF }}
           build-args: |
-            "FRAPPE_BRANCH=${{ env.FRAPPE_BRANCH }}"
-            "APPS_JSON_BASE64=${{ env.APPS_JSON_BASE64 }}"
+            FRAPPE_BRANCH=${{ env.FRAPPE_BRANCH }}
+            APPS_JSON_BASE64=${{ env.APPS_JSON_BASE64 }}
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      github.ref_name == 'custom/staging' ||
+      github.ref_name == 'custom/uat' ||
+      github.ref_name == 'custom/production'
+
+    steps:
+      - name: Set Deploy Target
+        run: |
+          case "${{ github.ref_name }}" in
+            "custom/staging")
+              echo "EC2_HOST=${{ secrets.STAGING_EC2_HOST }}" >> $GITHUB_ENV
+              echo "IMAGE_TAG=staging" >> $GITHUB_ENV
+              ;;
+            "custom/uat")
+              echo "EC2_HOST=${{ secrets.UAT_EC2_HOST }}" >> $GITHUB_ENV
+              echo "IMAGE_TAG=uat" >> $GITHUB_ENV
+              ;;
+            "custom/production")
+              echo "EC2_HOST=${{ secrets.PROD_EC2_HOST }}" >> $GITHUB_ENV
+              echo "IMAGE_TAG=stable" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/crm_prod_setup
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f

@@ -22,7 +22,7 @@ bench set-redis-socketio-host redis://redis:6379
 sed -i '/redis/d' ./Procfile
 sed -i '/watch/d' ./Procfile
 
-bench get-app crm --branch main
+bench get-app crm https://github.com/techgreenfortune/crm.git --branch custom/develop
 
 bench new-site crm.localhost \
     --force \
