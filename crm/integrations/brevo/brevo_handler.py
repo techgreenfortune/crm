@@ -46,7 +46,7 @@ def send_email(recipients, subject, html_content, sender_email=None, sender_name
 			title="Brevo Email Error",
 			message=f"Status {response.status_code}: {response.text}",
 		)
-		frappe.throw(f"Brevo: failed to send email — {response.text}")
+		frappe.throw(frappe._(f"Brevo: failed to send email - {response.text}"))
 
 	return response.json()
 
