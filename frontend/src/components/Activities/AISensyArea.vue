@@ -1,8 +1,12 @@
 <template>
   <div class="px-3 sm:px-10 pb-5 space-y-3">
-    <div v-for="msg in messages" :key="msg.name" class="flex justify-end">
+    <div
+      v-for="msg in messages"
+      :key="msg.name"
+      class="activity flex flex-row-reverse gap-2 mb-3"
+    >
       <div
-        class="relative max-w-[80%] rounded-md bg-surface-gray-1 p-2.5 pl-3 text-base shadow-sm"
+        class="relative max-w-[75%] rounded-md bg-surface-gray-1 p-2.5 pl-3 text-base shadow-sm"
       >
         <Badge
           v-if="msg.status === 'Failed'"
@@ -10,13 +14,13 @@
           :label="__('Failed')"
           class="absolute -top-2 right-0"
         />
-        <div class="font-medium text-ink-gray-8 mb-0.5">
+        <div class="font-medium text-ink-gray-8 mb-0.5 text-sm">
           {{ msg.template_name }}
         </div>
         <div v-if="msg.variables" class="text-ink-gray-5 text-sm">
           {{ formatVariables(msg.variables) }}
         </div>
-        <div class="mt-1 flex items-center justify-between gap-4">
+        <div class="mt-1.5 flex items-center justify-between gap-6">
           <span class="text-xs text-ink-gray-4"
             >{{ __('To:') }} {{ msg.to }}</span
           >
