@@ -78,8 +78,8 @@ The motivation behind building Frappe CRM stems from the need for a simple, cust
 -   **Exotel:** Integrate Exotel to make and receive calls via agents mobile phone from the CRM. You can also record calls. It is a built-in integration.
 -   **WhatsApp:** Integrate WhatsApp to send and receive messages from the CRM. [Frappe WhatsApp](https://github.com/shridarpatil/frappe_whatsapp) is used for this integration.
 -   **ERPNext:** Integrate with [ERPNext](https://erpnext.com) to extend the CRM capabilities to include invoicing, accounting, and more.
--   **Brevo:** Send transactional emails (invitations, event reminders, and all CRM emails) via the [Brevo](https://www.brevo.com) HTTP API. Configure via Settings → Integrations → Brevo. Requires a Brevo v3 API key.
--   **AISensy:** Send WhatsApp template messages to leads and contacts directly from the Lead/Deal page via the [AISensy](https://aisensy.com) campaign API. When enabled, an AISensy tab appears in the activity panel. Configure via Settings → Integrations → AISensy.
+-   **Brevo:** Send transactional emails (invitations, event reminders) via the [Brevo](https://www.brevo.com) HTTP API. Configure via Settings → Integrations → Brevo. Requires a Brevo v3 API key.
+-   **AISensy:** Send WhatsApp template messages to leads and contacts directly from the Lead/Deal page via the [AISensy](https://aisensy.com) campaign API. When enabled, an AISensy tab appears in the activity panel. Configure via Settings → Integrations → AISensy. Requires an AISensy API key and Project ID.
 
 ### Under the Hood
 
