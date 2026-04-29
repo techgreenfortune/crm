@@ -14,6 +14,12 @@ def is_aisensy_enabled() -> bool:
 
 
 @frappe.whitelist()
+def get_templates() -> list:
+	settings = frappe.get_single("CRM AISensy Settings")
+	return [row.template_name for row in settings.get("templates", [])]
+
+
+@frappe.whitelist()
 def get_messages(reference_doctype: str, reference_name: str) -> list:
 	return frappe.get_all(
 		"CRM AISensy Message",

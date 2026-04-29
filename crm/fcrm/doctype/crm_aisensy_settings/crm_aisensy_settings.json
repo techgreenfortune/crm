@@ -7,7 +7,8 @@
  "field_order": [
   "enabled",
   "api_key",
-  "project_id"
+  "project_id",
+  "templates"
  ],
  "fields": [
   {
@@ -29,6 +30,13 @@
    "fieldtype": "Data",
    "label": "Project ID",
    "mandatory_depends_on": "eval: doc.enabled"
+  },
+  {
+   "depends_on": "enabled",
+   "fieldname": "templates",
+   "fieldtype": "Table",
+   "label": "Templates",
+   "options": "CRM AISensy Template"
   }
  ],
  "index_web_pages_for_search": 1,

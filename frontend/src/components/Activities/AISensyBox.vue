@@ -2,10 +2,10 @@
   <div class="flex flex-col gap-3 px-3 py-3 sm:px-10" v-bind="$attrs">
     <FormControl
       v-model="templateName"
-      :label="__('Template Name')"
-      type="text"
-      :placeholder="__('e.g. demo_invite')"
-      autocomplete="off"
+      :label="__('Template')"
+      type="select"
+      :options="templateOptions"
+      :placeholder="__('Select a template')"
     />
     <div>
       <div class="mb-1 text-sm font-medium text-ink-gray-7">
@@ -36,8 +36,8 @@
   </div>
 </template>
 <script setup>
-import { call, Textarea, toast } from 'frappe-ui'
-import { ref } from 'vue'
+import { call, createResource, Textarea, toast } from 'frappe-ui'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -52,6 +52,17 @@ const aisensyMessages = defineModel('aisensyMessages', {
 const templateName = ref('')
 const variablesText = ref('')
 const sending = ref(false)
+
+const templatesResource = createResource({
+  url: 'crm.integrations.aisensy.api.get_templates',
+  cache: 'aisensy_templates',
+  auto: true,
+})
+
+const templateOptions = computed(() => {
+  const list = templatesResource.data || []
+  return [{ label: __('Select a template'), value: '' }, ...list.map((t) => ({ label: t, value: t }))]
+})
 
 async function send() {
   if (!templateName.value || !doc.value.mobile_no) return
