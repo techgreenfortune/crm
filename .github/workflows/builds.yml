@@ -87,6 +87,7 @@ jobs:
           push: true
           context: builds
           file: builds/images/layered/Containerfile
+          no-cache: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
             ghcr.io/${{ github.repository }}:${{ env.SANITIZED_REF }}
