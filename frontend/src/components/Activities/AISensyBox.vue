@@ -61,7 +61,10 @@ const templatesResource = createResource({
 
 const templateOptions = computed(() => {
   const list = templatesResource.data || []
-  return [{ label: __('Select a template'), value: '' }, ...list.map((t) => ({ label: t, value: t }))]
+  return [
+    { label: __('Select a template'), value: '' },
+    ...list.map((t) => ({ label: t, value: t })),
+  ]
 })
 
 async function send() {
@@ -80,12 +83,12 @@ async function send() {
       template_name: templateName.value,
       variables,
     })
-    toast.success('WhatsApp message sent')
+    toast.success(__('WhatsApp message sent'))
     templateName.value = ''
     variablesText.value = ''
     aisensyMessages.value.reload()
   } catch (err) {
-    toast.error(err.messages?.[0] || 'Failed to send message')
+    toast.error(err.messages?.[0] || __('Failed to send message'))
   } finally {
     sending.value = false
   }

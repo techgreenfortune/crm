@@ -12,8 +12,7 @@
    "fieldname": "template_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Template Name",
-   "reqd": 1
+   "label": "Template Name"
   }
  ],
  "index_web_pages_for_search": 0,

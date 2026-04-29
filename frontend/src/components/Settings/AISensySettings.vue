@@ -54,6 +54,39 @@
             />
           </div>
           <div class="h-px border-t border-outline-gray-modals" />
+          <!-- Templates -->
+          <div>
+            <div class="mb-2 text-sm font-medium text-ink-gray-7">
+              {{ __('Templates') }}
+            </div>
+            <div class="space-y-2">
+              <div
+                v-for="(tpl, idx) in aisensy.doc.templates"
+                :key="idx"
+                class="flex items-center gap-2"
+              >
+                <FormControl
+                  v-model="tpl.template_name"
+                  type="text"
+                  :placeholder="__('e.g. demo_invite')"
+                  autocomplete="off"
+                  class="flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  icon="x"
+                  @click="removeTemplate(idx)"
+                />
+              </div>
+              <Button
+                variant="subtle"
+                icon-left="plus"
+                :label="__('Add Template')"
+                @click="addTemplate"
+              />
+            </div>
+          </div>
+          <div class="h-px border-t border-outline-gray-modals" />
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
@@ -105,6 +138,15 @@ const { document: aisensy } = useDocument(
   'CRM AISensy Settings',
 )
 
+function addTemplate() {
+  if (!aisensy.doc.templates) aisensy.doc.templates = []
+  aisensy.doc.templates.push({ template_name: '' })
+}
+
+function removeTemplate(idx) {
+  aisensy.doc.templates.splice(idx, 1)
+}
+
 function enable() {
   aisensy.doc.enabled = true
 }
@@ -115,6 +157,11 @@ function disable() {
 }
 
 function update() {
+  if (aisensy.doc.templates) {
+    aisensy.doc.templates = aisensy.doc.templates.filter(
+      (t) => t.template_name?.trim(),
+    )
+  }
   aisensy.save.submit(null, {
     onSuccess: () => aisensy.reload(),
   })
