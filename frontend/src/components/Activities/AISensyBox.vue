@@ -1,37 +1,37 @@
 <template>
-  <div class="flex flex-col gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
-    <div
-      v-if="!doc.mobile_no"
-      class="flex items-center gap-1.5 text-sm text-ink-red-4"
-    >
-      <FeatherIcon name="alert-circle" class="size-3.5 shrink-0" />
-      {{ __('No mobile number on this record. Please add one first.') }}
-    </div>
-    <div class="flex items-end gap-2">
-      <div class="flex flex-1 flex-col gap-1.5">
-        <FormControl
-          v-model="templateName"
-          type="select"
-          :options="templateOptions"
-          :placeholder="__('Select a template')"
-          class="w-full"
-        />
-        <Textarea
-          v-model="variablesText"
-          :rows="variablesText ? 3 : 1"
-          :placeholder="__('Variables (one per line, in order)…')"
-          class="w-full text-sm"
-          @focus="expandVariables = true"
-          @blur="expandVariables = variablesText.length > 0"
-        />
+  <div class="flex flex-col gap-3 px-3 py-3 sm:px-10" v-bind="$attrs">
+    <FormControl
+      v-model="templateName"
+      :label="__('Template')"
+      type="select"
+      :options="templateOptions"
+      :placeholder="__('Select a template')"
+    />
+    <div>
+      <div class="mb-1 text-sm font-medium text-ink-gray-7">
+        {{ __('Variables') }}
+        <span class="text-ink-gray-4 font-normal">
+          {{ __('(one per line, in order)') }}
+        </span>
       </div>
+      <Textarea
+        v-model="variablesText"
+        :rows="3"
+        :placeholder="__('John Doe\nDemo Meeting\n28 April 2026')"
+      />
+    </div>
+    <div class="flex justify-end">
       <Button
         variant="solid"
-        icon="send"
+        :label="__('Send')"
+        icon-left="send"
         :loading="sending"
         :disabled="!templateName || !doc.mobile_no"
         @click="send"
       />
+    </div>
+    <div v-if="!doc.mobile_no" class="text-sm text-ink-red-4">
+      {{ __('No mobile number found on this record. Please add one first.') }}
     </div>
   </div>
 </template>
@@ -52,7 +52,6 @@ const aisensyMessages = defineModel('aisensyMessages', {
 const templateName = ref('')
 const variablesText = ref('')
 const sending = ref(false)
-const expandVariables = ref(false)
 
 const templatesResource = createResource({
   url: 'crm.integrations.aisensy.api.get_templates',
