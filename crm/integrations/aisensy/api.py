@@ -2,6 +2,8 @@ import frappe
 
 from crm.integrations.aisensy.aisensy_handler import (
 	is_aisensy_enabled as _is_enabled,
+)
+from crm.integrations.aisensy.aisensy_handler import (
 	send_template_message,
 )
 

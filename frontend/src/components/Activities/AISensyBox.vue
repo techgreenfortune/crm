@@ -44,7 +44,10 @@ const props = defineProps({
 })
 
 const doc = defineModel({ type: Object, default: () => ({}) })
-const aisensyMessages = defineModel('aisensyMessages', { type: Object, default: () => ({}) })
+const aisensyMessages = defineModel('aisensyMessages', {
+  type: Object,
+  default: () => ({}),
+})
 
 const templateName = ref('')
 const variablesText = ref('')

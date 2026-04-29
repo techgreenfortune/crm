@@ -14,7 +14,10 @@
       </div>
     </template>
     <template #header-actions>
-      <div v-if="aisensy.doc?.enabled && !aisensy.get.loading" class="flex gap-2">
+      <div
+        v-if="aisensy.doc?.enabled && !aisensy.get.loading"
+        class="flex gap-2"
+      >
         <Button
           v-if="isDirty"
           :label="__('Discard Changes')"
