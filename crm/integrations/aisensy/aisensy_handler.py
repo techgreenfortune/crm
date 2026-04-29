@@ -23,7 +23,7 @@ def send_template_message(
 	api_key = settings.get_password("api_key")
 	project_id = settings.project_id
 
-	phone = "".join(filter(str.isdigit, to))
+	phone = "".join(c for c in to if c.isdigit())
 	if not phone.startswith("91") and len(phone) == 10:
 		phone = "91" + phone
 
