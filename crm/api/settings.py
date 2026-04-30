@@ -2,6 +2,19 @@ import frappe
 
 
 @frappe.whitelist()
+def get_opsgate_settings():
+	return {
+		"opsgate_enabled": bool(frappe.db.get_single_value("FCRM Settings", "opsgate_enabled")),
+		"opsgate_url": frappe.db.get_single_value("FCRM Settings", "opsgate_url") or "",
+	}
+
+
+@frappe.whitelist()
+def get_opsgate_url() -> str:
+	return frappe.db.get_single_value("FCRM Settings", "opsgate_url") or ""
+
+
+@frappe.whitelist()
 def create_email_account(data: dict):
 	service = data.get("service")
 	service_config = email_service_config.get(service)

@@ -40,7 +40,7 @@
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
-                'Automatically sets Communication Status to “Replied” for the lead or deal when a response is received. Applies only when SLA is enabled',
+                'Automatically sets Communication Status to "Replied" for the lead or deal when a response is received. Applies only when SLA is enabled',
               )
             }}
           </div>
@@ -62,7 +62,7 @@
           <div class="text-p-sm text-ink-gray-5">
             {{
               __(
-                'Automatically sets Communication Status to “Open” for the lead or deal when a new communication is created. Applies only when SLA is enabled',
+                'Automatically sets Communication Status to "Open" for the lead or deal when a new communication is created. Applies only when SLA is enabled',
               )
             }}
           </div>
@@ -75,11 +75,57 @@
           />
         </div>
       </div>
+      <div class="h-px border-t mx-2 border-outline-gray-modals" />
+      <div class="flex gap-4 items-center justify-between py-3 px-2">
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Enable OpsGate') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{ __('Show OpsGate link in the sidebar') }}
+          </div>
+        </div>
+        <div>
+          <Switch
+            v-model="settings.doc.opsgate_enabled"
+            size="sm"
+            @update:modelValue="toggleOpsGate"
+          />
+        </div>
+      </div>
+      <div v-show="settings.doc?.opsgate_enabled">
+        <div class="h-px border-t mx-2 border-outline-gray-modals" />
+        <div class="flex gap-4 items-center justify-between py-3 px-2">
+          <div class="flex flex-col shrink-0">
+            <div class="text-p-base font-medium text-ink-gray-7">
+              {{ __('OpsGate URL') }}
+            </div>
+            <div class="text-p-sm text-ink-gray-5">
+              {{ __('URL of the OpsGate instance for this environment') }}
+            </div>
+          </div>
+          <div class="flex items-center gap-2 w-96">
+            <FormControl
+              v-model="settings.doc.opsgate_url"
+              type="text"
+              placeholder="https://opsgate.example.com"
+              class="flex-1"
+            />
+            <Button
+              variant="subtle"
+              :label="__('Save')"
+              class="shrink-0"
+              @click="saveOpsGateUrl"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { opsGateEnabled, opsGateUrl } from '@/composables/settings'
 import { getSettings } from '@/stores/settings'
 import { Switch, toast } from 'frappe-ui'
 
@@ -93,6 +139,25 @@ function toggle(settingKey) {
           ? __('Setting enabled successfully')
           : __('Setting disabled successfully'),
       )
+    },
+  })
+}
+
+function toggleOpsGate(val) {
+  settings.doc.opsgate_enabled = val ? 1 : 0
+  settings.save.submit(null, {
+    onSuccess: () => {
+      opsGateEnabled.value = Boolean(val)
+      toast.success(val ? __('OpsGate enabled') : __('OpsGate disabled'))
+    },
+  })
+}
+
+function saveOpsGateUrl() {
+  settings.save.submit(null, {
+    onSuccess: () => {
+      opsGateUrl.value = settings.doc.opsgate_url || ''
+      toast.success(__('OpsGate URL saved'))
     },
   })
 }
