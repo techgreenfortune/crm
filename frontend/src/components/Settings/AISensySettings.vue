@@ -72,11 +72,7 @@
                   autocomplete="off"
                   class="flex-1"
                 />
-                <Button
-                  variant="ghost"
-                  icon="x"
-                  @click="removeTemplate(idx)"
-                />
+                <Button variant="ghost" icon="x" @click="removeTemplate(idx)" />
               </div>
               <Button
                 variant="subtle"
@@ -158,8 +154,8 @@ function disable() {
 
 function update() {
   if (aisensy.doc.templates) {
-    aisensy.doc.templates = aisensy.doc.templates.filter(
-      (t) => t.template_name?.trim(),
+    aisensy.doc.templates = aisensy.doc.templates.filter((t) =>
+      t.template_name?.trim(),
     )
   }
   aisensy.save.submit(null, {
