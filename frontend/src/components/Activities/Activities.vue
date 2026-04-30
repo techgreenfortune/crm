@@ -21,7 +21,8 @@
     <div
       v-else-if="
         activities?.length ||
-        (whatsappMessages.data?.length && title == 'WhatsApp')
+        (whatsappMessages.data?.length && title == 'WhatsApp') ||
+        (aisensyMessages.data?.length && title == 'AISensy')
       "
       class="activities"
     >
@@ -32,6 +33,9 @@
           class="px-3 sm:px-10"
           :messages="whatsappMessages.data"
         />
+      </div>
+      <div v-else-if="title == 'AISensy'">
+        <AISensyArea :messages="aisensyMessages.data || []" />
       </div>
       <div
         v-else-if="title == 'Notes'"
@@ -414,6 +418,12 @@
       :doctype="doctype"
       @scroll="scroll"
     />
+    <AISensyBox
+      v-if="title == 'AISensy'"
+      v-model="doc"
+      v-model:aisensyMessages="aisensyMessages"
+      :doctype="doctype"
+    />
   </div>
   <WhatsappTemplateSelectorModal
     v-if="whatsappEnabled"
@@ -459,6 +469,8 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
+import AISensyArea from '@/components/Activities/AISensyArea.vue'
+import AISensyBox from '@/components/Activities/AISensyBox.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
@@ -478,7 +490,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import { timeAgo, formatDate, startCase } from '@/utils'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
-import { whatsappEnabled } from '@/composables/settings'
+import { whatsappEnabled, aisensyEnabled } from '@/composables/settings'
 import { useDocument } from '@/data/document'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Button, Tooltip, createResource, toast } from 'frappe-ui'
@@ -551,6 +563,17 @@ const whatsappMessages = createResource({
   },
   auto: whatsappEnabled.value,
   transform: (data) => sortByCreation(data),
+  onSuccess: () => nextTick(() => scroll()),
+})
+
+const aisensyMessages = createResource({
+  url: 'crm.integrations.aisensy.api.get_messages',
+  cache: ['aisensy_messages', props.docname],
+  params: {
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+  },
+  auto: aisensyEnabled.value,
   onSuccess: () => nextTick(() => scroll()),
 })
 

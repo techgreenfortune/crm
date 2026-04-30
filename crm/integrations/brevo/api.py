@@ -1,12 +1,11 @@
 import frappe
 
 from crm.integrations.brevo.brevo_handler import get_brevo_settings, send_email
+from crm.integrations.brevo.brevo_handler import is_brevo_enabled as _is_enabled
 
 
 @frappe.whitelist()
 def is_brevo_enabled():
-	from crm.integrations.brevo.brevo_handler import is_brevo_enabled as _is_enabled
-
 	return _is_enabled()
 
 

@@ -58,6 +58,7 @@
         @click="whatsappBox.show()"
       />
     </div>
+    <div v-else-if="title == 'AISensy'" />
     <Dropdown v-else :options="defaultActions" @click.stop>
       <template #default="{ open }">
         <Button

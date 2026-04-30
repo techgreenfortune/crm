@@ -33,6 +33,9 @@ def get_context_for_dev():
 
 
 def get_boot():
+	from crm.integrations.aisensy.aisensy_handler import is_aisensy_enabled
+	from crm.integrations.brevo.brevo_handler import is_brevo_enabled
+
 	return frappe._dict(
 		{
 			"frappe_version": frappe.__version__,
@@ -52,6 +55,8 @@ def get_boot():
 				"user": frappe.db.get_value("User", frappe.session.user, "time_zone")
 				or get_system_timezone(),
 			},
+			"aisensy_enabled": is_aisensy_enabled(),
+			"brevo_enabled": is_brevo_enabled(),
 		}
 	)
 
