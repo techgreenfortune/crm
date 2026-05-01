@@ -182,9 +182,13 @@ OPSGATE_JWT_SECRET=greenfortunejwtsecret2025
 > Must match `JWT_SECRET` in the OpsGate backend `.env`.
 
 **3. CRM Frappe site config** (run once per site)
+
+For local Docker dev (OpsGate running on host port 4011 — use `host.docker.internal`, not `localhost`, because `localhost` inside the container refers to the container itself):
 ```bash
-bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
-bench --site crm.localhost set-config opsgate_api_url "http://localhost:4011/api"
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config crm_sso_secret 'crm-to-opsgate-sso-secret-2025'"
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config opsgate_api_url 'http://host.docker.internal:4011/api'"
 ```
 For staging:
 ```bash
@@ -213,6 +217,8 @@ Every CRM user who needs OpsGate access must have an account in OpsGate with the
 - The `frappe-ui` Switch component uses `defineModel<boolean>` — binding directly to integer values (`0`/`1`) from Frappe causes the switch to snap back; fixed by using `:model-value="Boolean(...)"` 
 - New `@frappe.whitelist()` functions require `bench --site <site> clear-cache` before they appear (Frappe caches module imports)
 - `call()` from `frappe-ui` handles CSRF automatically — use it instead of raw `fetch()` for Frappe API calls
+- In Docker, `localhost` inside the container refers to the container itself, not the Mac host — use `host.docker.internal:<port>` to reach services running on the host (e.g. OpsGate on port 4011)
+- Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
 
 **Deploy commands (Docker):**
 
