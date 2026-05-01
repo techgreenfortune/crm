@@ -133,11 +133,14 @@ docker exec crm-frappe-1 bash -c \
 
 ---
 
-### OpsGate SSO (Single Sign-On)
+### OpsGate ↔ CRM Single Sign-On (bidirectional SSO)
 
-**What it does:** Adds an OpsGate link in the CRM sidebar. Clicking it automatically logs the user into OpsGate — no separate login screen. Tokens are exchanged server-to-server between Frappe and the OpsGate backend using a shared secret. The logged-in CRM user's email is used to look up their OpsGate account.
+**What it does:** Users can move between CRM and OpsGate without a separate login in either direction.
 
-**Architecture:**
+- **CRM → OpsGate:** OpsGate link in the CRM sidebar logs the user straight into OpsGate via JWT SSO.
+- **OpsGate → CRM:** CRM icon in the OpsGate sidebar logs the user straight into CRM via Frappe's one-time login key.
+
+**Architecture — CRM → OpsGate:**
 
 ```
 CRM sidebar click
@@ -149,37 +152,53 @@ CRM sidebar click
       → lands on OpsGate dashboard, already logged in
 ```
 
+**Architecture — OpsGate → CRM:**
+
+```
+OpsGate sidebar CRM icon click
+  → OpsGate frontend calls GET /api/user/crm-login-url (authenticated)
+    → OpsGate backend POST http://localhost:8000/api/method/crm.api.settings.get_crm_login_url
+        (shared secret + logged-in user email, form-encoded)
+      ← one-time login key (valid 2 min, stored in Redis)
+  → browser opens http://localhost:8000/api/method/frappe.www.login.login_via_key?key=<key>
+    → Frappe logs user in, sets session cookie, redirects to /crm
+```
+
 **Files changed:**
 
 | Repo | Path | Description |
 |------|------|-------------|
-| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url` whitelisted endpoint |
+| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url` and `get_crm_login_url` whitelisted endpoints |
 | CRM | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields |
 | CRM | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button |
 | CRM | `frontend/src/components/Layouts/AppSidebar.vue` | Added OpsGate nav item with SSO click handler |
 | CRM | `frontend/src/components/SidebarLink.vue` | Added `onClick` prop to allow custom click handlers |
 | CRM | `frontend/src/composables/settings.js` | Added `opsGateEnabled` and `opsGateUrl` reactive refs |
-| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin` controller |
-| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token` route |
-| OpsGate backend | `.env` / `sample.env` | Added `CRM_SSO_SECRET` |
+| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin` and `getCrmLoginUrl` controllers |
+| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token` and `GET /user/crm-login-url` routes |
+| OpsGate backend | `.env` | Added `CRM_SSO_SECRET` and `CRM_API_URL` |
 | OpsGate frontend | `src/lib/auth/authOptions.ts` | Added `sso-token` NextAuth credentials provider |
 | OpsGate frontend | `src/app/auth/sso/page.tsx` | New SSO landing page — reads token from URL, creates session |
 | OpsGate frontend | `src/lib/constants/routes.constants.ts` | Added `/auth/sso` to `PUBLIC_PATHS` |
-| OpsGate frontend | `.env` | Added `OPSGATE_JWT_SECRET` |
+| OpsGate frontend | `src/lib/constants/navItems-role.tsx` | Added CRM icon nav item with `externalKey: "crm"` |
+| OpsGate frontend | `src/components/layouts/DashboardLayout.tsx` | `handleNavigation` calls `/user/crm-login-url` for external SSO items |
+| OpsGate frontend | `.env` | Added `OPSGATE_JWT_SECRET` and `NEXT_PUBLIC_CRM_URL` |
 
 **Setup — per environment (dev/staging/prod):**
 
 **1. OpsGate backend `.env`**
 ```env
 CRM_SSO_SECRET=crm-to-opsgate-sso-secret-2025
+CRM_API_URL=http://localhost:8000/api      # dev; use https://crm.example.com/api for staging/prod
 ```
-> The value must match `crm_sso_secret` in the CRM site config exactly.
+> `CRM_SSO_SECRET` must match `crm_sso_secret` in the CRM site config exactly.
 
 **2. OpsGate frontend `.env`**
 ```env
 OPSGATE_JWT_SECRET=greenfortunejwtsecret2025
+NEXT_PUBLIC_CRM_URL=http://localhost:8000/crm   # dev; use https://crm.example.com/crm for staging/prod
 ```
-> Must match `JWT_SECRET` in the OpsGate backend `.env`.
+> `OPSGATE_JWT_SECRET` must match `JWT_SECRET` in the OpsGate backend `.env`.
 
 **3. CRM Frappe site config** (run once per site)
 
@@ -219,6 +238,8 @@ Every CRM user who needs OpsGate access must have an account in OpsGate with the
 - `call()` from `frappe-ui` handles CSRF automatically — use it instead of raw `fetch()` for Frappe API calls
 - In Docker, `localhost` inside the container refers to the container itself, not the Mac host — use `host.docker.internal:<port>` to reach services running on the host (e.g. OpsGate on port 4011)
 - Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
+- `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Fix: `bench --site crm.localhost clear-cache` or delete the Redis key `rl:frappe.www.login.login_via_key:<ip>`
+- The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies; JSON bodies require `frappe.request.get_json()` which behaves differently across Frappe versions
 
 **Deploy commands (Docker):**
 

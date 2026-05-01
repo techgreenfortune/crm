@@ -80,7 +80,7 @@ The motivation behind building Frappe CRM stems from the need for a simple, cust
 -   **ERPNext:** Integrate with [ERPNext](https://erpnext.com) to extend the CRM capabilities to include invoicing, accounting, and more.
 -   **Brevo:** Send transactional emails (invitations, event reminders) via the [Brevo](https://www.brevo.com) HTTP API. Configure via Settings → Integrations → Brevo. Requires a Brevo v3 API key.
 -   **AISensy:** Send WhatsApp template messages to leads and contacts directly from the Lead/Deal page via the [AISensy](https://aisensy.com) campaign API. When enabled, an AISensy tab appears in the activity panel. Configure via Settings → Integrations → AISensy. Requires an AISensy API key and Project ID.
--   **OpsGate:** Single sign-on (SSO) link to the internal OpsGate operations portal. When enabled, an OpsGate link appears in the CRM sidebar. Clicking it automatically logs the user into OpsGate without a separate login screen — tokens are exchanged server-to-server using a shared secret. Configure via Settings → General Settings → Enable OpsGate.
+-   **OpsGate:** Bidirectional single sign-on (SSO) with the internal OpsGate operations portal. When enabled, an OpsGate link appears in the CRM sidebar — clicking it logs the user straight into OpsGate (JWT SSO via shared secret). A reciprocal CRM icon in the OpsGate sidebar logs the user back into CRM via Frappe's one-time login key. No separate login screen in either direction. Configure via Settings → General Settings → Enable OpsGate.
 
 ### Under the Hood
 

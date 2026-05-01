@@ -1,5 +1,6 @@
 import frappe
 import requests
+from frappe.utils import get_url
 
 
 @frappe.whitelist()
@@ -60,6 +61,30 @@ def get_opsgate_redirect_url():
 		f"{opsgate_url}/auth/sso?token={access_token}&refresh={refresh_token}&expires_at={expires_at}"
 	)
 	return {"redirect_url": redirect_url}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def get_crm_login_url():
+	sso_secret = frappe.conf.get("crm_sso_secret")
+	if not sso_secret:
+		frappe.throw("CRM SSO secret is not configured", frappe.AuthenticationError)
+
+	# frappe.form_dict is populated from both form-encoded and JSON bodies
+	provided_secret = frappe.form_dict.get("sso_secret", "")
+	if provided_secret != sso_secret:
+		frappe.throw("Unauthorized", frappe.AuthenticationError)
+
+	email = frappe.form_dict.get("email", "")
+	if not email:
+		frappe.throw("email is required")
+
+	if not frappe.db.exists("User", email):
+		frappe.throw(f"User {email} does not exist in CRM", frappe.DoesNotExistError)
+
+	key = frappe.generate_hash()
+	frappe.cache.set_value(f"one_time_login_key:{key}", email, expires_in_sec=120)
+	login_url = get_url(f"/api/method/frappe.www.login.login_via_key?key={key}")
+	return {"login_url": login_url}
 
 
 @frappe.whitelist()
