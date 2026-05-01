@@ -63,6 +63,7 @@
               :label="__(link.label)"
               :to="link.to"
               :href="link.href"
+              :on-click="link.onClick || null"
               :isCollapsed="isSidebarCollapsed"
               class="mx-2 my-[1.5px]"
             />
@@ -263,9 +264,7 @@ const links = [
   {
     label: 'OpsGate',
     icon: LucideExternalLink,
-    get href() {
-      return opsGateUrl.value || null
-    },
+    onClick: openOpsGate,
     condition: () => opsGateEnabled.value,
   },
 ]
@@ -301,6 +300,19 @@ const allViews = computed(() => {
   }
   return _views
 })
+
+async function openOpsGate() {
+  try {
+    const data = await call('crm.api.settings.get_opsgate_redirect_url')
+    if (data?.redirect_url) {
+      window.open(data.redirect_url, '_blank')
+    } else {
+      throw new Error('No redirect URL')
+    }
+  } catch {
+    window.open(opsGateUrl.value, '_blank')
+  }
+}
 
 function parseView(views) {
   return views.map((view) => {

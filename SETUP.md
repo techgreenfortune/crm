@@ -130,3 +130,115 @@ docker exec crm-frappe-1 bash -c \
    /home/frappe/.nvm/versions/node/v24.13.0/bin/node \
    /home/frappe/.nvm/versions/node/v24.13.0/bin/yarn build"
 ```
+
+---
+
+### OpsGate SSO (Single Sign-On)
+
+**What it does:** Adds an OpsGate link in the CRM sidebar. Clicking it automatically logs the user into OpsGate — no separate login screen. Tokens are exchanged server-to-server between Frappe and the OpsGate backend using a shared secret. The logged-in CRM user's email is used to look up their OpsGate account.
+
+**Architecture:**
+
+```
+CRM sidebar click
+  → Frappe backend (crm.api.settings.get_opsgate_redirect_url)
+    → POST /api/user/sso-token to OpsGate backend (shared secret + user email)
+      ← access_token + refresh_token
+  → redirect to <opsgate_url>/auth/sso?token=...&refresh=...
+    → OpsGate frontend verifies JWT, creates NextAuth session
+      → lands on OpsGate dashboard, already logged in
+```
+
+**Files changed:**
+
+| Repo | Path | Description |
+|------|------|-------------|
+| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url` whitelisted endpoint |
+| CRM | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields |
+| CRM | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button |
+| CRM | `frontend/src/components/Layouts/AppSidebar.vue` | Added OpsGate nav item with SSO click handler |
+| CRM | `frontend/src/components/SidebarLink.vue` | Added `onClick` prop to allow custom click handlers |
+| CRM | `frontend/src/composables/settings.js` | Added `opsGateEnabled` and `opsGateUrl` reactive refs |
+| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin` controller |
+| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token` route |
+| OpsGate backend | `.env` / `sample.env` | Added `CRM_SSO_SECRET` |
+| OpsGate frontend | `src/lib/auth/authOptions.ts` | Added `sso-token` NextAuth credentials provider |
+| OpsGate frontend | `src/app/auth/sso/page.tsx` | New SSO landing page — reads token from URL, creates session |
+| OpsGate frontend | `src/lib/constants/routes.constants.ts` | Added `/auth/sso` to `PUBLIC_PATHS` |
+| OpsGate frontend | `.env` | Added `OPSGATE_JWT_SECRET` |
+
+**Setup — per environment (dev/staging/prod):**
+
+**1. OpsGate backend `.env`**
+```env
+CRM_SSO_SECRET=crm-to-opsgate-sso-secret-2025
+```
+> The value must match `crm_sso_secret` in the CRM site config exactly.
+
+**2. OpsGate frontend `.env`**
+```env
+OPSGATE_JWT_SECRET=greenfortunejwtsecret2025
+```
+> Must match `JWT_SECRET` in the OpsGate backend `.env`.
+
+**3. CRM Frappe site config** (run once per site)
+```bash
+bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
+bench --site crm.localhost set-config opsgate_api_url "http://localhost:4011/api"
+```
+For staging:
+```bash
+bench --site <site> set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
+bench --site <site> set-config opsgate_api_url "https://backend.thegreenfortune.com/api"
+```
+
+**4. Run DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
+```bash
+bench --site crm.localhost migrate
+```
+
+**5. Enable in CRM UI**
+
+Settings → General Settings → Enable OpsGate toggle → enter OpsGate URL → Save
+
+**6. User mapping**
+
+Every CRM user who needs OpsGate access must have an account in OpsGate with the **same email address** as their Frappe account. The SSO looks up by email — if no match is found, the redirect will fail with a 404.
+
+**Gotchas encountered:**
+
+- `frappe.session.user` returns `"Administrator"` for the admin user, not their email — fixed by fetching with `frappe.db.get_value("User", frappe.session.user, "email")`
+- The bench at `frappe-bench/apps/crm/` is a **separate copy** from `Desktop/crm/` — changes must be made in the bench copy (or synced via `cp`) for the running server to pick them up
+- `frappe.client.set_value` response omits fields not returned by the DB query (including `opsgate_enabled`, `opsgate_url`) — fixed by patching `settings.doc` manually after save in the Vue component
+- The `frappe-ui` Switch component uses `defineModel<boolean>` — binding directly to integer values (`0`/`1`) from Frappe causes the switch to snap back; fixed by using `:model-value="Boolean(...)"` 
+- New `@frappe.whitelist()` functions require `bench --site <site> clear-cache` before they appear (Frappe caches module imports)
+- `call()` from `frappe-ui` handles CSRF automatically — use it instead of raw `fetch()` for Frappe API calls
+
+**Deploy commands (Docker):**
+
+```bash
+# Backend
+docker cp /Users/aadarsh/Desktop/crm/crm/api/settings.py \
+  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/api/settings.py
+
+docker cp /Users/aadarsh/Desktop/crm/crm/fcrm/doctype/fcrm_settings \
+  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/fcrm/doctype/
+
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost migrate"
+
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config crm_sso_secret 'crm-to-opsgate-sso-secret-2025'"
+
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config opsgate_api_url 'https://backend.thegreenfortune.com/api'"
+
+# Frontend
+docker cp /Users/aadarsh/Desktop/crm/frontend/src \
+  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/frontend/
+
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench/apps/crm && \
+   /home/frappe/.nvm/versions/node/v24.13.0/bin/node \
+   /home/frappe/.nvm/versions/node/v24.13.0/bin/yarn build"
+```
