@@ -153,8 +153,8 @@
 <script setup>
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
-import LucideExternalLink from '~icons/lucide/external-link'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
+import OpsGateIcon from '@/components/Icons/OpsGateIcon.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
@@ -263,7 +263,7 @@ const links = [
   },
   {
     label: 'OpsGate',
-    icon: LucideExternalLink,
+    icon: OpsGateIcon,
     onClick: openOpsGate,
     condition: () => opsGateEnabled.value,
   },
