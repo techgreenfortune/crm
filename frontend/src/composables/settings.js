@@ -39,6 +39,9 @@ createResource({
 export const aisensyEnabled = ref(Boolean(window.aisensy_enabled))
 export const brevoEnabled = ref(Boolean(window.brevo_enabled))
 
+export const opsGateEnabled = ref(Boolean(window.opsgate_enabled))
+export const opsGateUrl = ref(window.opsgate_url || '')
+
 export const mobileSidebarOpened = ref(false)
 
 export const isMobileView = computed(() => window.innerWidth < 768)

@@ -11,7 +11,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: 123
     ports:
-      - 3306:3306
+      - 3307:3306
     volumes:
       - mariadb-data:/var/lib/mysql
 

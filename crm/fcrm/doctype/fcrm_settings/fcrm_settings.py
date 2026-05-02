@@ -56,6 +56,9 @@ class FCRMSettings(Document):
 		self.setup_forecasting()
 		self.make_currency_read_only()
 
+	def on_update(self):
+		frappe.clear_document_cache("FCRM Settings", "FCRM Settings")
+
 	def do_not_allow_to_delete_if_standard(self):
 		if not self.has_value_changed("dropdown_items"):
 			return

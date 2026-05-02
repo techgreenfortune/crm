@@ -62,6 +62,8 @@
               :icon="link.icon"
               :label="__(link.label)"
               :to="link.to"
+              :href="link.href"
+              :on-click="link.onClick || null"
               :isCollapsed="isSidebarCollapsed"
               class="mx-2 my-[1.5px]"
             />
@@ -152,6 +154,7 @@
 import BrushCleaningIcon from '~icons/lucide/brush-cleaning'
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
+import OpsGateIcon from '@/components/Icons/OpsGateIcon.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
 import CommentIcon from '@/components/Icons/CommentIcon.vue'
@@ -181,10 +184,14 @@ import {
 } from '@/stores/notifications'
 import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
-import { showSettings, activeSettingsPage } from '@/composables/settings'
+import {
+  showSettings,
+  activeSettingsPage,
+  opsGateEnabled,
+} from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
 import { useBroadcast } from '@/composables/useBroadcast.js'
-import { FeatherIcon, call } from 'frappe-ui'
+import { FeatherIcon, call, toast } from 'frappe-ui'
 import {
   SignupBanner,
   TrialBanner,
@@ -253,6 +260,12 @@ const links = [
     icon: PhoneIcon,
     to: 'Call Logs',
   },
+  {
+    label: 'OpsGate',
+    icon: OpsGateIcon,
+    onClick: openOpsGate,
+    condition: () => opsGateEnabled.value,
+  },
 ]
 
 const allViews = computed(() => {
@@ -286,6 +299,21 @@ const allViews = computed(() => {
   }
   return _views
 })
+
+async function openOpsGate() {
+  try {
+    const data = await call('crm.api.settings.get_opsgate_redirect_url')
+    if (data?.redirect_url) {
+      window.open(data.redirect_url, '_blank')
+    } else {
+      toast.error('OpsGate SSO failed: no redirect URL returned')
+    }
+  } catch {
+    toast.error(
+      'Could not sign you into OpsGate. Please contact your administrator.',
+    )
+  }
+}
 
 function parseView(views) {
   return views.map((view) => {
