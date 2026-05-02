@@ -82,10 +82,88 @@ def get_crm_login_url():
 	if not frappe.db.exists("User", email):
 		frappe.throw(_("User {0} does not exist in CRM").format(email), frappe.DoesNotExistError)
 
+	if not frappe.db.get_value("User", email, "enabled"):
+		frappe.throw(_("User {0} is disabled in CRM. Please contact your administrator.").format(email), frappe.ValidationError)
+
 	key = frappe.generate_hash()
 	frappe.cache.set_value(f"one_time_login_key:{key}", email, expires_in_sec=120)
 	login_url = get_url(f"/api/method/frappe.www.login.login_via_key?key={key}")
 	return {"login_url": login_url}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def create_crm_user():
+	sso_secret = frappe.conf.get("crm_sso_secret")
+	if not sso_secret:
+		frappe.throw(_("CRM SSO secret is not configured"), frappe.AuthenticationError)
+
+	provided_secret = frappe.form_dict.get("sso_secret", "")
+	if provided_secret != sso_secret:
+		frappe.throw(_("Unauthorized"), frappe.AuthenticationError)
+
+	email = frappe.form_dict.get("email", "")
+	if not email:
+		frappe.throw(_("email is required"))
+
+	first_name = frappe.form_dict.get("first_name", "") or email.split("@")[0].title()
+	last_name = frappe.form_dict.get("last_name", "") or ""
+	role = frappe.form_dict.get("role", "Sales User")
+
+	valid_roles = ("Sales User", "Sales Manager", "System Manager")
+	if role not in valid_roles:
+		role = "Sales User"
+
+	if not frappe.db.exists("User", email):
+		user = frappe.get_doc(
+			doctype="User",
+			user_type="System User",
+			email=email,
+			send_welcome_email=0,
+			first_name=first_name,
+			last_name=last_name,
+		).insert(ignore_permissions=True)
+	else:
+		user = frappe.get_doc("User", email)
+
+	user.append_roles(role)
+	if role == "System Manager":
+		user.append_roles("Sales Manager", "Sales User")
+	elif role == "Sales Manager":
+		user.append_roles("Sales User")
+
+	if role == "Sales User":
+		block_modules = frappe.get_all(
+			"Module Def",
+			fields=["name as module"],
+			filters={"name": ["!=", "FCRM"]},
+		)
+		if block_modules:
+			user.set("block_modules", block_modules)
+
+	user.save(ignore_permissions=True)
+
+	return {"email": email, "created": True}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
+def disable_crm_user():
+	sso_secret = frappe.conf.get("crm_sso_secret")
+	if not sso_secret:
+		frappe.throw(_("CRM SSO secret is not configured"), frappe.AuthenticationError)
+
+	provided_secret = frappe.form_dict.get("sso_secret", "")
+	if provided_secret != sso_secret:
+		frappe.throw(_("Unauthorized"), frappe.AuthenticationError)
+
+	email = frappe.form_dict.get("email", "")
+	if not email:
+		frappe.throw(_("email is required"))
+
+	if not frappe.db.exists("User", email):
+		return {"email": email, "disabled": False, "reason": "user not found in CRM"}
+
+	frappe.db.set_value("User", email, "enabled", 0)
+	return {"email": email, "disabled": True}
 
 
 @frappe.whitelist()

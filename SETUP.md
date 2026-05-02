@@ -169,14 +169,14 @@ OpsGate sidebar CRM icon click
 
 | Repo | Path | Description |
 |------|------|-------------|
-| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url` and `get_crm_login_url` whitelisted endpoints |
+| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url`, `get_crm_login_url`, `create_crm_user`, `disable_crm_user` whitelisted endpoints |
 | CRM | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields |
 | CRM | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button |
 | CRM | `frontend/src/components/Layouts/AppSidebar.vue` | Added OpsGate nav item with SSO click handler |
 | CRM | `frontend/src/components/SidebarLink.vue` | Added `onClick` prop to allow custom click handlers |
 | CRM | `frontend/src/composables/settings.js` | Added `opsGateEnabled` and `opsGateUrl` reactive refs |
-| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin` and `getCrmLoginUrl` controllers |
-| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token` and `GET /user/crm-login-url` routes |
+| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin`, `getCrmLoginUrl`, `provisionCrmUsers`, `deprovisionCrmUsers` controllers |
+| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token`, `GET /user/crm-login-url`, `POST /user/crm/provision`, `POST /user/crm/deprovision` routes |
 | OpsGate backend | `.env` | Added `CRM_SSO_SECRET` and `CRM_API_URL` |
 | OpsGate frontend | `src/lib/auth/authOptions.ts` | Added `sso-token` NextAuth credentials provider |
 | OpsGate frontend | `src/app/auth/sso/page.tsx` | New SSO landing page — reads token from URL, creates session |
@@ -229,6 +229,28 @@ Settings → General Settings → Enable OpsGate toggle → enter OpsGate URL �
 
 Every CRM user who needs OpsGate access must have an account in OpsGate with the **same email address** as their Frappe account. The SSO looks up by email — if no match is found, the redirect will fail with a 404.
 
+**7. CRM user provisioning from OpsGate**
+
+New users created via the OpsGate `POST /user/create` API are automatically provisioned in CRM as `Sales User` (no invite email, no invite link required).
+
+For existing OpsGate users created before this feature, use the admin endpoints:
+
+```bash
+# Provision one or more users into CRM
+POST /user/crm/provision
+Authorization: Bearer <admin_token>
+{ "user_ids": [1, 2, 3] }
+
+# Deprovision (disable) one or more users in CRM
+POST /user/crm/deprovision
+Authorization: Bearer <admin_token>
+{ "user_ids": [1, 2] }
+```
+
+Both endpoints process each user independently and return a per-user result with `status: "provisioned" | "deprovisioned" | "failed"`. Deprovisioning disables the CRM user (`enabled=0`) rather than deleting — data (leads, activities) is preserved.
+
+If a disabled user tries to redirect to CRM from OpsGate, `get_crm_login_url` will return a clear error before issuing a login key.
+
 **Gotchas encountered:**
 
 - `frappe.session.user` returns `"Administrator"` for the admin user, not their email — fixed by fetching with `frappe.db.get_value("User", frappe.session.user, "email")`
@@ -241,6 +263,8 @@ Every CRM user who needs OpsGate access must have an account in OpsGate with the
 - Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
 - `frappe.db.get_single_value` caches results in Redis — toggling a setting via `frappe.client.set_value` updates the DB but the cached value persists until expiry, so `get_boot()` returns stale data on refresh. Fixed by passing `cache=False` for all integration enabled flags (`opsgate_enabled`, `aisensy_enabled`, `brevo_enabled`)
 - When OpsGate SSO fails (e.g. user email not in OpsGate), the CRM sidebar now shows a generic toast error instead of silently redirecting to the OpsGate login page
+- If local MariaDB (e.g. installed via Homebrew) is running on port 3306, the Docker MariaDB container will fail to bind — `docker-compose.yml` maps it to `3307:3306` to avoid the conflict. This only affects host-side access; containers communicate internally by name so CRM is unaffected.
+- Every `docker compose down && up` reinitializes the frappe container from scratch (clones Frappe, reinstalls). After each fresh start: copy all modified `.py` and `.json` files back, run `bench migrate`, and re-run `set-config` for `crm_sso_secret`, `opsgate_api_url`, and `host_name`.
 - `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Fix: `bench --site crm.localhost clear-cache` or delete the Redis key `rl:frappe.www.login.login_via_key:<ip>`
 - The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies; JSON bodies require `frappe.request.get_json()` which behaves differently across Frappe versions
 
