@@ -71,7 +71,7 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 
 ### Brevo (Transactional Email)
 
-**What it does:** Sends all transactional emails via Brevo's HTTP API instead of relying on Frappe's built-in SMTP mail queue. When Brevo is enabled it handles all email triggers; when disabled each trigger falls back to `frappe.sendmail`.
+**What it does:** Sends transactional emails (calendar event reminders) via Brevo's HTTP API. Invitation emails always go through `frappe.sendmail` (the configured outgoing email account) regardless of Brevo being enabled — Brevo was generating unreachable `127.0.0.1` links inside Docker.
 
 **Files added:**
 
@@ -83,7 +83,7 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 | `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email |
 | `frontend/src/composables/settings.js` | Added `brevoEnabled` reactive ref |
 | `frontend/src/components/Settings/Settings.vue` | Added Brevo entry under Integrations tab |
-| `crm/fcrm/doctype/crm_invitation/crm_invitation.py` | Routes invitation emails through Brevo when enabled; falls back to `frappe.sendmail` |
+| `crm/fcrm/doctype/crm_invitation/crm_invitation.py` | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path) |
 | `crm/api/event.py` | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
 
 **Setup steps:**
@@ -104,6 +104,7 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 - `__()` (Frappe translation function) is only available as a Vue template global, not in `<script setup>` — use plain strings in JS callbacks
 - `toast({ title, variant })` is not the correct API in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
 - `session.user` returns the login name (e.g. `"Administrator"`), not an email — use `getUser()?.email` from `usersStore` to get a valid recipient address for the test email
+- Invitation and password reset links use `frappe.utils.get_url()` which returns `http://127.0.0.1:8000` if `host_name` is not set — fix once per site: `bench --site crm.localhost set-config host_name 'http://localhost:8000'` (use the public URL for staging/prod)
 
 **Deploy commands used:**
 
@@ -238,6 +239,8 @@ Every CRM user who needs OpsGate access must have an account in OpsGate with the
 - `call()` from `frappe-ui` handles CSRF automatically — use it instead of raw `fetch()` for Frappe API calls
 - In Docker, `localhost` inside the container refers to the container itself, not the Mac host — use `host.docker.internal:<port>` to reach services running on the host (e.g. OpsGate on port 4011)
 - Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
+- `frappe.db.get_single_value` caches results in Redis — toggling a setting via `frappe.client.set_value` updates the DB but the cached value persists until expiry, so `get_boot()` returns stale data on refresh. Fixed by passing `cache=False` for all integration enabled flags (`opsgate_enabled`, `aisensy_enabled`, `brevo_enabled`)
+- When OpsGate SSO fails (e.g. user email not in OpsGate), the CRM sidebar now shows a generic toast error instead of silently redirecting to the OpsGate login page
 - `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Fix: `bench --site crm.localhost clear-cache` or delete the Redis key `rl:frappe.www.login.login_via_key:<ip>`
 - The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies; JSON bodies require `frappe.request.get_json()` which behaves differently across Frappe versions
 
