@@ -192,7 +192,7 @@ import {
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
 import { useBroadcast } from '@/composables/useBroadcast.js'
-import { FeatherIcon, call } from 'frappe-ui'
+import { FeatherIcon, call, toast } from 'frappe-ui'
 import {
   SignupBanner,
   TrialBanner,
@@ -307,10 +307,10 @@ async function openOpsGate() {
     if (data?.redirect_url) {
       window.open(data.redirect_url, '_blank')
     } else {
-      throw new Error('No redirect URL')
+      toast.error('OpsGate SSO failed: no redirect URL returned')
     }
   } catch {
-    window.open(opsGateUrl.value, '_blank')
+    toast.error('Could not sign you into OpsGate. Please contact your administrator.')
   }
 }
 
