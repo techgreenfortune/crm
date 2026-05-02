@@ -216,20 +216,42 @@ bench --site <site> set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
 bench --site <site> set-config opsgate_api_url "https://backend.thegreenfortune.com/api"
 ```
 
-**4. Run DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
+**4. Unmute emails** (REQUIRED — Frappe mutes emails by default on fresh installs)
+
+> ⚠️ Every fresh container start resets `mute_emails` to `1`. If invitation or notification emails are silently not sent (queue shows `Not Sent` with no error), this is almost certainly the cause.
+
+```bash
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config mute_emails 0"
+```
+
+Verify emails are unmuted:
+```bash
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.are_emails_muted"
+# Must return: false
+```
+
+If emails are still stuck in `Not Sent` after unmuting, flush the queue manually:
+```bash
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.email.queue.flush"
+```
+
+**5. Run DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
 ```bash
 bench --site crm.localhost migrate
 ```
 
-**5. Enable in CRM UI**
+**6. Enable in CRM UI**
 
 Settings → General Settings → Enable OpsGate toggle → enter OpsGate URL → Save
 
-**6. User mapping**
+**7. User mapping**
 
 Every CRM user who needs OpsGate access must have an account in OpsGate with the **same email address** as their Frappe account. The SSO looks up by email — if no match is found, the redirect will fail with a 404.
 
-**7. CRM user provisioning from OpsGate**
+**8. CRM user provisioning from OpsGate**
 
 New users created via the OpsGate `POST /user/create` API are automatically provisioned in CRM as `Sales User` (no invite email, no invite link required).
 
@@ -263,9 +285,10 @@ If a disabled user tries to redirect to CRM from OpsGate, `get_crm_login_url` wi
 - Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
 - `frappe.db.get_single_value` caches results in Redis — toggling a setting via `frappe.client.set_value` updates the DB but the cached value persists until expiry, so `get_boot()` returns stale data on refresh. Fixed by passing `cache=False` for all integration enabled flags (`opsgate_enabled`, `aisensy_enabled`, `brevo_enabled`)
 - When OpsGate SSO fails (e.g. user email not in OpsGate), the CRM sidebar now shows a generic toast error instead of silently redirecting to the OpsGate login page
+- **Emails silently not sending (`Not Sent`, no error in queue)**: Frappe sets `mute_emails=1` on every fresh site init. Run `bench --site crm.localhost set-config mute_emails 0` after every container restart. Confirm with `bench --site crm.localhost execute frappe.are_emails_muted` — must return `false`. Then flush any stuck queue items with `bench --site crm.localhost execute frappe.email.queue.flush`.
 - If local MariaDB (e.g. installed via Homebrew) is running on port 3306, the Docker MariaDB container will fail to bind — `docker-compose.yml` maps it to `3307:3306` to avoid the conflict. This only affects host-side access; containers communicate internally by name so CRM is unaffected.
 - Every `docker compose down && up` reinitializes the frappe container from scratch (clones Frappe, reinstalls). After each fresh start: copy all modified `.py` and `.json` files back, run `bench migrate`, and re-run `set-config` for `crm_sso_secret`, `opsgate_api_url`, and `host_name`.
-- `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Fix: `bench --site crm.localhost clear-cache` or delete the Redis key `rl:frappe.www.login.login_via_key:<ip>`
+- `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP by default — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Two fixes: (1) increase the limit via System Settings — `bench --site crm.localhost execute frappe.db.set_single_value --args '["System Settings", "rate_limit_email_link_login", 100]'` — this persists in the DB across restarts; (2) clear the current Redis rate limit counter: `bench --site crm.localhost execute frappe.cache.delete_keys --args '["rl:"]'`
 - The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies; JSON bodies require `frappe.request.get_json()` which behaves differently across Frappe versions
 
 **Deploy commands (Docker):**

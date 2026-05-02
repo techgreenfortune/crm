@@ -5,7 +5,7 @@ AISENSY_API_URL = "https://backend.aisensy.com/campaign/t1/api/v2"
 
 
 def is_aisensy_enabled() -> bool:
-	return bool(frappe.db.get_single_value("CRM AISensy Settings", "enabled", cache=False))
+	return bool(frappe.db.get_single_value("CRM AISensy Settings", "enabled"))
 
 
 def get_aisensy_settings():

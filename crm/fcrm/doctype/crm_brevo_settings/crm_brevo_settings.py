@@ -15,3 +15,6 @@ class CRMBrevoSettings(Document):
 		enabled: DF.Check
 		sender_email: DF.Data | None
 		sender_name: DF.Data | None
+
+	def on_update(self):
+		frappe.clear_document_cache("CRM Brevo Settings", "CRM Brevo Settings")

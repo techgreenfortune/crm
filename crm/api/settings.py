@@ -127,21 +127,14 @@ def create_crm_user():
 		).insert(ignore_permissions=True)
 	else:
 		user = frappe.get_doc("User", email)
+		if not user.enabled:
+			user.enabled = 1
 
 	user.append_roles(role)
 	if role == "System Manager":
 		user.append_roles("Sales Manager", "Sales User")
 	elif role == "Sales Manager":
 		user.append_roles("Sales User")
-
-	if role == "Sales User":
-		block_modules = frappe.get_all(
-			"Module Def",
-			fields=["name as module"],
-			filters={"name": ["!=", "FCRM"]},
-		)
-		if block_modules:
-			user.set("block_modules", block_modules)
 
 	user.save(ignore_permissions=True)
 
@@ -166,6 +159,8 @@ def disable_crm_user():
 		return {"email": email, "disabled": False, "reason": "user not found in CRM"}
 
 	frappe.db.set_value("User", email, "enabled", 0)
+	# Clear all active sessions so existing browser tabs are immediately logged out
+	frappe.sessions.clear_sessions(user=email, keep_current=False)
 	return {"email": email, "disabled": True}
 
 

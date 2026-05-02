@@ -188,7 +188,6 @@ import {
   showSettings,
   activeSettingsPage,
   opsGateEnabled,
-  opsGateUrl,
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
 import { useBroadcast } from '@/composables/useBroadcast.js'
