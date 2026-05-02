@@ -5,7 +5,7 @@ BREVO_SMTP_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
 def is_brevo_enabled():
-	return bool(frappe.db.get_single_value("CRM Brevo Settings", "enabled"))
+	return bool(frappe.db.get_single_value("CRM Brevo Settings", "enabled", cache=False))
 
 
 def get_brevo_settings():
