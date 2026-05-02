@@ -310,7 +310,9 @@ async function openOpsGate() {
       toast.error('OpsGate SSO failed: no redirect URL returned')
     }
   } catch {
-    toast.error('Could not sign you into OpsGate. Please contact your administrator.')
+    toast.error(
+      'Could not sign you into OpsGate. Please contact your administrator.',
+    )
   }
 }
 

@@ -1,5 +1,6 @@
 import frappe
 import requests
+from frappe import _
 from frappe.utils import get_url
 
 
@@ -20,15 +21,15 @@ def get_opsgate_url() -> str:
 def get_opsgate_redirect_url():
 	opsgate_url = (frappe.db.get_single_value("FCRM Settings", "opsgate_url") or "").rstrip("/")
 	if not opsgate_url:
-		frappe.throw("OpsGate URL is not configured")
+		frappe.throw(_("OpsGate URL is not configured"))
 
 	sso_secret = frappe.conf.get("crm_sso_secret")
 	if not sso_secret:
-		frappe.throw("CRM SSO secret is not configured. Add crm_sso_secret to site_config.json")
+		frappe.throw(_("CRM SSO secret is not configured. Add crm_sso_secret to site_config.json"))
 
 	opsgate_api_url = (frappe.conf.get("opsgate_api_url") or "").rstrip("/")
 	if not opsgate_api_url:
-		frappe.throw("OpsGate API URL is not configured. Add opsgate_api_url to site_config.json")
+		frappe.throw(_("OpsGate API URL is not configured. Add opsgate_api_url to site_config.json"))
 
 	# frappe.session.user is 'Administrator' for admin — fetch the actual email from User doctype
 	user_email = frappe.db.get_value("User", frappe.session.user, "email") or frappe.session.user
@@ -55,7 +56,7 @@ def get_opsgate_redirect_url():
 	expires_at = data.get("access_token_expires_at", "")
 
 	if not access_token:
-		frappe.throw("OpsGate SSO returned no access token — check that the user email exists in OpsGate")
+		frappe.throw(_("OpsGate SSO returned no access token — check that the user email exists in OpsGate"))
 
 	redirect_url = (
 		f"{opsgate_url}/auth/sso?token={access_token}&refresh={refresh_token}&expires_at={expires_at}"
@@ -63,23 +64,23 @@ def get_opsgate_redirect_url():
 	return {"redirect_url": redirect_url}
 
 
-@frappe.whitelist(allow_guest=True, methods=["POST"])
+@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep
 def get_crm_login_url():
 	sso_secret = frappe.conf.get("crm_sso_secret")
 	if not sso_secret:
-		frappe.throw("CRM SSO secret is not configured", frappe.AuthenticationError)
+		frappe.throw(_("CRM SSO secret is not configured"), frappe.AuthenticationError)
 
 	# frappe.form_dict is populated from both form-encoded and JSON bodies
 	provided_secret = frappe.form_dict.get("sso_secret", "")
 	if provided_secret != sso_secret:
-		frappe.throw("Unauthorized", frappe.AuthenticationError)
+		frappe.throw(_("Unauthorized"), frappe.AuthenticationError)
 
 	email = frappe.form_dict.get("email", "")
 	if not email:
-		frappe.throw("email is required")
+		frappe.throw(_("email is required"))
 
 	if not frappe.db.exists("User", email):
-		frappe.throw(f"User {email} does not exist in CRM", frappe.DoesNotExistError)
+		frappe.throw(_("User {0} does not exist in CRM").format(email), frappe.DoesNotExistError)
 
 	key = frappe.generate_hash()
 	frappe.cache.set_value(f"one_time_login_key:{key}", email, expires_in_sec=120)
