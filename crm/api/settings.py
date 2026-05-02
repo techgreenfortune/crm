@@ -83,7 +83,10 @@ def get_crm_login_url():
 		frappe.throw(_("User {0} does not exist in CRM").format(email), frappe.DoesNotExistError)
 
 	if not frappe.db.get_value("User", email, "enabled"):
-		frappe.throw(_("User {0} is disabled in CRM. Please contact your administrator.").format(email), frappe.ValidationError)
+		frappe.throw(
+			_("User {0} is disabled in CRM. Please contact your administrator.").format(email),
+			frappe.ValidationError,
+		)
 
 	key = frappe.generate_hash()
 	frappe.cache.set_value(f"one_time_login_key:{key}", email, expires_in_sec=120)
