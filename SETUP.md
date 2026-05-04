@@ -1,69 +1,130 @@
-# CRM Dev Setup & Integration Log
+# CRM Dev Setup
 
-Running environment: **Docker** (frappe/bench image), MariaDB + Redis as separate containers.  
-Site name: `crm.localhost`  
-App directory (host): `/Users/aadarsh/Desktop/crm`  
-Bench inside container: `/home/frappe/frappe-bench`
-
----
-
-## Environment Setup
-
-### Starting Docker
-
-Docker Desktop must be running before the containers can start.
-
-```bash
-open -a Docker
-# Wait ~30s for daemon to be ready, then:
-cd /Users/aadarsh/Desktop/crm/docker
-docker compose -f docker-compose.yml up -d
-```
-
-Containers started:
-- `crm-frappe-1` — Frappe app server (ports 8000, 9000)
-- `crm-mariadb-1` — MariaDB 10.8
-- `crm-redis-1` — Redis
-
-App is accessible at: `http://crm.localhost:8000`
+Running environment: **Local bench** (native macOS), MariaDB + Redis via Homebrew.  
+Site: `crm.localhost` | Bench: `~/frappe-bench`  
+Project root: `~/projects/crm` (symlinked into bench as `~/frappe-bench/apps/crm`)
 
 ---
 
-## Deploying Code Changes
+## Prerequisites
 
-The Docker container does **not** mount the host app directory — it runs a copy of the code baked into the image. Any changes made on the host must be manually synced into the container.
+- Node.js + Yarn
+- Homebrew
 
-### Backend changes (Python / DocType JSON)
+---
 
-```bash
-# Copy a new doctype folder
-docker cp /Users/aadarsh/Desktop/crm/crm/fcrm/doctype/<doctype_folder> \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/fcrm/doctype/
-
-# Copy a single Python file
-docker cp /path/to/file.py \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/path/to/file.py
-
-# Run migration to register new/changed DocTypes in the DB
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench && bench --site crm.localhost migrate"
-```
-
-### Frontend changes (Vue / JS)
+## One-Time Setup (already done)
 
 ```bash
-# Sync entire frontend src (safest when many files changed)
-docker cp /Users/aadarsh/Desktop/crm/frontend/src \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/frontend/
+# System deps
+brew install mariadb@11.8 redis pkg-config
+brew services start mariadb@11.8
+brew services start redis
 
-# Rebuild the frontend bundle
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench/apps/crm && \
-   /home/frappe/.nvm/versions/node/v24.13.0/bin/node \
-   /home/frappe/.nvm/versions/node/v24.13.0/bin/yarn build"
+# Python 3.11
+brew install pyenv
+pyenv install 3.11.9 && pyenv global 3.11.9
+
+# bench CLI
+pip install frappe-bench
+
+# Initialize bench with Frappe v15
+cd ~ && bench init frappe-bench --version version-15 --python $(pyenv which python)
+
+# Symlink project into bench
+ln -s ~/projects/crm ~/frappe-bench/apps/crm
+~/frappe-bench/env/bin/pip install -e ~/frappe-bench/apps/crm
+printf 'frappe\ncrm\n' > ~/frappe-bench/sites/apps.txt
+
+# Create site and install CRM
+cd ~/frappe-bench
+echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-password admin
+bench --site crm.localhost install-app crm
+bench --site crm.localhost set-config developer_mode 1
+bench --site crm.localhost set-config server_script_enabled 1
+bench use crm.localhost
 ```
 
-After rebuild, hard-reload the browser: **Cmd+Shift+R**
+---
+
+## Daily Workflow
+
+```bash
+# Ensure Homebrew services are running
+brew services start mariadb@11.8
+brew services start redis
+
+# Start bench (web + worker + scheduler)
+make bench-start
+```
+
+Open `http://crm.localhost:8000/crm` — login: `Administrator` / `admin`
+
+---
+
+## Frontend Dev Server (hot-reload)
+
+In a second terminal:
+
+```bash
+make bench-dev
+```
+
+Open `http://localhost:8080/crm` — Vite proxies API calls to bench at port 8000. Changes to `.vue` files under `frontend/src/` hot-reload instantly.
+
+---
+
+## Makefile Commands
+
+| Command | What it does |
+|---------|-------------|
+| `make bench-start` | Start bench (web + workers + scheduler) |
+| `make bench-migrate` | Run `bench migrate` on `crm.localhost` |
+| `make bench-clear-cache` | Clear Frappe site cache |
+| `make bench-dev` | Start Vite dev server locally (port 8080) |
+| `make bench-build-frontend` | Build Vue bundle into `crm/public/frontend/` |
+
+---
+
+## Code Changes
+
+### Backend (Python / DocType JSON)
+
+`~/frappe-bench/apps/crm` is a symlink to `~/projects/crm` — edits are live immediately.
+
+After changing a DocType JSON or adding migrations:
+```bash
+make bench-migrate
+```
+
+Python changes are picked up by Frappe's watchdog auto-reloader. If not, restart:
+```bash
+cd ~/frappe-bench && bench restart
+```
+
+### Frontend (Vue / JS)
+
+Run `make bench-dev` and edit files under `frontend/src/` — HMR updates the browser instantly.
+
+To build the production bundle:
+```bash
+make bench-build-frontend
+```
+
+---
+
+## Resetting from Scratch
+
+```bash
+# Drop and recreate the site
+cd ~/frappe-bench
+bench drop-site crm.localhost --mariadb-root-password '' --force
+echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-password admin
+bench --site crm.localhost install-app crm
+bench --site crm.localhost set-config developer_mode 1
+bench --site crm.localhost set-config server_script_enabled 1
+bench use crm.localhost
+```
 
 ---
 
@@ -71,62 +132,16 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 
 ### Brevo (Transactional Email)
 
-**What it does:** Sends all transactional emails via Brevo's HTTP API instead of relying on Frappe's built-in SMTP mail queue. When Brevo is enabled it handles all email triggers; when disabled each trigger falls back to `frappe.sendmail`.
+Routes transactional emails via Brevo's HTTP API. When disabled, falls back to `frappe.sendmail`.
 
-**Files added:**
-
-| Path | Description |
-|------|-------------|
-| `crm/fcrm/doctype/crm_brevo_settings/` | Single DocType storing enabled flag, API key, sender email, sender name |
-| `crm/integrations/brevo/brevo_handler.py` | HTTP sender using Brevo's `/v3/smtp/email` API |
-| `crm/integrations/brevo/api.py` | Whitelisted endpoints: `is_brevo_enabled`, `send_test_email` |
-| `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email |
-| `frontend/src/composables/settings.js` | Added `brevoEnabled` reactive ref |
-| `frontend/src/components/Settings/Settings.vue` | Added Brevo entry under Integrations tab |
-| `crm/fcrm/doctype/crm_invitation/crm_invitation.py` | Routes invitation emails through Brevo when enabled; falls back to `frappe.sendmail` |
-| `crm/api/event.py` | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
-
-**Setup steps:**
-
-1. Get your API key from Brevo → top-right profile → SMTP & API → API Keys (v3 key, starts with `xkeysib-`)
-2. Verify your sender email domain in Brevo → Senders & IPs
+**Setup:**
+1. Get a v3 API key from Brevo → Profile → SMTP & API → API Keys (starts with `xkeysib-`)
+2. Verify your sender domain in Brevo → Senders & IPs
 3. In CRM: Settings → Integrations → Brevo → Enable
 4. Enter API Key, Sender Email, Sender Name → **Update**
-5. Click **Send Test Email** — sends to the logged-in user's email address
-6. Check inbox for the test email to confirm delivery
+5. Click **Send Test Email** to verify delivery
 
-**Gotchas encountered:**
-
-- `bench` must be run from inside the container and from the bench directory: `cd /home/frappe/frappe-bench && bench ...`
-- `bench --site <site> <cmd>` syntax — the `--site` flag must come before the subcommand
-- The Docker container does not mount host source files; every change must be `docker cp`'d in and the frontend rebuilt
-- Duplicate `import Email2Icon` in `Settings.vue` caused a silent build failure — removed the second import
-- `__()` (Frappe translation function) is only available as a Vue template global, not in `<script setup>` — use plain strings in JS callbacks
-- `toast({ title, variant })` is not the correct API in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
-- `session.user` returns the login name (e.g. `"Administrator"`), not an email — use `getUser()?.email` from `usersStore` to get a valid recipient address for the test email
-
-**Deploy commands used:**
-
-```bash
-# Backend
-docker cp /Users/aadarsh/Desktop/crm/crm/fcrm/doctype/crm_brevo_settings \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/fcrm/doctype/
-
-docker cp /Users/aadarsh/Desktop/crm/crm/integrations/brevo \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/integrations/
-
-docker cp /Users/aadarsh/Desktop/crm/crm/fcrm/doctype/crm_invitation/crm_invitation.py \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/crm/fcrm/doctype/crm_invitation/crm_invitation.py
-
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench && bench --site crm.localhost migrate"
-
-# Frontend
-docker cp /Users/aadarsh/Desktop/crm/frontend/src \
-  crm-frappe-1:/home/frappe/frappe-bench/apps/crm/frontend/
-
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench/apps/crm && \
-   /home/frappe/.nvm/versions/node/v24.13.0/bin/node \
-   /home/frappe/.nvm/versions/node/v24.13.0/bin/yarn build"
-```
+**Gotchas:**
+- `toast({ title, variant })` is wrong in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
+- `session.user` returns the login name, not an email — use `getUser()?.email` from `usersStore` for the recipient address
+- `__()` (Frappe i18n) is a Vue template global only — use plain strings inside `<script setup>`

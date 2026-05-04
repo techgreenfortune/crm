@@ -100,7 +100,11 @@ class CRMLead(Document):
 
 	def validate_status(self):
 		if self.is_new() and not self.status:
-			if frappe.db.exists("CRM Lead Status", "New"):
+			if frappe.has_role("Jr. Sales Executive") and frappe.db.exists("CRM Lead Status", "C1"):
+				self.status = "C1"
+			elif frappe.db.exists("CRM Lead Status", "C0"):
+				self.status = "C0"
+			elif frappe.db.exists("CRM Lead Status", "New"):
 				self.status = "New"
 			else:
 				self.status = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")[0]

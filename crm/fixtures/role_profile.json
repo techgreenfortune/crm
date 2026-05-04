@@ -1,0 +1,233 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.715927",
+  "name": "B2F Team",
+  "role_profile": "B2F Team",
+  "roles": [
+   {
+    "parent": "B2F Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "B2F Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "B2F Team"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.719247",
+  "name": "Calling Team",
+  "role_profile": "Calling Team",
+  "roles": [
+   {
+    "parent": "Calling Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Calling Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Calling Team"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.722867",
+  "name": "Jr. Sales Executive",
+  "role_profile": "Jr. Sales Executive",
+  "roles": [
+   {
+    "parent": "Jr. Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Jr. Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Jr. Sales Executive"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.725462",
+  "name": "Sales Coordinator",
+  "role_profile": "Sales Coordinator",
+  "roles": [
+   {
+    "parent": "Sales Coordinator",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Sales Coordinator",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Coordinator"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.728787",
+  "name": "Sales Executive",
+  "role_profile": "Sales Executive",
+  "roles": [
+   {
+    "parent": "Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Executive"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.731588",
+  "name": "ASM",
+  "role_profile": "ASM",
+  "roles": [
+   {
+    "parent": "ASM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "ASM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "ASM"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.734052",
+  "name": "Project Sales Executive",
+  "role_profile": "Project Sales Executive",
+  "roles": [
+   {
+    "parent": "Project Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Project Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Project Sales Executive"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.736791",
+  "name": "RSM",
+  "role_profile": "RSM",
+  "roles": [
+   {
+    "parent": "RSM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "RSM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "RSM"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.739476",
+  "name": "Marketing",
+  "role_profile": "Marketing",
+  "roles": [
+   {
+    "parent": "Marketing",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Marketing",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Marketing"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.741998",
+  "name": "Management",
+  "role_profile": "Management",
+  "roles": [
+   {
+    "parent": "Management",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Management",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Management"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-04 11:37:49.744615",
+  "name": "Sales Head",
+  "role_profile": "Sales Head",
+  "roles": [
+   {
+    "parent": "Sales Head",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Sales Head",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Head"
+   }
+  ]
+ }
+]

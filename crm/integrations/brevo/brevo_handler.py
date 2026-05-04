@@ -1,6 +1,8 @@
 import frappe
 import requests
 
+from crm.fcrm.doctype.crm_brevo_settings.crm_brevo_settings import CRMBrevoSettings
+
 BREVO_SMTP_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
@@ -8,9 +10,8 @@ def is_brevo_enabled():
 	return bool(frappe.db.get_single_value("CRM Brevo Settings", "enabled"))
 
 
-def get_brevo_settings():
-	settings = frappe.get_single("CRM Brevo Settings")
-	return settings
+def get_brevo_settings() -> CRMBrevoSettings:
+	return frappe.get_single("CRM Brevo Settings")  # type: ignore[return-value]
 
 
 def send_email(recipients, subject, html_content, sender_email=None, sender_name=None):

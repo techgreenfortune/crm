@@ -69,7 +69,13 @@ def check_app_permission():
 		return False
 
 	roles = frappe.get_roles()
-	if any(role in ["System Manager", "Sales User", "Sales Manager"] for role in roles):
+	allowed_roles = {
+		"System Manager", "Sales User", "Sales Manager",
+		"B2F Team", "Calling Team", "Jr. Sales Executive", "Sales Head",
+		"Sales Coordinator", "Sales Executive", "ASM", "Project Sales Executive",
+		"RSM", "Marketing", "Management",
+	}
+	if any(role in allowed_roles for role in roles):
 		return True
 
 	return False

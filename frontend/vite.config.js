@@ -9,6 +9,19 @@ export default defineConfig(async ({ mode }) => {
   const isDev = mode === 'development'
   const config = {
     plugins: [
+      {
+        name: 'common-site-config-stub',
+        resolveId(id) {
+          if (id.endsWith('sites/common_site_config.json')) {
+            return '\0virtual:common_site_config'
+          }
+        },
+        load(id) {
+          if (id === '\0virtual:common_site_config') {
+            return 'export const socketio_port = 9000'
+          }
+        },
+      },
       vue(),
       vueJsx(),
       VitePWA({
