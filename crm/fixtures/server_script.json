@@ -93,5 +93,24 @@
   "reference_doctype": "CRM Lead",
   "script": "if doc.mobile_no:\n    existing = frappe.db.get_value(\n        \"CRM Lead\",\n        {\"mobile_no\": doc.mobile_no, \"name\": [\"!=\", doc.name]},\n        [\"name\", \"lead_name\", \"status\"],\n        as_dict=True,\n    )\n    if existing:\n        frappe.throw(\n            f\"A lead with mobile {doc.mobile_no} already exists: \"\n            f\"{existing.lead_name} ({existing.name}) — Stage: {existing.status}. \"\n            \"Use the Reactivation flow if the lead is Cold or Archived.\",\n            title=\"Duplicate Mobile Number\",\n        )",
   "script_type": "DocType Event"
+ },
+ {
+  "allow_guest": 0,
+  "api_method": null,
+  "cron_format": null,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Server Script",
+  "doctype_event": "After Save",
+  "enable_rate_limit": 0,
+  "event_frequency": "All",
+  "modified": "2026-05-04 17:10:02.757160",
+  "module": "FCRM",
+  "name": "CRM Quote Request — After Save — Tentative Value Sync",
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "reference_doctype": "CRM Quote Request",
+  "script": "old_doc = doc.get_doc_before_save()\nold_status = old_doc.status if old_doc else None\n\nif old_status != doc.status and doc.status == \"Quote Received\" and doc.quote_value:\n    frappe.db.set_value(\"CRM Lead\", doc.lead, \"custom_tentative_value\", doc.quote_value)",
+  "script_type": "DocType Event"
  }
 ]

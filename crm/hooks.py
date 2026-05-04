@@ -194,6 +194,8 @@ fixtures = [
 	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Lead"]]},
+	{"dt": "CRM Sub Source"},
+	{"dt": "CRM Lost Reason"},
 ]
 
 # Scheduled Tasks
