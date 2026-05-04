@@ -9,6 +9,8 @@
   "restore_defaults",
   "restore_demo_data",
   "enable_forecasting",
+  "opsgate_enabled",
+  "opsgate_url",
   "auto_update_expected_deal_value",
   "update_timestamp_on_new_communication",
   "auto_mark_replied_on_response",
@@ -31,6 +33,18 @@
    "fieldname": "restore_defaults",
    "fieldtype": "Button",
    "label": "Restore Defaults"
+  },
+  {
+   "fieldname": "opsgate_enabled",
+   "fieldtype": "Check",
+   "label": "Enable OpsGate"
+  },
+  {
+   "depends_on": "opsgate_enabled",
+   "fieldname": "opsgate_url",
+   "fieldtype": "Data",
+   "label": "OpsGate URL",
+   "description": "URL of the OpsGate instance for this environment (e.g. https://staging-opsgate.thegreenfortune.com)"
   },
   {
    "fieldname": "dropdown_items",
