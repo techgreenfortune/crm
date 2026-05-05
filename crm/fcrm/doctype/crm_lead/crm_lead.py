@@ -1,8 +1,6 @@
 # Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
-import json
-
 import frappe
 from frappe import _
 from frappe.desk.form.assign_to import add as assign
@@ -107,7 +105,10 @@ class CRMLead(Document):
 			elif frappe.db.exists("CRM Lead Status", "New"):
 				self.status = "New"
 			else:
-				self.status = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")[0]
+				open_statuses = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")
+				if not open_statuses:
+					frappe.throw(_("No open lead statuses configured. Run bench migrate or create a CRM Lead Status with type 'Open'."))
+				self.status = open_statuses[0]
 
 	def set_full_name(self):
 		if self.first_name:
@@ -149,9 +150,6 @@ class CRMLead(Document):
 				self.image = has_gravatar(self.email)
 
 	def validate_lost_reason(self):
-		"""
-		Validate the lost reason if the status is set to "Lost".
-		"""
 		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Lost":
 			if not self.lost_reason:
 				frappe.throw(_("Please specify a reason for losing the lead."), frappe.ValidationError)

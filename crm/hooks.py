@@ -186,14 +186,14 @@ doc_events = {
 fixtures = [
 	"CRM Lead Status",
 	{"dt": "Role", "filters": [["is_custom", "=", 1]]},
-	{"dt": "Role Profile", "filters": [["name", "in", ["B2F Team", "Calling Team", "Jr. Sales Executive", "Sales Coordinator", "Sales Executive", "ASM", "Project Sales Executive", "RSM", "Marketing", "Management", "Sales Head"]]]},
+	{"dt": "Role Profile", "filters": [["name", "in", ["B2F Team", "Calling Team", "Jr. Sales Executive", "Sales Coordinator", "Sales Executive", "ASM", "Project Sales Executive", "RSM", "Marketing", "Management", "Sales Head", "Estimation Team"]]]},
 	{"dt": "Custom Field", "filters": [["dt", "=", "CRM Lead"]]},
 	{"dt": "Property Setter", "filters": [["doc_type", "=", "CRM Lead"]]},
 	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
 	{"dt": "Assignment Rule", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
-	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Lead"]]},
+	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
 	{"dt": "CRM Sub Source"},
 	{"dt": "CRM Lost Reason"},
 ]

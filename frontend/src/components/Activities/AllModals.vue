@@ -18,6 +18,25 @@ const { showModal } = useDoctypeModal()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
 
+async function showQuoteRequest(leadName) {
+  const rows = await call('frappe.client.get_list', {
+    doctype: 'CRM Quote Request',
+    filters: { lead: leadName },
+    fields: ['name'],
+    order_by: 'creation desc',
+    limit: 1,
+  })
+  if (!rows?.length) return
+  showModal({
+    name: rows[0].name,
+    doctype: 'CRM Quote Request',
+    title: 'Upload Quote',
+    callbacks: {
+      afterUpdate: () => activities.value.reload(),
+    },
+  })
+}
+
 // Tasks
 function showTask(task) {
   showModal({
@@ -132,5 +151,6 @@ defineExpose({
   updateTaskStatus,
   showNote,
   createCallLog,
+  showQuoteRequest,
 })
 </script>

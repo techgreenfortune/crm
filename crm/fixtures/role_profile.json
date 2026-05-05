@@ -16,6 +16,12 @@
     "parent": "B2F Team",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "B2F Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "B2F Team"
    }
   ]
@@ -32,6 +38,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "CRM User"
+   },
+   {
+    "parent": "Calling Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
    },
    {
     "parent": "Calling Team",
@@ -58,6 +70,12 @@
     "parent": "Jr. Sales Executive",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Jr. Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "Jr. Sales Executive"
    }
   ]
@@ -74,6 +92,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "CRM User"
+   },
+   {
+    "parent": "Sales Coordinator",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
    },
    {
     "parent": "Sales Coordinator",
@@ -100,6 +124,12 @@
     "parent": "Sales Executive",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "Sales Executive"
    }
   ]
@@ -116,6 +146,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "CRM User"
+   },
+   {
+    "parent": "ASM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Manager"
    },
    {
     "parent": "ASM",
@@ -142,6 +178,12 @@
     "parent": "Project Sales Executive",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Project Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "Project Sales Executive"
    }
   ]
@@ -158,6 +200,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "CRM User"
+   },
+   {
+    "parent": "RSM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Manager"
    },
    {
     "parent": "RSM",
@@ -184,6 +232,12 @@
     "parent": "Marketing",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Marketing",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "Marketing"
    }
   ]
@@ -205,7 +259,40 @@
     "parent": "Management",
     "parentfield": "roles",
     "parenttype": "Role Profile",
+    "role": "Sales Manager"
+   },
+   {
+    "parent": "Management",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
     "role": "Management"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-05 00:00:00",
+  "name": "Estimation Team",
+  "role_profile": "Estimation Team",
+  "roles": [
+   {
+    "parent": "Estimation Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "CRM User"
+   },
+   {
+    "parent": "Estimation Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Estimation Team",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Estimation Team"
    }
   ]
  },
@@ -221,6 +308,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "CRM User"
+   },
+   {
+    "parent": "Sales Head",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales Manager"
    },
    {
     "parent": "Sales Head",

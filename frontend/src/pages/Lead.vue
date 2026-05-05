@@ -250,6 +250,7 @@ import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
@@ -439,6 +440,11 @@ const tabs = computed(() => {
       name: 'Tasks',
       label: __('Tasks'),
       icon: TaskIcon,
+    },
+    {
+      name: 'Quotes',
+      label: __('Quotes'),
+      icon: DocumentIcon,
     },
     {
       name: 'Notes',
