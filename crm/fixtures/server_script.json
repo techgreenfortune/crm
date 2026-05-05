@@ -66,13 +66,13 @@
   "doctype_event": "After Save",
   "enable_rate_limit": 0,
   "event_frequency": "All",
-  "modified": "2026-05-03 23:28:30.783154",
+  "modified": "2026-05-06 01:10:31.635652",
   "module": "FCRM",
   "name": "CRM Call Log — After Save — No Answer Retry",
   "rate_limit_count": 0,
   "rate_limit_seconds": 0,
   "reference_doctype": "CRM Call Log",
-  "script": "if (\n    doc.status == \"No Answer\"\n    and doc.reference_doctype == \"CRM Lead\"\n    and doc.reference_docname\n):\n    try:\n        lead_status = frappe.db.get_value(\"CRM Lead\", doc.reference_docname, \"status\")\n        if lead_status in (\"C0\", \"Cold\"):\n            frappe.enqueue(\n                \"crm.api.call_log.register_no_answer\",\n                lead_name=doc.reference_docname,\n            )\n    except Exception:\n        frappe.log_error(frappe.get_traceback(), \"No Answer Retry Trigger Failed\")",
+  "script": "if (\n    doc.is_new()\n    and doc.status == \"No Answer\"\n    and doc.reference_doctype == \"CRM Lead\"\n    and doc.reference_docname\n):\n    try:\n        lead_status = frappe.db.get_value(\"CRM Lead\", doc.reference_docname, \"status\")\n        if lead_status in (\"C0\", \"Cold\"):\n            frappe.enqueue(\n                \"crm.api.call_log.register_no_answer\",\n                lead_name=doc.reference_docname,\n            )\n    except Exception:\n        frappe.log_error(frappe.get_traceback(), \"No Answer Retry Trigger Failed\")",
   "script_type": "DocType Event"
  },
  {
