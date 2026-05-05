@@ -4,7 +4,7 @@
 <script setup>
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
-import { call } from 'frappe-ui'
+import { call, toast } from 'frappe-ui'
 import { useRoute, useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -54,12 +54,18 @@ function showTask(task) {
   })
 }
 
-async function deleteTask(name) {
-  await call('frappe.client.delete', {
+function deleteTask(name) {
+  call('frappe.client.delete', {
     doctype: 'CRM Task',
     name,
   })
-  activities.value.reload()
+    .then(() => {
+      activities.value.reload()
+    })
+    .catch((err) => {
+      activities.value.reload()
+      toast.error(err?.message || __('You are not permitted to delete this task.'))
+    })
 }
 
 function updateTaskStatus(status, task) {
@@ -68,9 +74,14 @@ function updateTaskStatus(status, task) {
     name: task.name,
     fieldname: 'status',
     value: status,
-  }).then(() => {
-    activities.value.reload()
   })
+    .then(() => {
+      activities.value.reload()
+    })
+    .catch((err) => {
+      activities.value.reload()
+      toast.error(err?.message || __('You are not permitted to update this task.'))
+    })
 }
 
 // Notes

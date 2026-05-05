@@ -13,6 +13,21 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
 
+# Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
+# Everything else in self.meta.fields is blocked for non-owners.
+_NON_OWNER_EDITABLE = frozenset({
+	"status", "lost_reason", "lost_notes",
+	# SLA/communication tracking — updated automatically by Frappe internals
+	"sla", "sla_status", "sla_creation", "response_by",
+	"first_response_time", "first_responded_on", "last_responded_on",
+	"last_response_time", "communication_status",
+})
+
+_LAYOUT_FIELD_TYPES = frozenset({
+	"Section Break", "Column Break", "Tab Break", "HTML", "Button",
+	"Table", "Table MultiSelect",
+})
+
 
 class CRMLead(Document):
 	# begin: auto-generated types
@@ -75,6 +90,7 @@ class CRMLead(Document):
 		self.set_sla()
 
 	def validate(self):
+		self._check_write_permission()
 		self.validate_status()
 		self.set_full_name()
 		self.set_lead_name()
@@ -157,6 +173,31 @@ class CRMLead(Document):
 				frappe.throw(_("Please specify the reason for losing the lead."), frappe.ValidationError)
 		if self.has_value_changed("status"):
 			add_or_remove_lost_reason_section_in_sidepanel(self)
+
+	def _check_write_permission(self):
+		if self.is_new():
+			return
+		user = frappe.session.user
+		if user == "Administrator" or self.flags.get("ignore_permissions"):
+			return
+		user_roles = set(frappe.get_roles(user))
+		if "System Manager" in user_roles or "Sales Manager" in user_roles:
+			return
+		if self.lead_owner == user:
+			return
+		if not self.get_doc_before_save():
+			return
+		for field in self.meta.fields:
+			if field.fieldtype in _LAYOUT_FIELD_TYPES:
+				continue
+			if field.fieldname in _NON_OWNER_EDITABLE:
+				continue
+			if self.has_value_changed(field.fieldname):
+				frappe.throw(
+					_("You can only edit leads that are assigned to you."),
+					frappe.PermissionError,
+					title=_("Not Permitted"),
+				)
 
 	def assign_agent(self, agent):
 		if not agent:

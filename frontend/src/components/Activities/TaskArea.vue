@@ -45,6 +45,7 @@
             @click.stop="modalRef.showQuoteRequest(task.reference_docname)"
           />
           <Dropdown
+            v-if="task.can_update !== false"
             :options="taskStatusOptions(modalRef.updateTaskStatus, task)"
           >
             <Button
@@ -56,7 +57,9 @@
               <TaskStatusIcon :status="task.status" />
             </Button>
           </Dropdown>
+          <TaskStatusIcon v-else :status="task.status" class="mx-1" />
           <Dropdown
+            v-if="task.can_delete !== false"
             :options="[
               {
                 label: __('Delete'),
