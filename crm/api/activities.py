@@ -454,6 +454,7 @@ def get_linked_calls(name: str):
 			fields=[
 				"name",
 				"title",
+				"task_type",
 				"description",
 				"assigned_to",
 				"due_date",
@@ -488,20 +489,17 @@ def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | No
 		return True
 	if (task.get("assigned_to") or "") == user:
 		return True
-	title = task.get("title") or ""
-	for prefix, required_role in POOL_TASK_ROLES.items():
-		if title.startswith(prefix):
-			return required_role in user_roles or (task.get("assigned_to") or "") == user
+	task_type = task.get("task_type") or ""
+	if task_type in POOL_TASK_ROLES:
+		return POOL_TASK_ROLES[task_type] in user_roles or (task.get("assigned_to") or "") == user
 	return doc_owner == user
 
 
 def _task_can_delete(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
 	if "Administrator" in user_roles or "Sales Manager" in user_roles or "System Manager" in user_roles:
 		return True
-	title = task.get("title") or ""
-	for prefix in POOL_TASK_ROLES:
-		if title.startswith(prefix):
-			return False
+	if (task.get("task_type") or "") in POOL_TASK_ROLES:
+		return False
 	if (task.get("assigned_to") or "") == user:
 		return True
 	return doc_owner == user
@@ -514,6 +512,7 @@ def get_linked_tasks(name: str):
 		fields=[
 			"name",
 			"title",
+			"task_type",
 			"description",
 			"assigned_to",
 			"due_date",

@@ -7,14 +7,5 @@
   "modified": "2026-05-05 00:00:00",
   "name": "CRM Quote Request-Quick Entry",
   "type": "Quick Entry"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Lead",
-  "layout": "[{\"label\": \"Details\", \"name\": \"details_section\", \"opened\": true, \"columns\": [{\"name\": \"col_lead_1\", \"fields\": [\"lead_owner\", \"source\", \"custom_sub_source\", \"custom_lead_type\", \"custom_customer_type\"]}, {\"name\": \"col_lead_2\", \"fields\": [\"organization\", \"website\", \"territory\", \"industry\", \"job_title\"]}]}, {\"label\": \"Quote\", \"name\": \"quote_section\", \"opened\": true, \"columns\": [{\"name\": \"col_quote_1\", \"fields\": [\"custom_tentative_value\", \"custom_final_price\", \"custom_final_margin\"]}, {\"name\": \"col_quote_2\", \"fields\": [\"custom_final_quote\"]}]}, {\"label\": \"Property\", \"name\": \"property_section\", \"opened\": false, \"columns\": [{\"name\": \"col_prop_1\", \"fields\": [\"custom_pincode\", \"custom_area\", \"custom_tentative_area_sqft\"]}, {\"name\": \"col_prop_2\", \"fields\": [\"custom_site_photos\"]}]}]",
-  "modified": "2026-05-05 00:00:00",
-  "name": "CRM Lead-Side Panel",
-  "type": "Side Panel"
  }
 ]

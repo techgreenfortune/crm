@@ -9,6 +9,7 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "task_type",
   "priority",
   "start_date",
   "reference_doctype",
@@ -28,6 +29,13 @@
    "in_standard_filter": 1,
    "label": "Title",
    "reqd": 1
+  },
+  {
+   "fieldname": "task_type",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Task Type",
+   "options": "\ncall_lead\nupload_quote\nhandle_fabricator_lead"
   },
   {
    "fieldname": "priority",
