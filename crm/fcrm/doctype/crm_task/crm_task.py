@@ -36,14 +36,20 @@ class CRMTask(Document):
 	# end: auto-generated types
 
 	def on_trash(self):
-		frappe.db.delete("CRM Notification", {
-			"reference_doctype": "CRM Task",
-			"reference_name": self.name,
-		})
-		frappe.db.delete("CRM Notification", {
-			"notification_type_doctype": "CRM Task",
-			"notification_type_doc": self.name,
-		})
+		frappe.db.delete(
+			"CRM Notification",
+			{
+				"reference_doctype": "CRM Task",
+				"reference_name": self.name,
+			},
+		)
+		frappe.db.delete(
+			"CRM Notification",
+			{
+				"notification_type_doctype": "CRM Task",
+				"notification_type_doc": self.name,
+			},
+		)
 
 	def after_insert(self):
 		self.assign_to()

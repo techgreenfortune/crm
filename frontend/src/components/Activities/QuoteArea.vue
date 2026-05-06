@@ -7,8 +7,15 @@
       >
         <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
           <div class="flex items-center gap-2">
-            <span class="font-medium text-ink-gray-9 truncate">{{ quote.name }}</span>
-            <Badge :label="__(quote.status)" :theme="statusTheme(quote.status)" variant="subtle" size="sm" />
+            <span class="font-medium text-ink-gray-9 truncate">{{
+              quote.name
+            }}</span>
+            <Badge
+              :label="__(quote.status)"
+              :theme="statusTheme(quote.status)"
+              variant="subtle"
+              size="sm"
+            />
           </div>
           <div class="flex flex-wrap gap-3 text-sm text-ink-gray-6">
             <span v-if="quote.quote_value">

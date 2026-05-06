@@ -17,7 +17,9 @@ def send_retry_whatsapp(lead_name: str, day: int) -> None:
 	settings = get_aisensy_settings()
 	template_name = getattr(settings, "retry_followup_template", None)
 	if not template_name:
-		frappe.logger().info(f"[RetryEngine] retry_followup_template not configured — skipping Day {day} WhatsApp for {lead_name}")
+		frappe.logger().info(
+			f"[RetryEngine] retry_followup_template not configured — skipping Day {day} WhatsApp for {lead_name}"
+		)
 		return
 
 	lead = frappe.db.get_value("CRM Lead", lead_name, ["mobile_no", "lead_name"], as_dict=True)

@@ -74,7 +74,10 @@
         <TaskArea :modalRef="modalRef" :tasks="activities" :doctype="doctype" />
       </div>
       <div v-else-if="title == 'Quotes'" class="px-3 pb-3 sm:px-10 sm:pb-5">
-        <QuoteArea :quotes="activities" :onReload="() => quoteRequests.reload()" />
+        <QuoteArea
+          :quotes="activities"
+          :onReload="() => quoteRequests.reload()"
+        />
       </div>
       <div v-else-if="title == 'Calls'" class="activity">
         <div v-for="(call, i) in activities" :key="call.name">
@@ -563,7 +566,16 @@ const quoteRequests = createResource({
   params: {
     doctype: 'CRM Quote Request',
     filters: { lead: props.docname },
-    fields: ['name', 'status', 'quote_value', 'quote_margin', 'requested_on', 'requested_by', 'quote_file', 'modified'],
+    fields: [
+      'name',
+      'status',
+      'quote_value',
+      'quote_margin',
+      'requested_on',
+      'requested_by',
+      'quote_file',
+      'modified',
+    ],
     order_by: 'modified desc',
     limit: 50,
   },
@@ -776,7 +788,8 @@ const emptyTextDescription = computed(() => {
     description =
       'Nothing to do at the moment. Start organizing by adding one here.'
   } else if (title.value == 'Quotes') {
-    description = 'No quote requests yet. They will appear here when the lead reaches C2-Q.'
+    description =
+      'No quote requests yet. They will appear here when the lead reaches C2-Q.'
   } else if (title.value == 'Attachments') {
     description =
       'No files have been attached yet. Upload files to see them here.'

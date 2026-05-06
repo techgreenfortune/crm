@@ -3,7 +3,11 @@
     <div v-for="(task, i) in tasks" :key="task.name">
       <div
         class="activity flex cursor-pointer gap-6 rounded p-2.5 duration-300 ease-in-out hover:bg-surface-gray-1"
-        @click="task.task_type === 'upload_quote' ? modalRef.showQuoteRequest(task.reference_docname) : modalRef.showTask(task)"
+        @click="
+          task.task_type === 'upload_quote'
+            ? modalRef.showQuoteRequest(task.reference_docname)
+            : modalRef.showTask(task)
+        "
       >
         <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
           <div class="font-medium text-ink-gray-9 truncate">

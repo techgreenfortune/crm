@@ -14,6 +14,5 @@ class CRMSubSource(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-
 	# end: auto-generated types
 	pass

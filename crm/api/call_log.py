@@ -5,11 +5,11 @@ from frappe.utils import add_days, today
 # Maps current retry day → (next_day, days_offset_from_today)
 # Sequence per PRD §5.2: Day 1 (3 attempts), Day 2 (2), Day 3 (1), Day 5 (1), Day 7 (1), Day 12 (1 — final)
 RETRY_SEQUENCE = {
-	1:  (2,  1),
-	2:  (3,  1),
-	3:  (5,  2),
-	5:  (7,  2),
-	7:  (12, 5),
+	1: (2, 1),
+	2: (3, 1),
+	3: (5, 2),
+	5: (7, 2),
+	7: (12, 5),
 	12: (None, None),
 }
 
@@ -30,13 +30,15 @@ def _day_threshold(day: int) -> int:
 
 def _add_lead_comment(lead_name: str, content: str) -> None:
 	try:
-		frappe.get_doc({
-			"doctype": "Comment",
-			"comment_type": "Info",
-			"reference_doctype": "CRM Lead",
-			"reference_name": lead_name,
-			"content": content,
-		}).insert(ignore_permissions=True)
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Info",
+				"reference_doctype": "CRM Lead",
+				"reference_name": lead_name,
+				"content": content,
+			}
+		).insert(ignore_permissions=True)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Retry audit comment failed")
 
@@ -56,20 +58,28 @@ def _advance_or_exhaust(log) -> None:
 
 	next_day, offset = RETRY_SEQUENCE.get(old_day, (None, None))
 	if next_day:
-		frappe.db.set_value("CRM Retry Log", log.name, {
-			"day_in_sequence": next_day,
-			"next_attempt_date": add_days(today(), offset),
-		})
+		frappe.db.set_value(
+			"CRM Retry Log",
+			log.name,
+			{
+				"day_in_sequence": next_day,
+				"next_attempt_date": add_days(today(), offset),
+			},
+		)
 		_add_lead_comment(
 			log.lead,
 			f"Day {old_day} calls done — WhatsApp sent. "
 			f"Next retry: Day {next_day} on {add_days(today(), offset)}.",
 		)
 	else:
-		frappe.db.set_value("CRM Retry Log", log.name, {
-			"status": "Exhausted",
-			"next_attempt_date": None,
-		})
+		frappe.db.set_value(
+			"CRM Retry Log",
+			log.name,
+			{
+				"status": "Exhausted",
+				"next_attempt_date": None,
+			},
+		)
 		_add_lead_comment(log.lead, "Retry sequence exhausted — Day 12 complete. Lead moved to Cold.")
 		lead_doc = frappe.get_doc("CRM Lead", log.lead)
 		lead_doc.status = "Cold"
@@ -106,15 +116,17 @@ def register_no_answer(lead_name: str) -> None:
 		if frappe.db.exists("CRM Retry Log", {"lead": lead_name, "status": ["in", ["Active", "Paused"]]}):
 			return
 		try:
-			frappe.get_doc({
-				"doctype": "CRM Retry Log",
-				"lead": lead_name,
-				"status": "Active",
-				"attempt_count": 1,
-				"day_in_sequence": 1,
-				"last_attempt_date": today(),
-				"next_attempt_date": add_days(today(), RETRY_SEQUENCE[1][1]),
-			}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "CRM Retry Log",
+					"lead": lead_name,
+					"status": "Active",
+					"attempt_count": 1,
+					"day_in_sequence": 1,
+					"last_attempt_date": today(),
+					"next_attempt_date": add_days(today(), RETRY_SEQUENCE[1][1]),
+				}
+			).insert(ignore_permissions=True)
 			_add_lead_comment(
 				lead_name,
 				f"Retry sequence started — Day 1, attempt 1 of {RETRY_ATTEMPTS_PER_DAY[1]}.",

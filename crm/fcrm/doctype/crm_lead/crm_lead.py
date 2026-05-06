@@ -15,18 +15,35 @@ from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepane
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
 # Everything else in self.meta.fields is blocked for non-owners.
-_NON_OWNER_EDITABLE = frozenset({
-	"status", "lost_reason", "lost_notes",
-	# SLA/communication tracking — updated automatically by Frappe internals
-	"sla", "sla_status", "sla_creation", "response_by",
-	"first_response_time", "first_responded_on", "last_responded_on",
-	"last_response_time", "communication_status",
-})
+_NON_OWNER_EDITABLE = frozenset(
+	{
+		"status",
+		"lost_reason",
+		"lost_notes",
+		# SLA/communication tracking — updated automatically by Frappe internals
+		"sla",
+		"sla_status",
+		"sla_creation",
+		"response_by",
+		"first_response_time",
+		"first_responded_on",
+		"last_responded_on",
+		"last_response_time",
+		"communication_status",
+	}
+)
 
-_LAYOUT_FIELD_TYPES = frozenset({
-	"Section Break", "Column Break", "Tab Break", "HTML", "Button",
-	"Table", "Table MultiSelect",
-})
+_LAYOUT_FIELD_TYPES = frozenset(
+	{
+		"Section Break",
+		"Column Break",
+		"Tab Break",
+		"HTML",
+		"Button",
+		"Table",
+		"Table MultiSelect",
+	}
+)
 
 
 class CRMLead(Document):
@@ -123,7 +140,11 @@ class CRMLead(Document):
 			else:
 				open_statuses = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")
 				if not open_statuses:
-					frappe.throw(_("No open lead statuses configured. Run bench migrate or create a CRM Lead Status with type 'Open'."))
+					frappe.throw(
+						_(
+							"No open lead statuses configured. Run bench migrate or create a CRM Lead Status with type 'Open'."
+						)
+					)
 				self.status = open_statuses[0]
 
 	def set_full_name(self):

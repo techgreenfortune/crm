@@ -64,7 +64,9 @@ function deleteTask(name) {
     })
     .catch((err) => {
       activities.value.reload()
-      toast.error(err?.message || __('You are not permitted to delete this task.'))
+      toast.error(
+        err?.message || __('You are not permitted to delete this task.'),
+      )
     })
 }
 
@@ -80,7 +82,9 @@ function updateTaskStatus(status, task) {
     })
     .catch((err) => {
       activities.value.reload()
-      toast.error(err?.message || __('You are not permitted to update this task.'))
+      toast.error(
+        err?.message || __('You are not permitted to update this task.'),
+      )
     })
 }
 

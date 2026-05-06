@@ -141,7 +141,12 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  if (isLoggedIn && to.name !== 'Not Permitted' && users.fetched && !isCrmUser()) {
+  if (
+    isLoggedIn &&
+    to.name !== 'Not Permitted' &&
+    users.fetched &&
+    !isCrmUser()
+  ) {
     next({ name: 'Not Permitted' })
   } else if (to.name === 'Home' && isLoggedIn) {
     const { views, getDefaultView } = viewsStore()
