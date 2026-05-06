@@ -4,8 +4,11 @@ import frappe
 def send_retry_whatsapp(lead_name: str, day: int) -> None:
 	"""Send AiSensy follow-up message. Called via frappe.enqueue from Scheduler Event Server Script."""
 
-	from crm.integrations.aisensy.aisensy_handler import is_aisensy_enabled, get_aisensy_settings
-	from crm.integrations.aisensy.aisensy_handler import send_template_message
+	from crm.integrations.aisensy.aisensy_handler import (
+		get_aisensy_settings,
+		is_aisensy_enabled,
+		send_template_message,
+	)
 
 	if not is_aisensy_enabled():
 		frappe.logger().info(f"[RetryEngine] AiSensy disabled — skipping Day {day} WhatsApp for {lead_name}")
