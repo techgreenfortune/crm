@@ -35,6 +35,7 @@ runs:
               CI_BUILD_ID: ${{ inputs.ci-build-id }}
           run: |
               bench --site "${{ inputs.site }}" set-config allow_tests true
+              bench --site "${{ inputs.site }}" set-config server_script_enabled 1
               if [ "${{ inputs.enable-coverage }}" = "true" ]; then
                   bench --site "${{ inputs.site }}" run-tests --app "${{ inputs.app }}" --coverage
               else
