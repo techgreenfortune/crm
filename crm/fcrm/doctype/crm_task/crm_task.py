@@ -31,8 +31,19 @@ class CRMTask(Document):
 		reference_doctype: DF.Link | None
 		start_date: DF.Date | None
 		status: DF.Literal["Backlog", "Todo", "In Progress", "Done", "Canceled"]
+		task_type: DF.Literal["", "call_lead", "upload_quote", "handle_fabricator_lead", "review_quote"]
 		title: DF.Data
 	# end: auto-generated types
+
+	def on_trash(self):
+		frappe.db.delete("CRM Notification", {
+			"reference_doctype": "CRM Task",
+			"reference_name": self.name,
+		})
+		frappe.db.delete("CRM Notification", {
+			"notification_type_doctype": "CRM Task",
+			"notification_type_doc": self.name,
+		})
 
 	def after_insert(self):
 		self.assign_to()
