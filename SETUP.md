@@ -2,13 +2,13 @@
 
 Two environments are supported:
 
-| | Local Bench | Docker |
-|---|---|---|
-| **Runtime** | Native macOS, Homebrew MariaDB + Redis | Docker (frappe/bench image), containerised MariaDB + Redis |
-| **Site** | `crm.localhost` | `crm.localhost` |
-| **Bench** | `~/frappe-bench` | `/home/frappe/frappe-bench` (inside container) |
+|                  | Local Bench                             | Docker                                                                          |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| **Runtime**      | Native macOS, Homebrew MariaDB + Redis  | Docker (frappe/bench image), containerised MariaDB + Redis                      |
+| **Site**         | `crm.localhost`                         | `crm.localhost`                                                                 |
+| **Bench**        | `~/frappe-bench`                        | `/home/frappe/frappe-bench` (inside container)                                  |
 | **Project root** | `~/projects/crm` (symlinked into bench) | `/Users/aadarsh/Desktop/crm` (host) — **not** mounted; must be `docker cp`'d in |
-| **App URL** | `http://crm.localhost:8000` | `http://crm.localhost:8000` |
+| **App URL**      | `http://crm.localhost:8000`             | `http://crm.localhost:8000`                                                     |
 
 ---
 
@@ -76,12 +76,12 @@ Open `http://localhost:8080/crm` — Vite proxies API calls to bench at port 800
 
 ### Makefile Shortcuts
 
-| Command | What it does |
-|---------|-------------|
-| `make bench-start` | `cd ~/frappe-bench && bench start` |
-| `make bench-migrate` | `bench migrate` on `crm.localhost` |
-| `make bench-clear-cache` | Clear Frappe site cache |
-| `make bench-dev` | `yarn install && yarn dev` in `frontend/` |
+| Command                     | What it does                                 |
+| --------------------------- | -------------------------------------------- |
+| `make bench-start`          | `cd ~/frappe-bench && bench start`           |
+| `make bench-migrate`        | `bench migrate` on `crm.localhost`           |
+| `make bench-clear-cache`    | Clear Frappe site cache                      |
+| `make bench-dev`            | `yarn install && yarn dev` in `frontend/`    |
 | `make bench-build-frontend` | Build Vue bundle into `crm/public/frontend/` |
 
 ### Code Changes
@@ -91,11 +91,13 @@ Open `http://localhost:8080/crm` — Vite proxies API calls to bench at port 800
 `~/frappe-bench/apps/crm` is a symlink to `~/projects/crm` — edits are live immediately.
 
 After changing a DocType JSON or adding migrations:
+
 ```bash
 cd ~/frappe-bench && bench --site crm.localhost migrate
 ```
 
 Python changes are picked up by Frappe's watchdog auto-reloader. If not, restart:
+
 ```bash
 cd ~/frappe-bench && bench restart
 ```
@@ -105,6 +107,7 @@ cd ~/frappe-bench && bench restart
 Run `yarn dev` in `frontend/` and edit files under `frontend/src/` — HMR updates the browser instantly.
 
 To build the production bundle:
+
 ```bash
 cd ~/frappe-bench && bench build --app crm
 ```
@@ -137,6 +140,7 @@ docker compose -f docker-compose.yml up -d
 ```
 
 Containers started:
+
 - `crm-frappe-1` — Frappe app server (ports 8000, 9000)
 - `crm-mariadb-1` — MariaDB 10.8
 - `crm-redis-1` — Redis
@@ -182,6 +186,7 @@ docker exec crm-frappe-1 bash -c \
 After rebuild, hard-reload the browser: **Cmd+Shift+R**
 
 **Gotchas:**
+
 - `bench` must be run from inside the container and from the bench directory: `cd /home/frappe/frappe-bench && bench ...`
 - `bench --site <site> <cmd>` syntax — the `--site` flag must come **before** the subcommand
 - Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
@@ -197,16 +202,17 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 
 **Files added:**
 
-| Path | Description |
-|------|-------------|
-| `crm/fcrm/doctype/crm_brevo_settings/` | Single DocType storing enabled flag, API key, sender email, sender name |
-| `crm/integrations/brevo/brevo_handler.py` | HTTP sender using Brevo's `/v3/smtp/email` API |
-| `crm/integrations/brevo/api.py` | Whitelisted endpoints: `is_brevo_enabled`, `send_test_email` |
-| `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email |
-| `frontend/src/composables/settings.js` | Added `brevoEnabled` reactive ref |
-| `frontend/src/components/Settings/Settings.vue` | Added Brevo entry under Integrations tab |
-| `crm/fcrm/doctype/crm_invitation/crm_invitation.py` | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path) |
-| `crm/api/event.py` | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
+| Path                                                 | Description                                                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `crm/fcrm/doctype/crm_brevo_settings/`               | Single DocType storing enabled flag, API key, sender email, sender name                           |
+| `crm/integrations/brevo/brevo_handler.py`            | HTTP sender using Brevo's `/v3/smtp/email` API                                                    |
+| `crm/integrations/brevo/api.py`                      | Whitelisted endpoints: `is_brevo_enabled`, `send_test_email`                                      |
+| `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email                                   |
+| `frontend/src/composables/settings.js`               | Added `brevoEnabled` reactive ref                                                                 |
+| `frontend/src/components/Settings/Settings.vue`      | Added Brevo entry under Integrations tab                                                          |
+| `crm/fcrm/doctype/crm_invitation/crm_invitation.py`  | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path)                      |
+| `crm/fcrm/doctype/crm_invitation/crm_invitation.py`  | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path)                      |
+| `crm/api/event.py`                                   | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
 
 **Setup:**
 
@@ -218,6 +224,7 @@ After rebuild, hard-reload the browser: **Cmd+Shift+R**
 6. Check inbox to confirm delivery
 
 **Gotchas:**
+
 - `toast({ title, variant })` is wrong in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
 - `session.user` returns the login name (e.g. `"Administrator"`), not an email — use `getUser()?.email` from `usersStore` for the recipient address
 - `__()` (Frappe i18n) is a Vue template global only — use plain strings inside `<script setup>`
@@ -303,49 +310,55 @@ OpsGate sidebar CRM icon click
 
 **Files changed:**
 
-| Repo | Path | Description |
-|------|------|-------------|
-| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url`, `get_crm_login_url`, `create_crm_user`, `disable_crm_user` whitelisted endpoints |
-| CRM | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields |
-| CRM | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button |
-| CRM | `frontend/src/components/Layouts/AppSidebar.vue` | Added OpsGate nav item with SSO click handler |
-| CRM | `frontend/src/components/SidebarLink.vue` | Added `onClick` prop to allow custom click handlers |
-| CRM | `frontend/src/composables/settings.js` | Added `opsGateEnabled` and `opsGateUrl` reactive refs |
-| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin`, `getCrmLoginUrl`, `provisionCrmUsers`, `deprovisionCrmUsers` controllers |
-| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token`, `GET /user/crm-login-url`, `POST /user/crm/provision`, `POST /user/crm/deprovision` routes |
-| OpsGate backend | `.env` | Added `CRM_SSO_SECRET` and `CRM_API_URL` |
-| OpsGate frontend | `src/lib/auth/authOptions.ts` | Added `sso-token` NextAuth credentials provider |
-| OpsGate frontend | `src/app/auth/sso/page.tsx` | New SSO landing page — reads token from URL, creates session |
-| OpsGate frontend | `src/lib/constants/routes.constants.ts` | Added `/auth/sso` to `PUBLIC_PATHS` |
-| OpsGate frontend | `src/lib/constants/navItems-role.tsx` | Added CRM icon nav item with `externalKey: "crm"` |
-| OpsGate frontend | `src/components/layouts/DashboardLayout.tsx` | `handleNavigation` calls `/user/crm-login-url` for external SSO items |
-| OpsGate frontend | `.env` | Added `OPSGATE_JWT_SECRET` and `NEXT_PUBLIC_CRM_URL` |
+| Repo             | Path                                                   | Description                                                                                                                   |
+| ---------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| CRM              | `crm/api/settings.py`                                  | Added `get_opsgate_redirect_url`, `get_crm_login_url`, `create_crm_user`, `disable_crm_user` whitelisted endpoints            |
+| CRM              | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`    | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields                                                               |
+| CRM              | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button                                                                      |
+| CRM              | `frontend/src/components/Layouts/AppSidebar.vue`       | Added OpsGate nav item with SSO click handler                                                                                 |
+| CRM              | `frontend/src/components/SidebarLink.vue`              | Added `onClick` prop to allow custom click handlers                                                                           |
+| CRM              | `frontend/src/composables/settings.js`                 | Added `opsGateEnabled` and `opsGateUrl` reactive refs                                                                         |
+| OpsGate backend  | `src/controllers/user.controller.ts`                   | Added `ssoLogin`, `getCrmLoginUrl`, `provisionCrmUsers`, `deprovisionCrmUsers` controllers                                    |
+| OpsGate backend  | `src/routes/user.routes.ts`                            | Registered `POST /user/sso-token`, `GET /user/crm-login-url`, `POST /user/crm/provision`, `POST /user/crm/deprovision` routes |
+| OpsGate backend  | `.env`                                                 | Added `CRM_SSO_SECRET` and `CRM_API_URL`                                                                                      |
+| OpsGate frontend | `src/lib/auth/authOptions.ts`                          | Added `sso-token` NextAuth credentials provider                                                                               |
+| OpsGate frontend | `src/app/auth/sso/page.tsx`                            | New SSO landing page — reads token from URL, creates session                                                                  |
+| OpsGate frontend | `src/lib/constants/routes.constants.ts`                | Added `/auth/sso` to `PUBLIC_PATHS`                                                                                           |
+| OpsGate frontend | `src/lib/constants/navItems-role.tsx`                  | Added CRM icon nav item with `externalKey: "crm"`                                                                             |
+| OpsGate frontend | `src/components/layouts/DashboardLayout.tsx`           | `handleNavigation` calls `/user/crm-login-url` for external SSO items                                                         |
+| OpsGate frontend | `.env`                                                 | Added `OPSGATE_JWT_SECRET` and `NEXT_PUBLIC_CRM_URL`                                                                          |
 
 **Setup — per environment (dev/staging/prod):**
 
 **1. OpsGate backend `.env`**
+
 ```env
 CRM_SSO_SECRET=crm-to-opsgate-sso-secret-2025
 CRM_API_URL=http://localhost:8000/api      # dev; use https://crm.example.com/api for staging/prod
 ```
+
 > `CRM_SSO_SECRET` must match `crm_sso_secret` in the CRM site config exactly.
 
 **2. OpsGate frontend `.env`**
+
 ```env
 OPSGATE_JWT_SECRET=greenfortunejwtsecret2025
 NEXT_PUBLIC_CRM_URL=http://localhost:8000/crm   # dev; use https://crm.example.com/crm for staging/prod
 ```
+
 > `OPSGATE_JWT_SECRET` must match `JWT_SECRET` in the OpsGate backend `.env`.
 
 **3. CRM Frappe site config** (run once per site)
 
 Local bench:
+
 ```bash
 bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
 bench --site crm.localhost set-config opsgate_api_url "http://localhost:4011/api"
 ```
 
 Docker (OpsGate runs on the Mac host at port 4011 — use `host.docker.internal`, not `localhost`):
+
 ```bash
 docker exec crm-frappe-1 bash -c \
   "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config crm_sso_secret 'crm-to-opsgate-sso-secret-2025'"
@@ -354,6 +367,7 @@ docker exec crm-frappe-1 bash -c \
 ```
 
 Staging:
+
 ```bash
 bench --site <site> set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
 bench --site <site> set-config opsgate_api_url "https://backend.thegreenfortune.com/api"
@@ -362,6 +376,7 @@ bench --site <site> set-config opsgate_api_url "https://backend.thegreenfortune.
 **4. Fix invitation / password reset links** (run once per site)
 
 `frappe.utils.get_url()` returns `http://127.0.0.1:8000` if `host_name` is not set:
+
 ```bash
 # Local bench
 bench --site crm.localhost set-config host_name 'http://localhost:8000'
@@ -372,6 +387,7 @@ docker exec crm-frappe-1 bash -c \
 ```
 
 **5. DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
+
 ```bash
 # Local bench
 bench --site crm.localhost migrate
@@ -410,6 +426,7 @@ Authorization: Bearer <admin_token>
 Both endpoints return a per-user result with `status: "provisioned" | "deprovisioned" | "failed"`. Deprovisioning sets `enabled=0` — data is preserved.
 
 **Gotchas:**
+
 - `frappe.session.user` returns `"Administrator"` for the admin user — fetch email with `frappe.db.get_value("User", frappe.session.user, "email")`
 - `frappe.client.set_value` response omits fields not in the DB query — patch `settings.doc` manually in Vue after save
 - The `frappe-ui` Switch component uses `defineModel<boolean>` — bind with `:model-value="Boolean(...)"` not raw integer `0`/`1` values to prevent the switch snapping back

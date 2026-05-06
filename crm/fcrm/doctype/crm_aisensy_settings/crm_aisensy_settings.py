@@ -14,3 +14,6 @@ class CRMAISensySettings(Document):
 		api_key: DF.Password | None
 		enabled: DF.Check
 		project_id: DF.Data | None
+
+	def on_update(self):
+		frappe.clear_document_cache("CRM AISensy Settings", "CRM AISensy Settings")
