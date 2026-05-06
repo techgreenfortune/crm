@@ -108,7 +108,6 @@ class CRMLead(Document):
 
 	def validate(self):
 		self._check_write_permission()
-		self.validate_status()
 		self.set_full_name()
 		self.set_lead_name()
 		self.set_title()
@@ -128,24 +127,6 @@ class CRMLead(Document):
 
 	def before_save(self):
 		self.apply_sla()
-
-	def validate_status(self):
-		if self.is_new() and not self.status:
-			if frappe.has_role("Jr. Sales Executive") and frappe.db.exists("CRM Lead Status", "C1"):
-				self.status = "C1"
-			elif frappe.db.exists("CRM Lead Status", "C0"):
-				self.status = "C0"
-			elif frappe.db.exists("CRM Lead Status", "New"):
-				self.status = "New"
-			else:
-				open_statuses = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")
-				if not open_statuses:
-					frappe.throw(
-						_(
-							"No open lead statuses configured. Run bench migrate or create a CRM Lead Status with type 'Open'."
-						)
-					)
-				self.status = open_statuses[0]
 
 	def set_full_name(self):
 		if self.first_name:
