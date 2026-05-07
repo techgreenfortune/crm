@@ -28,9 +28,9 @@ services:
     volumes:
       - ..:/workspace
     ports:
-      - 8000:8000  # Frappe web server
-      - 9000:9000  # Socket.IO
-      - 8080:8080  # Vite dev server (frontend HMR)
+      - 8000:8000 # Frappe web server
+      - 9000:9000 # Socket.IO
+      - 8080:8080 # Vite dev server (frontend HMR)
 
 volumes:
   mariadb-data:
