@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "frappe-bench/env/bin/python",
+    "python.defaultInterpreterPath": "${userHome}/frappe-bench/env/bin/python",
     "debug.node.autoAttach": "disabled",
     "sqltools.connections": [
         {

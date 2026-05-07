@@ -26,7 +26,18 @@ export const usersStore = defineStore('crm-users', () => {
     },
     onError(error) {
       if (error && error.exc_type === 'AuthenticationError') {
-        router.push('/login')
+        window.location.href = '/login?redirect-to=/crm'
+        return
+      }
+      // Stale browser cookie with invalidated server session (e.g. after docker restart):
+      // Frappe treats the request as Guest and reports the function as "not whitelisted".
+      // Distinguish from genuine "no CRM role" PermissionError by checking the traceback.
+      if (
+        error &&
+        error.exc_type === 'PermissionError' &&
+        error.exc?.includes('whitelisted')
+      ) {
+        window.location.href = '/login?redirect-to=/crm'
       }
     },
   })

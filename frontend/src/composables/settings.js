@@ -36,15 +36,11 @@ createResource({
   },
 })
 
-export const brevoEnabled = ref(false)
-createResource({
-  url: 'crm.integrations.brevo.api.is_brevo_enabled',
-  cache: 'Is Brevo Enabled',
-  auto: true,
-  onSuccess: (data) => {
-    brevoEnabled.value = Boolean(data)
-  },
-})
+export const aisensyEnabled = ref(Boolean(window.aisensy_enabled))
+export const brevoEnabled = ref(Boolean(window.brevo_enabled))
+
+export const opsGateEnabled = ref(Boolean(window.opsgate_enabled))
+export const opsGateUrl = ref(window.opsgate_url || '')
 
 export const mobileSidebarOpened = ref(false)
 

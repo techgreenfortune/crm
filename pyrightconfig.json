@@ -1,0 +1,8 @@
+{
+  "venvPath": "../../frappe-bench",
+  "venv": "env",
+  "extraPaths": [
+    "../../frappe-bench/apps/frappe",
+    "../../frappe-bench/apps/crm"
+  ]
+}

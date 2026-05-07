@@ -1,8 +1,6 @@
 # Copyright (c) 2023, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
-import json
-
 import frappe
 from frappe import _
 from frappe.desk.form.assign_to import add as assign
@@ -14,6 +12,38 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
+
+# Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
+# Everything else in self.meta.fields is blocked for non-owners.
+_NON_OWNER_EDITABLE = frozenset(
+	{
+		"status",
+		"lost_reason",
+		"lost_notes",
+		# SLA/communication tracking — updated automatically by Frappe internals
+		"sla",
+		"sla_status",
+		"sla_creation",
+		"response_by",
+		"first_response_time",
+		"first_responded_on",
+		"last_responded_on",
+		"last_response_time",
+		"communication_status",
+	}
+)
+
+_LAYOUT_FIELD_TYPES = frozenset(
+	{
+		"Section Break",
+		"Column Break",
+		"Tab Break",
+		"HTML",
+		"Button",
+		"Table",
+		"Table MultiSelect",
+	}
+)
 
 
 class CRMLead(Document):
@@ -77,7 +107,7 @@ class CRMLead(Document):
 		self.set_sla()
 
 	def validate(self):
-		self.validate_status()
+		self._check_write_permission()
 		self.set_full_name()
 		self.set_lead_name()
 		self.set_title()
@@ -97,13 +127,6 @@ class CRMLead(Document):
 
 	def before_save(self):
 		self.apply_sla()
-
-	def validate_status(self):
-		if self.is_new() and not self.status:
-			if frappe.db.exists("CRM Lead Status", "New"):
-				self.status = "New"
-			else:
-				self.status = frappe.get_all("CRM Lead Status", {"type": "Open"}, pluck="name")[0]
 
 	def set_full_name(self):
 		if self.first_name:
@@ -145,9 +168,6 @@ class CRMLead(Document):
 				self.image = has_gravatar(self.email)
 
 	def validate_lost_reason(self):
-		"""
-		Validate the lost reason if the status is set to "Lost".
-		"""
 		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Lost":
 			if not self.lost_reason:
 				frappe.throw(_("Please specify a reason for losing the lead."), frappe.ValidationError)
@@ -155,6 +175,31 @@ class CRMLead(Document):
 				frappe.throw(_("Please specify the reason for losing the lead."), frappe.ValidationError)
 		if self.has_value_changed("status"):
 			add_or_remove_lost_reason_section_in_sidepanel(self)
+
+	def _check_write_permission(self):
+		if self.is_new():
+			return
+		user = frappe.session.user
+		if user == "Administrator" or self.flags.get("ignore_permissions"):
+			return
+		user_roles = set(frappe.get_roles(user))
+		if "System Manager" in user_roles or "Sales Manager" in user_roles:
+			return
+		if self.lead_owner == user:
+			return
+		if not self.get_doc_before_save():
+			return
+		for field in self.meta.fields:
+			if field.fieldtype in _LAYOUT_FIELD_TYPES:
+				continue
+			if field.fieldname in _NON_OWNER_EDITABLE:
+				continue
+			if self.has_value_changed(field.fieldname):
+				frappe.throw(
+					_("You can only edit leads that are assigned to you."),
+					frappe.PermissionError,
+					title=_("Not Permitted"),
+				)
 
 	def assign_agent(self, agent):
 		if not agent:

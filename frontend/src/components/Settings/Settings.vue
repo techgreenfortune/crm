@@ -62,6 +62,7 @@ import WhatsAppSettings from '@/components/Settings/WhatsAppSettings.vue'
 import ERPNextSettings from '@/components/Settings/ERPNextSettings.vue'
 import LeadSyncSourcePage from '@/components/Settings/LeadSyncing/LeadSyncSourcePage.vue'
 import BrevoSettings from '@/components/Settings/BrevoSettings.vue'
+import AISensySettings from '@/components/Settings/AISensySettings.vue'
 import DefaultsSettings from '@/components/Settings/DefaultsSettings.vue'
 import BrandSettings from '@/components/Settings/BrandSettings.vue'
 import HomeActions from '@/components/Settings/HomeActions.vue'
@@ -220,6 +221,12 @@ const tabs = computed(() => {
           label: __('Brevo'),
           icon: Email2Icon,
           component: markRaw(BrevoSettings),
+          condition: () => isManager(),
+        },
+        {
+          label: __('AISensy'),
+          icon: WhatsAppIcon,
+          component: markRaw(AISensySettings),
           condition: () => isManager(),
         },
       ],
