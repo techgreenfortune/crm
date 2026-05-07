@@ -8,7 +8,8 @@
   "enabled",
   "api_key",
   "sender_email",
-  "sender_name"
+  "sender_name",
+  "nurture_list_id"
  ],
  "fields": [
   {
@@ -37,6 +38,13 @@
    "fieldname": "sender_name",
    "fieldtype": "Data",
    "label": "Sender Name"
+  },
+  {
+   "depends_on": "enabled",
+   "fieldname": "nurture_list_id",
+   "fieldtype": "Data",
+   "label": "C1 Nurture List ID",
+   "description": "Brevo list ID for the C1 nurture sequence. Find this in Brevo → Contacts → Lists."
   }
  ],
  "index_web_pages_for_search": 1,

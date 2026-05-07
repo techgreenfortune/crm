@@ -1,13 +1,132 @@
 # CRM Dev Setup & Integration Log
 
-Running environment: **Docker** (frappe/bench image), MariaDB + Redis as separate containers.  
-Site name: `crm.localhost`  
-App directory (host): `/Users/aadarsh/Desktop/crm`  
-Bench inside container: `/home/frappe/frappe-bench`
+Two environments are supported:
+
+|                  | Local Bench                             | Docker                                                                          |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| **Runtime**      | Native macOS, Homebrew MariaDB + Redis  | Docker (frappe/bench image), containerised MariaDB + Redis                      |
+| **Site**         | `crm.localhost`                         | `crm.localhost`                                                                 |
+| **Bench**        | `~/frappe-bench`                        | `/home/frappe/frappe-bench` (inside container)                                  |
+| **Project root** | `~/projects/crm` (symlinked into bench) | `/Users/aadarsh/Desktop/crm` (host) — **not** mounted; must be `docker cp`'d in |
+| **App URL**      | `http://crm.localhost:8000`             | `http://crm.localhost:8000`                                                     |
 
 ---
 
-## Environment Setup
+## Local Bench (macOS)
+
+### Prerequisites
+
+- Node.js + Yarn
+- Homebrew
+
+### One-Time Setup (already done)
+
+```bash
+# System deps
+brew install mariadb@11.8 redis pkg-config
+brew services start mariadb@11.8
+brew services start redis
+
+# Python 3.11
+brew install pyenv
+pyenv install 3.11.9 && pyenv global 3.11.9
+
+# bench CLI
+pip install frappe-bench
+
+# Initialize bench with Frappe v15
+cd ~ && bench init frappe-bench --version version-15 --python $(pyenv which python)
+
+# Symlink project into bench
+ln -s ~/projects/crm ~/frappe-bench/apps/crm
+~/frappe-bench/env/bin/pip install -e ~/frappe-bench/apps/crm
+printf 'frappe\ncrm\n' > ~/frappe-bench/sites/apps.txt
+
+# Create site and install CRM
+cd ~/frappe-bench
+echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-password admin
+bench --site crm.localhost install-app crm
+bench --site crm.localhost set-config developer_mode 1
+bench --site crm.localhost set-config server_script_enabled 1
+bench use crm.localhost
+```
+
+### Daily Workflow
+
+```bash
+# Ensure Homebrew services are running
+brew services start mariadb@11.8
+brew services start redis
+
+# Start bench (web + worker + scheduler)
+cd ~/frappe-bench && bench start
+```
+
+Open `http://crm.localhost:8000/crm` — login: `Administrator` / `admin`
+
+### Frontend Dev Server (hot-reload)
+
+In a second terminal:
+
+```bash
+cd ~/projects/crm/frontend && yarn install && yarn dev
+```
+
+Open `http://localhost:8080/crm` — Vite proxies API calls to bench at port 8000. Changes to `.vue` files under `frontend/src/` hot-reload instantly.
+
+### Makefile Shortcuts
+
+| Command                     | What it does                                 |
+| --------------------------- | -------------------------------------------- |
+| `make bench-start`          | `cd ~/frappe-bench && bench start`           |
+| `make bench-migrate`        | `bench migrate` on `crm.localhost`           |
+| `make bench-clear-cache`    | Clear Frappe site cache                      |
+| `make bench-dev`            | `yarn install && yarn dev` in `frontend/`    |
+| `make bench-build-frontend` | Build Vue bundle into `crm/public/frontend/` |
+
+### Code Changes
+
+#### Backend (Python / DocType JSON)
+
+`~/frappe-bench/apps/crm` is a symlink to `~/projects/crm` — edits are live immediately.
+
+After changing a DocType JSON or adding migrations:
+
+```bash
+cd ~/frappe-bench && bench --site crm.localhost migrate
+```
+
+Python changes are picked up by Frappe's watchdog auto-reloader. If not, restart:
+
+```bash
+cd ~/frappe-bench && bench restart
+```
+
+#### Frontend (Vue / JS)
+
+Run `yarn dev` in `frontend/` and edit files under `frontend/src/` — HMR updates the browser instantly.
+
+To build the production bundle:
+
+```bash
+cd ~/frappe-bench && bench build --app crm
+```
+
+### Resetting from Scratch
+
+```bash
+cd ~/frappe-bench
+bench drop-site crm.localhost --mariadb-root-password '' --force
+echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-password admin
+bench --site crm.localhost install-app crm
+bench --site crm.localhost set-config developer_mode 1
+bench --site crm.localhost set-config server_script_enabled 1
+bench use crm.localhost
+```
+
+---
+
+## Docker
 
 ### Starting Docker
 
@@ -21,19 +140,20 @@ docker compose -f docker-compose.yml up -d
 ```
 
 Containers started:
+
 - `crm-frappe-1` — Frappe app server (ports 8000, 9000)
 - `crm-mariadb-1` — MariaDB 10.8
 - `crm-redis-1` — Redis
 
-App is accessible at: `http://crm.localhost:8000`
+> If local MariaDB (Homebrew) is running on port 3306, `docker-compose.yml` maps the container MariaDB to `3307:3306` to avoid the conflict. This only affects host-side access; containers communicate internally by name.
 
----
+> Every `docker compose down && up` reinitialises the frappe container from scratch. After each fresh start: copy all modified `.py` and `.json` files back, run `bench migrate`, and re-run `set-config` for `crm_sso_secret`, `opsgate_api_url`, and `host_name`.
 
-## Deploying Code Changes
+### Deploying Code Changes
 
-The Docker container does **not** mount the host app directory — it runs a copy of the code baked into the image. Any changes made on the host must be manually synced into the container.
+The Docker container does **not** mount the host app directory — it runs a copy of the code baked into the image. Every change must be `docker cp`'d in.
 
-### Backend changes (Python / DocType JSON)
+#### Backend (Python / DocType JSON)
 
 ```bash
 # Copy a new doctype folder
@@ -49,7 +169,7 @@ docker exec crm-frappe-1 bash -c \
   "cd /home/frappe/frappe-bench && bench --site crm.localhost migrate"
 ```
 
-### Frontend changes (Vue / JS)
+#### Frontend (Vue / JS)
 
 ```bash
 # Sync entire frontend src (safest when many files changed)
@@ -65,48 +185,71 @@ docker exec crm-frappe-1 bash -c \
 
 After rebuild, hard-reload the browser: **Cmd+Shift+R**
 
+**Gotchas:**
+
+- `bench` must be run from inside the container and from the bench directory: `cd /home/frappe/frappe-bench && bench ...`
+- `bench --site <site> <cmd>` syntax — the `--site` flag must come **before** the subcommand
+- Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
+- `localhost` inside the container refers to the container itself, not the Mac host — use `host.docker.internal:<port>` to reach services running on the host (e.g. OpsGate on port 4011)
+
 ---
 
 ## Integrations
 
 ### Brevo (Transactional Email)
 
-**What it does:** Sends transactional emails (calendar event reminders) via Brevo's HTTP API. Invitation emails always go through `frappe.sendmail` (the configured outgoing email account) regardless of Brevo being enabled — Brevo was generating unreachable `127.0.0.1` links inside Docker.
+**What it does:** Sends transactional emails (calendar event reminders) via Brevo's HTTP API. When disabled, falls back to `frappe.sendmail`. Invitation emails always go through `frappe.sendmail` regardless — Brevo was generating unreachable `127.0.0.1` links inside Docker.
 
 **Files added:**
 
-| Path | Description |
-|------|-------------|
-| `crm/fcrm/doctype/crm_brevo_settings/` | Single DocType storing enabled flag, API key, sender email, sender name |
-| `crm/integrations/brevo/brevo_handler.py` | HTTP sender using Brevo's `/v3/smtp/email` API |
-| `crm/integrations/brevo/api.py` | Whitelisted endpoints: `is_brevo_enabled`, `send_test_email` |
-| `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email |
-| `frontend/src/composables/settings.js` | Added `brevoEnabled` reactive ref |
-| `frontend/src/components/Settings/Settings.vue` | Added Brevo entry under Integrations tab |
-| `crm/fcrm/doctype/crm_invitation/crm_invitation.py` | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path) |
-| `crm/api/event.py` | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
+| Path                                                 | Description                                                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `crm/fcrm/doctype/crm_brevo_settings/`               | Single DocType storing enabled flag, API key, sender email, sender name                           |
+| `crm/integrations/brevo/brevo_handler.py`            | HTTP sender using Brevo's `/v3/smtp/email` API                                                    |
+| `crm/integrations/brevo/api.py`                      | Whitelisted endpoints: `is_brevo_enabled`, `send_test_email`                                      |
+| `frontend/src/components/Settings/BrevoSettings.vue` | Settings UI — enable/disable, credentials form, Send Test Email                                   |
+| `frontend/src/composables/settings.js`               | Added `brevoEnabled` reactive ref                                                                 |
+| `frontend/src/components/Settings/Settings.vue`      | Added Brevo entry under Integrations tab                                                          |
+| `crm/fcrm/doctype/crm_invitation/crm_invitation.py`  | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path)                      |
+| `crm/fcrm/doctype/crm_invitation/crm_invitation.py`  | Sends invitation emails via `frappe.sendmail` (Brevo removed from this path)                      |
+| `crm/api/event.py`                                   | Routes calendar event reminder emails through Brevo when enabled; falls back to `frappe.sendmail` |
 
-**Setup steps:**
+**Setup:**
 
-1. Get your API key from Brevo → top-right profile → SMTP & API → API Keys (v3 key, starts with `xkeysib-`)
-2. Verify your sender email domain in Brevo → Senders & IPs
+1. Get a v3 API key from Brevo → Profile → SMTP & API → API Keys (starts with `xkeysib-`)
+2. Verify your sender domain in Brevo → Senders & IPs
 3. In CRM: Settings → Integrations → Brevo → Enable
 4. Enter API Key, Sender Email, Sender Name → **Update**
 5. Click **Send Test Email** — sends to the logged-in user's email address
-6. Check inbox for the test email to confirm delivery
+6. Check inbox to confirm delivery
 
-**Gotchas encountered:**
+**Gotchas:**
 
-- `bench` must be run from inside the container and from the bench directory: `cd /home/frappe/frappe-bench && bench ...`
-- `bench --site <site> <cmd>` syntax — the `--site` flag must come before the subcommand
-- The Docker container does not mount host source files; every change must be `docker cp`'d in and the frontend rebuilt
-- Duplicate `import Email2Icon` in `Settings.vue` caused a silent build failure — removed the second import
-- `__()` (Frappe translation function) is only available as a Vue template global, not in `<script setup>` — use plain strings in JS callbacks
-- `toast({ title, variant })` is not the correct API in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
-- `session.user` returns the login name (e.g. `"Administrator"`), not an email — use `getUser()?.email` from `usersStore` to get a valid recipient address for the test email
-- Invitation and password reset links use `frappe.utils.get_url()` which returns `http://127.0.0.1:8000` if `host_name` is not set — fix once per site: `bench --site crm.localhost set-config host_name 'http://localhost:8000'` (use the public URL for staging/prod)
+- `toast({ title, variant })` is wrong in this frappe-ui version — use `toast.success()`, `toast.error()`, `toast.warning()`
+- `session.user` returns the login name (e.g. `"Administrator"`), not an email — use `getUser()?.email` from `usersStore` for the recipient address
+- `__()` (Frappe i18n) is a Vue template global only — use plain strings inside `<script setup>`
+- Duplicate `import Email2Icon` in `Settings.vue` caused a silent build failure — remove the second import
+- `frappe.db.get_single_value` caches results in Redis — pass `cache=False` for all integration enabled flags (`brevo_enabled`, `opsgate_enabled`, `aisensy_enabled`) to avoid stale data on refresh
 
-**Deploy commands used:**
+**Emails silently not sending (Docker):**
+
+> ⚠️ Frappe sets `mute_emails=1` on every fresh site init. This resets on every `docker compose down && up`.
+
+```bash
+# Unmute
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config mute_emails 0"
+
+# Verify (must return: false)
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.are_emails_muted"
+
+# Flush stuck queue items
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.email.queue.flush"
+```
+
+**Deploy commands (Docker):**
 
 ```bash
 # Backend
@@ -136,7 +279,7 @@ docker exec crm-frappe-1 bash -c \
 
 ### OpsGate ↔ CRM Single Sign-On (bidirectional SSO)
 
-**What it does:** Users can move between CRM and OpsGate without a separate login in either direction.
+**What it does:** Users move between CRM and OpsGate without a separate login in either direction.
 
 - **CRM → OpsGate:** OpsGate link in the CRM sidebar logs the user straight into OpsGate via JWT SSO.
 - **OpsGate → CRM:** CRM icon in the OpsGate sidebar logs the user straight into CRM via Frappe's one-time login key.
@@ -167,80 +310,91 @@ OpsGate sidebar CRM icon click
 
 **Files changed:**
 
-| Repo | Path | Description |
-|------|------|-------------|
-| CRM | `crm/api/settings.py` | Added `get_opsgate_redirect_url`, `get_crm_login_url`, `create_crm_user`, `disable_crm_user` whitelisted endpoints |
-| CRM | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json` | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields |
-| CRM | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button |
-| CRM | `frontend/src/components/Layouts/AppSidebar.vue` | Added OpsGate nav item with SSO click handler |
-| CRM | `frontend/src/components/SidebarLink.vue` | Added `onClick` prop to allow custom click handlers |
-| CRM | `frontend/src/composables/settings.js` | Added `opsGateEnabled` and `opsGateUrl` reactive refs |
-| OpsGate backend | `src/controllers/user.controller.ts` | Added `ssoLogin`, `getCrmLoginUrl`, `provisionCrmUsers`, `deprovisionCrmUsers` controllers |
-| OpsGate backend | `src/routes/user.routes.ts` | Registered `POST /user/sso-token`, `GET /user/crm-login-url`, `POST /user/crm/provision`, `POST /user/crm/deprovision` routes |
-| OpsGate backend | `.env` | Added `CRM_SSO_SECRET` and `CRM_API_URL` |
-| OpsGate frontend | `src/lib/auth/authOptions.ts` | Added `sso-token` NextAuth credentials provider |
-| OpsGate frontend | `src/app/auth/sso/page.tsx` | New SSO landing page — reads token from URL, creates session |
-| OpsGate frontend | `src/lib/constants/routes.constants.ts` | Added `/auth/sso` to `PUBLIC_PATHS` |
-| OpsGate frontend | `src/lib/constants/navItems-role.tsx` | Added CRM icon nav item with `externalKey: "crm"` |
-| OpsGate frontend | `src/components/layouts/DashboardLayout.tsx` | `handleNavigation` calls `/user/crm-login-url` for external SSO items |
-| OpsGate frontend | `.env` | Added `OPSGATE_JWT_SECRET` and `NEXT_PUBLIC_CRM_URL` |
+| Repo             | Path                                                   | Description                                                                                                                   |
+| ---------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| CRM              | `crm/api/settings.py`                                  | Added `get_opsgate_redirect_url`, `get_crm_login_url`, `create_crm_user`, `disable_crm_user` whitelisted endpoints            |
+| CRM              | `crm/fcrm/doctype/fcrm_settings/fcrm_settings.json`    | Added `opsgate_enabled` (Check) and `opsgate_url` (Data) fields                                                               |
+| CRM              | `frontend/src/components/Settings/GeneralSettings.vue` | Added Enable OpsGate toggle + URL input with Save button                                                                      |
+| CRM              | `frontend/src/components/Layouts/AppSidebar.vue`       | Added OpsGate nav item with SSO click handler                                                                                 |
+| CRM              | `frontend/src/components/SidebarLink.vue`              | Added `onClick` prop to allow custom click handlers                                                                           |
+| CRM              | `frontend/src/composables/settings.js`                 | Added `opsGateEnabled` and `opsGateUrl` reactive refs                                                                         |
+| OpsGate backend  | `src/controllers/user.controller.ts`                   | Added `ssoLogin`, `getCrmLoginUrl`, `provisionCrmUsers`, `deprovisionCrmUsers` controllers                                    |
+| OpsGate backend  | `src/routes/user.routes.ts`                            | Registered `POST /user/sso-token`, `GET /user/crm-login-url`, `POST /user/crm/provision`, `POST /user/crm/deprovision` routes |
+| OpsGate backend  | `.env`                                                 | Added `CRM_SSO_SECRET` and `CRM_API_URL`                                                                                      |
+| OpsGate frontend | `src/lib/auth/authOptions.ts`                          | Added `sso-token` NextAuth credentials provider                                                                               |
+| OpsGate frontend | `src/app/auth/sso/page.tsx`                            | New SSO landing page — reads token from URL, creates session                                                                  |
+| OpsGate frontend | `src/lib/constants/routes.constants.ts`                | Added `/auth/sso` to `PUBLIC_PATHS`                                                                                           |
+| OpsGate frontend | `src/lib/constants/navItems-role.tsx`                  | Added CRM icon nav item with `externalKey: "crm"`                                                                             |
+| OpsGate frontend | `src/components/layouts/DashboardLayout.tsx`           | `handleNavigation` calls `/user/crm-login-url` for external SSO items                                                         |
+| OpsGate frontend | `.env`                                                 | Added `OPSGATE_JWT_SECRET` and `NEXT_PUBLIC_CRM_URL`                                                                          |
 
 **Setup — per environment (dev/staging/prod):**
 
 **1. OpsGate backend `.env`**
+
 ```env
 CRM_SSO_SECRET=crm-to-opsgate-sso-secret-2025
 CRM_API_URL=http://localhost:8000/api      # dev; use https://crm.example.com/api for staging/prod
 ```
+
 > `CRM_SSO_SECRET` must match `crm_sso_secret` in the CRM site config exactly.
 
 **2. OpsGate frontend `.env`**
+
 ```env
 OPSGATE_JWT_SECRET=greenfortunejwtsecret2025
 NEXT_PUBLIC_CRM_URL=http://localhost:8000/crm   # dev; use https://crm.example.com/crm for staging/prod
 ```
+
 > `OPSGATE_JWT_SECRET` must match `JWT_SECRET` in the OpsGate backend `.env`.
 
 **3. CRM Frappe site config** (run once per site)
 
-For local Docker dev (OpsGate running on host port 4011 — use `host.docker.internal`, not `localhost`, because `localhost` inside the container refers to the container itself):
+Local bench:
+
+```bash
+bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
+bench --site crm.localhost set-config opsgate_api_url "http://localhost:4011/api"
+```
+
+Docker (OpsGate runs on the Mac host at port 4011 — use `host.docker.internal`, not `localhost`):
+
 ```bash
 docker exec crm-frappe-1 bash -c \
   "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config crm_sso_secret 'crm-to-opsgate-sso-secret-2025'"
 docker exec crm-frappe-1 bash -c \
   "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config opsgate_api_url 'http://host.docker.internal:4011/api'"
 ```
-For staging:
+
+Staging:
+
 ```bash
 bench --site <site> set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
 bench --site <site> set-config opsgate_api_url "https://backend.thegreenfortune.com/api"
 ```
 
-**4. Unmute emails** (REQUIRED — Frappe mutes emails by default on fresh installs)
+**4. Fix invitation / password reset links** (run once per site)
 
-> ⚠️ Every fresh container start resets `mute_emails` to `1`. If invitation or notification emails are silently not sent (queue shows `Not Sent` with no error), this is almost certainly the cause.
+`frappe.utils.get_url()` returns `http://127.0.0.1:8000` if `host_name` is not set:
 
 ```bash
+# Local bench
+bench --site crm.localhost set-config host_name 'http://localhost:8000'
+
+# Docker
 docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config mute_emails 0"
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost set-config host_name 'http://localhost:8000'"
 ```
 
-Verify emails are unmuted:
-```bash
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.are_emails_muted"
-# Must return: false
-```
+**5. DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
 
-If emails are still stuck in `Not Sent` after unmuting, flush the queue manually:
 ```bash
-docker exec crm-frappe-1 bash -c \
-  "cd /home/frappe/frappe-bench && bench --site crm.localhost execute frappe.email.queue.flush"
-```
-
-**5. Run DB migration** (needed once — adds `opsgate_enabled` and `opsgate_url` columns)
-```bash
+# Local bench
 bench --site crm.localhost migrate
+
+# Docker
+docker exec crm-frappe-1 bash -c \
+  "cd /home/frappe/frappe-bench && bench --site crm.localhost migrate"
 ```
 
 **6. Enable in CRM UI**
@@ -249,13 +403,13 @@ Settings → General Settings → Enable OpsGate toggle → enter OpsGate URL �
 
 **7. User mapping**
 
-Every CRM user who needs OpsGate access must have an account in OpsGate with the **same email address** as their Frappe account. The SSO looks up by email — if no match is found, the redirect will fail with a 404.
+Every CRM user who needs OpsGate access must have an account in OpsGate with the **same email address**. The SSO looks up by email — if no match is found, the redirect fails with a 404.
 
 **8. CRM user provisioning from OpsGate**
 
-New users created via the OpsGate `POST /user/create` API are automatically provisioned in CRM as `Sales User` (no invite email, no invite link required).
+New users created via the OpsGate `POST /user/create` API are automatically provisioned in CRM as `Sales User`.
 
-For existing OpsGate users created before this feature, use the admin endpoints:
+For existing users created before this feature:
 
 ```bash
 # Provision one or more users into CRM
@@ -269,27 +423,20 @@ Authorization: Bearer <admin_token>
 { "user_ids": [1, 2] }
 ```
 
-Both endpoints process each user independently and return a per-user result with `status: "provisioned" | "deprovisioned" | "failed"`. Deprovisioning disables the CRM user (`enabled=0`) rather than deleting — data (leads, activities) is preserved.
+Both endpoints return a per-user result with `status: "provisioned" | "deprovisioned" | "failed"`. Deprovisioning sets `enabled=0` — data is preserved.
 
-If a disabled user tries to redirect to CRM from OpsGate, `get_crm_login_url` will return a clear error before issuing a login key.
+**Gotchas:**
 
-**Gotchas encountered:**
-
-- `frappe.session.user` returns `"Administrator"` for the admin user, not their email — fixed by fetching with `frappe.db.get_value("User", frappe.session.user, "email")`
-- The bench at `frappe-bench/apps/crm/` is a **separate copy** from `Desktop/crm/` — changes must be made in the bench copy (or synced via `cp`) for the running server to pick them up
-- `frappe.client.set_value` response omits fields not returned by the DB query (including `opsgate_enabled`, `opsgate_url`) — fixed by patching `settings.doc` manually after save in the Vue component
-- The `frappe-ui` Switch component uses `defineModel<boolean>` — binding directly to integer values (`0`/`1`) from Frappe causes the switch to snap back; fixed by using `:model-value="Boolean(...)"` 
+- `frappe.session.user` returns `"Administrator"` for the admin user — fetch email with `frappe.db.get_value("User", frappe.session.user, "email")`
+- `frappe.client.set_value` response omits fields not in the DB query — patch `settings.doc` manually in Vue after save
+- The `frappe-ui` Switch component uses `defineModel<boolean>` — bind with `:model-value="Boolean(...)"` not raw integer `0`/`1` values to prevent the switch snapping back
 - New `@frappe.whitelist()` functions require `bench --site <site> clear-cache` before they appear (Frappe caches module imports)
-- `call()` from `frappe-ui` handles CSRF automatically — use it instead of raw `fetch()` for Frappe API calls
-- In Docker, `localhost` inside the container refers to the container itself, not the Mac host — use `host.docker.internal:<port>` to reach services running on the host (e.g. OpsGate on port 4011)
-- Files synced via `docker cp` from macOS are owned by uid 501 (host user), not `frappe` — if the build fails with `EACCES`, run `docker exec -u root crm-frappe-1 chown -R frappe:frappe <path>` to fix
-- `frappe.db.get_single_value` caches results in Redis — toggling a setting via `frappe.client.set_value` updates the DB but the cached value persists until expiry, so `get_boot()` returns stale data on refresh. Fixed by passing `cache=False` for all integration enabled flags (`opsgate_enabled`, `aisensy_enabled`, `brevo_enabled`)
-- When OpsGate SSO fails (e.g. user email not in OpsGate), the CRM sidebar now shows a generic toast error instead of silently redirecting to the OpsGate login page
-- **Emails silently not sending (`Not Sent`, no error in queue)**: Frappe sets `mute_emails=1` on every fresh site init. Run `bench --site crm.localhost set-config mute_emails 0` after every container restart. Confirm with `bench --site crm.localhost execute frappe.are_emails_muted` — must return `false`. Then flush any stuck queue items with `bench --site crm.localhost execute frappe.email.queue.flush`.
-- If local MariaDB (e.g. installed via Homebrew) is running on port 3306, the Docker MariaDB container will fail to bind — `docker-compose.yml` maps it to `3307:3306` to avoid the conflict. This only affects host-side access; containers communicate internally by name so CRM is unaffected.
-- Every `docker compose down && up` reinitializes the frappe container from scratch (clones Frappe, reinstalls). After each fresh start: copy all modified `.py` and `.json` files back, run `bench migrate`, and re-run `set-config` for `crm_sso_secret`, `opsgate_api_url`, and `host_name`.
-- `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP by default — during heavy dev/testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error (the rate limiter exception isn't handled cleanly). Two fixes: (1) increase the limit via System Settings — `bench --site crm.localhost execute frappe.db.set_single_value --args '["System Settings", "rate_limit_email_link_login", 100]'` — this persists in the DB across restarts; (2) clear the current Redis rate limit counter: `bench --site crm.localhost execute frappe.cache.delete_keys --args '["rl:"]'`
-- The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies; JSON bodies require `frappe.request.get_json()` which behaves differently across Frappe versions
+- `call()` from `frappe-ui` handles CSRF automatically — prefer it over raw `fetch()` for Frappe API calls
+- The OpsGate backend must send the CRM SSO request as `application/x-www-form-urlencoded`, not JSON — Frappe's `frappe.form_dict` auto-parses form-encoded bodies
+- When OpsGate SSO fails, the CRM sidebar shows a toast error instead of silently redirecting to the OpsGate login page
+- `frappe.www.login.login_via_key` is rate-limited to 5 calls/hour per IP by default — during heavy testing this triggers a `TypeError: 'NoneType' object is not callable` WSGI error. Two fixes:
+  - Increase the limit (persists in DB): `bench --site crm.localhost execute frappe.db.set_single_value --args '["System Settings", "rate_limit_email_link_login", 100]'`
+  - Clear current Redis rate limit counter: `bench --site crm.localhost execute frappe.cache.delete_keys --args '["rl:"]'`
 
 **Deploy commands (Docker):**
 

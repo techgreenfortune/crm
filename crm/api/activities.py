@@ -8,6 +8,7 @@ from frappe.query_builder import JoinType
 from frappe.translate import get_translated_doctypes
 
 from crm.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
+from crm.fcrm.doctype.crm_task.crm_task import POOL_TASK_ROLES
 
 
 @frappe.whitelist()
@@ -453,6 +454,7 @@ def get_linked_calls(name: str):
 			fields=[
 				"name",
 				"title",
+				"task_type",
 				"description",
 				"assigned_to",
 				"due_date",
@@ -461,6 +463,12 @@ def get_linked_calls(name: str):
 				"modified",
 			],
 		)
+		user = frappe.session.user
+		user_roles = set(frappe.get_roles(user))
+		for task in tasks:
+			task["can_update"] = _task_can_update(task, user, user_roles, None)
+			task["can_delete"] = _task_can_delete(task, user, user_roles, None)
+		tasks = [t for t in tasks if t["can_update"]]
 
 	calls = [parse_call_log(call) for call in calls] if calls else []
 
@@ -476,6 +484,27 @@ def get_linked_notes(name: str):
 	return notes or []
 
 
+def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
+	if "Administrator" in user_roles or "Sales Manager" in user_roles or "System Manager" in user_roles:
+		return True
+	if (task.get("assigned_to") or "") == user:
+		return True
+	task_type = task.get("task_type") or ""
+	if task_type in POOL_TASK_ROLES:
+		return POOL_TASK_ROLES[task_type] in user_roles or (task.get("assigned_to") or "") == user
+	return doc_owner == user
+
+
+def _task_can_delete(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
+	if "Administrator" in user_roles or "Sales Manager" in user_roles or "System Manager" in user_roles:
+		return True
+	if (task.get("task_type") or "") in POOL_TASK_ROLES:
+		return False
+	if (task.get("assigned_to") or "") == user:
+		return True
+	return doc_owner == user
+
+
 def get_linked_tasks(name: str):
 	tasks = frappe.db.get_all(
 		"CRM Task",
@@ -483,6 +512,7 @@ def get_linked_tasks(name: str):
 		fields=[
 			"name",
 			"title",
+			"task_type",
 			"description",
 			"assigned_to",
 			"due_date",
@@ -490,8 +520,19 @@ def get_linked_tasks(name: str):
 			"status",
 			"modified",
 			"creation",
+			"reference_docname",
 		],
 	)
+	if tasks:
+		user = frappe.session.user
+		user_roles = set(frappe.get_roles(user))
+		doc_owner = frappe.db.get_value("CRM Lead", name, "lead_owner") or frappe.db.get_value(
+			"CRM Deal", name, "deal_owner"
+		)
+		for task in tasks:
+			task["can_update"] = _task_can_update(task, user, user_roles, doc_owner)
+			task["can_delete"] = _task_can_delete(task, user, user_roles, doc_owner)
+		tasks = [t for t in tasks if t["can_update"]]
 	return tasks or []
 
 

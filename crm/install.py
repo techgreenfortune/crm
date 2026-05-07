@@ -1,6 +1,7 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 import json
+import os
 
 import click
 import frappe
@@ -12,6 +13,22 @@ from crm.fcrm.doctype.crm_products.crm_products import create_product_details_sc
 
 def before_install():
 	pass
+
+
+def before_migrate():
+	"""Clear stale document lock files left by any previously interrupted bench migrate."""
+	from frappe.utils import file_lock, get_site_path
+
+	locks_dir = get_site_path(file_lock.LOCKS_DIR)
+	if not os.path.isdir(locks_dir):
+		return
+	for fname in os.listdir(locks_dir):
+		if fname.endswith(".lock"):
+			try:
+				os.remove(os.path.join(locks_dir, fname))
+				frappe.logger().warning(f"before_migrate: removed stale lock file {fname}")
+			except OSError:
+				pass
 
 
 def after_install(force=False):

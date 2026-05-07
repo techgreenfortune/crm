@@ -194,6 +194,10 @@
    "read": 1,
    "role": "Sales User",
    "share": 1
+  },
+  {
+   "read": 1,
+   "role": "CRM User"
   }
  ],
  "row_format": "Dynamic",
