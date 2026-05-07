@@ -4,7 +4,7 @@
 <script setup>
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
-import { call } from 'frappe-ui'
+import { call, toast } from 'frappe-ui'
 import { useRoute, useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -17,6 +17,25 @@ const activities = defineModel({ type: Object })
 const { showModal } = useDoctypeModal()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
+
+async function showQuoteRequest(leadName) {
+  const rows = await call('frappe.client.get_list', {
+    doctype: 'CRM Quote Request',
+    filters: { lead: leadName },
+    fields: ['name'],
+    order_by: 'creation desc',
+    limit: 1,
+  })
+  if (!rows?.length) return
+  showModal({
+    name: rows[0].name,
+    doctype: 'CRM Quote Request',
+    title: 'Upload Quote',
+    callbacks: {
+      afterUpdate: () => activities.value.reload(),
+    },
+  })
+}
 
 // Tasks
 function showTask(task) {
@@ -35,12 +54,20 @@ function showTask(task) {
   })
 }
 
-async function deleteTask(name) {
-  await call('frappe.client.delete', {
+function deleteTask(name) {
+  call('frappe.client.delete', {
     doctype: 'CRM Task',
     name,
   })
-  activities.value.reload()
+    .then(() => {
+      activities.value.reload()
+    })
+    .catch((err) => {
+      activities.value.reload()
+      toast.error(
+        err?.message || __('You are not permitted to delete this task.'),
+      )
+    })
 }
 
 function updateTaskStatus(status, task) {
@@ -49,9 +76,16 @@ function updateTaskStatus(status, task) {
     name: task.name,
     fieldname: 'status',
     value: status,
-  }).then(() => {
-    activities.value.reload()
   })
+    .then(() => {
+      activities.value.reload()
+    })
+    .catch((err) => {
+      activities.value.reload()
+      toast.error(
+        err?.message || __('You are not permitted to update this task.'),
+      )
+    })
 }
 
 // Notes
@@ -132,5 +166,6 @@ defineExpose({
   updateTaskStatus,
   showNote,
   createCallLog,
+  showQuoteRequest,
 })
 </script>

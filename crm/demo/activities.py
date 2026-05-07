@@ -172,7 +172,7 @@ def _create_versions(lead_names, session_user, owner_1, owner_2, now):
 		{
 			"lead": lead_names[3],
 			"owner": owner_1,
-			"changed": [["status", "Contacted", "Qualified"]],
+			"changed": [["status", "C1", "C2"]],
 			"days_ago": 38,  # lead[3] deal at 37 days ago — keep before that
 		},
 	]

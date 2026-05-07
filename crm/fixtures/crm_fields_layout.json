@@ -1,0 +1,11 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
+  "dt": "CRM Quote Request",
+  "layout": "[{\"label\": \"Quote Details\", \"name\": \"quote_section\", \"opened\": true, \"columns\": [{\"name\": \"column_QR01\", \"fields\": [\"lead\", \"quote_file\", \"quote_value\"]}, {\"name\": \"column_QR02\", \"fields\": [\"status\", \"quote_margin\", \"requested_by\", \"requested_on\"]}]}, {\"label\": \"Notes\", \"name\": \"quote_notes_section\", \"opened\": true, \"columns\": [{\"name\": \"column_QR03\", \"fields\": [\"revision_notes\"]}]}]",
+  "modified": "2026-05-05 00:00:00",
+  "name": "CRM Quote Request-Quick Entry",
+  "type": "Quick Entry"
+ }
+]

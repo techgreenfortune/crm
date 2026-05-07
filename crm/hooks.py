@@ -180,6 +180,46 @@ doc_events = {
 	},
 }
 
+# Fixtures
+# --------
+
+fixtures = [
+	"CRM Lead Status",
+	{"dt": "Role", "filters": [["is_custom", "=", 1]]},
+	{
+		"dt": "Role Profile",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"B2F Team",
+					"Calling Team",
+					"Jr. Sales Executive",
+					"Sales Coordinator",
+					"Sales Executive",
+					"ASM",
+					"Project Sales Executive",
+					"RSM",
+					"Marketing",
+					"Management",
+					"Sales Head",
+					"Estimation Team",
+				],
+			]
+		],
+	},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
+	{"dt": "Property Setter", "filters": [["doc_type", "=", "CRM Lead"]]},
+	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
+	{"dt": "Assignment Rule", "filters": [["document_type", "=", "CRM Lead"]]},
+	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
+	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
+	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
+	{"dt": "CRM Sub Source"},
+	{"dt": "CRM Lost Reason"},
+]
+
 # Scheduled Tasks
 # ---------------
 
@@ -262,6 +302,8 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 # auth_hooks = [
 # "crm.auth.validate"
 # ]
+
+before_migrate = ["crm.install.before_migrate"]
 
 after_migrate = [
 	"crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",

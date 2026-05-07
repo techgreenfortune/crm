@@ -21,7 +21,8 @@
     <div
       v-else-if="
         activities?.length ||
-        (whatsappMessages.data?.length && title == 'WhatsApp')
+        (whatsappMessages.data?.length && title == 'WhatsApp') ||
+        (aisensyMessages.data?.length && title == 'AISensy')
       "
       class="activities"
     >
@@ -32,6 +33,9 @@
           class="px-3 sm:px-10"
           :messages="whatsappMessages.data"
         />
+      </div>
+      <div v-else-if="title == 'AISensy'">
+        <AISensyArea :messages="aisensyMessages.data || []" />
       </div>
       <div
         v-else-if="title == 'Notes'"
@@ -68,6 +72,12 @@
       </div>
       <div v-else-if="title == 'Tasks'" class="px-3 pb-3 sm:px-10 sm:pb-5">
         <TaskArea :modalRef="modalRef" :tasks="activities" :doctype="doctype" />
+      </div>
+      <div v-else-if="title == 'Quotes'" class="px-3 pb-3 sm:px-10 sm:pb-5">
+        <QuoteArea
+          :quotes="activities"
+          :onReload="() => quoteRequests.reload()"
+        />
       </div>
       <div v-else-if="title == 'Calls'" class="activity">
         <div v-for="(call, i) in activities" :key="call.name">
@@ -414,6 +424,12 @@
       :doctype="doctype"
       @scroll="scroll"
     />
+    <AISensyBox
+      v-if="title == 'AISensy'"
+      v-model="doc"
+      v-model:aisensyMessages="aisensyMessages"
+      :doctype="doctype"
+    />
   </div>
   <WhatsappTemplateSelectorModal
     v-if="whatsappEnabled"
@@ -446,6 +462,7 @@ import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
 import TaskArea from '@/components/Activities/TaskArea.vue'
+import QuoteArea from '@/components/Activities/QuoteArea.vue'
 import AttachmentArea from '@/components/Activities/AttachmentArea.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -456,9 +473,12 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
+import AISensyArea from '@/components/Activities/AISensyArea.vue'
+import AISensyBox from '@/components/Activities/AISensyBox.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
@@ -478,7 +498,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import { timeAgo, formatDate, startCase } from '@/utils'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
-import { whatsappEnabled } from '@/composables/settings'
+import { whatsappEnabled, aisensyEnabled } from '@/composables/settings'
 import { useDocument } from '@/data/document'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Button, Tooltip, createResource, toast } from 'frappe-ui'
@@ -540,6 +560,29 @@ const all_activities = createResource({
   onSuccess: () => nextTick(() => scroll()),
 })
 
+const quoteRequests = createResource({
+  url: 'frappe.client.get_list',
+  cache: ['quote_requests', props.docname],
+  params: {
+    doctype: 'CRM Quote Request',
+    filters: { lead: props.docname },
+    fields: [
+      'name',
+      'status',
+      'quote_value',
+      'quote_margin',
+      'requested_on',
+      'requested_by',
+      'quote_file',
+      'modified',
+    ],
+    order_by: 'modified desc',
+    limit: 50,
+  },
+  auto: props.doctype === 'CRM Lead',
+  onSuccess: () => nextTick(() => scroll()),
+})
+
 const showWhatsappTemplates = ref(false)
 
 const whatsappMessages = createResource({
@@ -551,6 +594,17 @@ const whatsappMessages = createResource({
   },
   auto: whatsappEnabled.value,
   transform: (data) => sortByCreation(data),
+  onSuccess: () => nextTick(() => scroll()),
+})
+
+const aisensyMessages = createResource({
+  url: 'crm.integrations.aisensy.api.get_messages',
+  cache: ['aisensy_messages', props.docname],
+  params: {
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+  },
+  auto: aisensyEnabled.value,
   onSuccess: () => nextTick(() => scroll()),
 })
 
@@ -625,6 +679,8 @@ const activities = computed(() => {
   } else if (title.value == 'Tasks') {
     if (!all_activities.data?.tasks) return []
     return sortByModified(all_activities.data.tasks)
+  } else if (title.value == 'Quotes') {
+    return quoteRequests.data || []
   } else if (title.value == 'Notes') {
     if (!all_activities.data?.notes) return []
     return sortByModified(all_activities.data.notes)
@@ -704,6 +760,8 @@ const emptyText = computed(() => {
     text = 'No Notes Found'
   } else if (title.value == 'Tasks') {
     text = 'No Tasks Found'
+  } else if (title.value == 'Quotes') {
+    text = 'No Quote Requests Found'
   } else if (title.value == 'Attachments') {
     text = 'No Attachments Found'
   } else if (title.value == 'WhatsApp') {
@@ -729,6 +787,9 @@ const emptyTextDescription = computed(() => {
   } else if (title.value == 'Tasks') {
     description =
       'Nothing to do at the moment. Start organizing by adding one here.'
+  } else if (title.value == 'Quotes') {
+    description =
+      'No quote requests yet. They will appear here when the lead reaches C2-Q.'
   } else if (title.value == 'Attachments') {
     description =
       'No files have been attached yet. Upload files to see them here.'
@@ -752,6 +813,8 @@ const emptyTextIcon = computed(() => {
     icon = NoteIcon
   } else if (title.value == 'Tasks') {
     icon = TaskIcon
+  } else if (title.value == 'Quotes') {
+    icon = DocumentIcon
   } else if (title.value == 'Attachments') {
     icon = AttachmentIcon
   } else if (title.value == 'WhatsApp') {

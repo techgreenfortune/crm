@@ -250,6 +250,7 @@ import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
@@ -272,7 +273,11 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
-import { whatsappEnabled, callEnabled } from '@/composables/settings'
+import {
+  whatsappEnabled,
+  callEnabled,
+  aisensyEnabled,
+} from '@/composables/settings'
 import {
   createResource,
   FileUploader,
@@ -437,6 +442,11 @@ const tabs = computed(() => {
       icon: TaskIcon,
     },
     {
+      name: 'Quotes',
+      label: __('Quotes'),
+      icon: DocumentIcon,
+    },
+    {
       name: 'Notes',
       label: __('Notes'),
       icon: NoteIcon,
@@ -451,6 +461,12 @@ const tabs = computed(() => {
       label: __('WhatsApp'),
       icon: WhatsAppIcon,
       condition: () => whatsappEnabled.value,
+    },
+    {
+      name: 'AISensy',
+      label: __('WhatsApp (AISensy)'),
+      icon: WhatsAppIcon,
+      condition: () => aisensyEnabled.value,
     },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))

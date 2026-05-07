@@ -40,12 +40,10 @@ class CRMInvitation(Document):
 			print(f"Invite link for {self.email}: {invite_link}")  # nosemgrep
 
 		title = "Frappe CRM"
-		template = "crm_invitation"
-
 		frappe.sendmail(
 			recipients=self.email,
 			subject=f"You have been invited to join {title}",
-			template=template,
+			template="crm_invitation",
 			args={"title": title, "invite_link": invite_link},
 			now=True,
 		)

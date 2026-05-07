@@ -3,7 +3,11 @@
     <div v-for="(task, i) in tasks" :key="task.name">
       <div
         class="activity flex cursor-pointer gap-6 rounded p-2.5 duration-300 ease-in-out hover:bg-surface-gray-1"
-        @click="modalRef.showTask(task)"
+        @click="
+          task.task_type === 'upload_quote'
+            ? modalRef.showQuoteRequest(task.reference_docname)
+            : modalRef.showTask(task)
+        "
       >
         <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
           <div class="font-medium text-ink-gray-9 truncate">
@@ -37,7 +41,15 @@
           </div>
         </div>
         <div class="flex items-center gap-1">
+          <Button
+            v-if="task.task_type === 'upload_quote'"
+            :label="__('Upload Quote')"
+            variant="subtle"
+            size="sm"
+            @click.stop="modalRef.showQuoteRequest(task.reference_docname)"
+          />
           <Dropdown
+            v-if="task.can_update !== false"
             :options="taskStatusOptions(modalRef.updateTaskStatus, task)"
           >
             <Button
@@ -49,7 +61,9 @@
               <TaskStatusIcon :status="task.status" />
             </Button>
           </Dropdown>
+          <TaskStatusIcon v-else :status="task.status" class="mx-1" />
           <Dropdown
+            v-if="task.can_delete !== false"
             :options="[
               {
                 label: __('Delete'),
@@ -99,7 +113,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import { formatDate, taskStatusOptions } from '@/utils'
 import { usersStore } from '@/stores/users'
 import { globalStore } from '@/stores/global'
-import { Tooltip, Dropdown } from 'frappe-ui'
+import { Tooltip, Dropdown, Button } from 'frappe-ui'
 
 defineProps({
   tasks: { type: Array, default: () => [] },
