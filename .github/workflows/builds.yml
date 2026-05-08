@@ -111,15 +111,18 @@ jobs:
           case "${{ github.ref_name }}" in
             "custom/staging")
               echo "EC2_HOST=${{ secrets.STAGING_EC2_HOST }}" >> $GITHUB_ENV
-              echo "IMAGE_TAG=staging" >> $GITHUB_ENV
+              echo "EC2_SSH_KEY=${{ secrets.STAGING_EC2_SSH_KEY }}" >> $GITHUB_ENV
+              echo "COMPOSE_PROJECT=crm-staging-frappe" >> $GITHUB_ENV
               ;;
             "custom/uat")
               echo "EC2_HOST=${{ secrets.UAT_EC2_HOST }}" >> $GITHUB_ENV
-              echo "IMAGE_TAG=uat" >> $GITHUB_ENV
+              echo "EC2_SSH_KEY=${{ secrets.UAT_EC2_SSH_KEY }}" >> $GITHUB_ENV
+              echo "COMPOSE_PROJECT=crm-uat-frappe" >> $GITHUB_ENV
               ;;
             "custom/production")
               echo "EC2_HOST=${{ secrets.PROD_EC2_HOST }}" >> $GITHUB_ENV
-              echo "IMAGE_TAG=stable" >> $GITHUB_ENV
+              echo "EC2_SSH_KEY=${{ secrets.PROD_EC2_SSH_KEY }}" >> $GITHUB_ENV
+              echo "COMPOSE_PROJECT=crm-prod-frappe" >> $GITHUB_ENV
               ;;
           esac
 
@@ -128,9 +131,10 @@ jobs:
         with:
           host: ${{ env.EC2_HOST }}
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ env.EC2_SSH_KEY }}
           script: |
-            cd ~/crm_prod_setup
-            docker compose pull
-            docker compose up -d --remove-orphans
+            PROJECT="${{ env.COMPOSE_PROJECT }}"
+            COMPOSE_FILE=~/${PROJECT}-compose.yml
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" pull
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --remove-orphans
             docker image prune -f
