@@ -129,11 +129,12 @@
             @click="toggleCallPopup"
           />
           <Button
-            v-if="callStatus == 'Call ended' || callStatus == 'No answer'"
             class="bg-surface-gray-7 text-ink-white hover:bg-surface-gray-6 shrink-0"
             icon="x"
             size="md"
-            @click="closeCallPopup"
+            :disabled="!canClose"
+            :tooltip="closeTooltip"
+            @click="attemptCloseCallPopup"
           />
         </div>
       </div>
@@ -174,6 +175,25 @@
           <div v-else class="text-lg font-medium leading-5">
             {{ contact.mobile_no }}
           </div>
+        </div>
+        <div v-if="dispositionRequired" class="mt-3">
+          <div class="text-sm text-ink-gray-5 mb-1">
+            {{ __('Disposition') }}
+            <span class="text-red-500">*</span>
+          </div>
+          <div
+            v-if="dispositionLocked"
+            class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base"
+          >
+            {{ disposition || __('No Answer / Not Reachable') }}
+          </div>
+          <Dropdown v-else :options="dispositionDropdownOptions">
+            <Button
+              :label="disposition || __('Select a disposition...')"
+              icon-right="chevron-down"
+              class="!w-full !justify-between bg-surface-gray-6 text-ink-white hover:bg-surface-gray-5"
+            />
+          </Dropdown>
         </div>
       </div>
       <div class="footer flex justify-between gap-2">
@@ -238,8 +258,16 @@ import CountUpTimer from '@/components/CountUpTimer.vue'
 import { globalStore } from '@/stores/global'
 import { sessionStore } from '@/stores/session'
 import { useDraggable, useWindowSize } from '@vueuse/core'
-import { TextEditor, Avatar, Button, createResource, toast } from 'frappe-ui'
-import { ref, onBeforeUnmount, watch, nextTick } from 'vue'
+import {
+  TextEditor,
+  Avatar,
+  Button,
+  Dropdown,
+  call,
+  createResource,
+  toast,
+} from 'frappe-ui'
+import { computed, ref, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const { $socket } = globalStore()
@@ -369,6 +397,154 @@ function createUpdateTask() {
 
 watch([note, task], () => (dirty.value = true), { deep: true })
 
+const dispositions = ref([])
+const disposition = ref(null)
+const isSavingDisposition = ref(false)
+
+const dispositionsResource = createResource({
+  url: 'frappe.client.get_list',
+  params: {
+    doctype: 'CRM Call Disposition',
+    filters: { enabled: 1 },
+    fields: ['name', 'label', 'color', 'position', 'next_status'],
+    order_by: 'position asc',
+    limit_page_length: 50,
+  },
+  auto: false,
+  onSuccess(data) {
+    dispositions.value = data || []
+  },
+})
+
+const dispositionLocked = computed(() => callStatus.value === 'No answer')
+
+const dispositionDropdownOptions = computed(() =>
+  dispositions.value
+    .filter((d) => {
+      // 'No Answer / Not Reachable' contradicts a Call ended (completed) call.
+      if (
+        callStatus.value === 'Call ended' &&
+        d.name === 'No Answer / Not Reachable'
+      )
+        return false
+      return true
+    })
+    .map((d) => ({
+      label: d.label || d.name,
+      onClick: () => (disposition.value = d.name),
+    })),
+)
+
+const callTerminated = computed(
+  () => callStatus.value === 'Call ended' || callStatus.value === 'No answer',
+)
+
+const callActive = computed(() =>
+  ['Calling...', 'Ringing...', 'In progress', 'Incoming call'].includes(
+    callStatus.value,
+  ),
+)
+
+const POPUP_STATE_KEY = 'exotel_call_popup_state'
+
+function persistPopupState() {
+  if (!callData.value?.CallSid) {
+    try {
+      sessionStorage.removeItem(POPUP_STATE_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+    return
+  }
+  try {
+    sessionStorage.setItem(
+      POPUP_STATE_KEY,
+      JSON.stringify({
+        callData: callData.value,
+        callStatus: callStatus.value,
+        phoneNumber: phoneNumber.value,
+        showCallPopup: showCallPopup.value,
+        showSmallCallPopup: showSmallCallPopup.value,
+        disposition: disposition.value,
+      }),
+    )
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function restorePopupState() {
+  try {
+    const raw = sessionStorage.getItem(POPUP_STATE_KEY)
+    if (!raw) return
+    const s = JSON.parse(raw)
+    if (!s?.callData?.CallSid) return
+    callData.value = s.callData
+    callStatus.value = s.callStatus || ''
+    phoneNumber.value = s.phoneNumber || ''
+    showCallPopup.value = !!s.showCallPopup
+    showSmallCallPopup.value = !!s.showSmallCallPopup
+    disposition.value = s.disposition || null
+  } catch {
+    /* parse error — ignore */
+  }
+}
+
+function clearPopupState() {
+  try {
+    sessionStorage.removeItem(POPUP_STATE_KEY)
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+watch(
+  [
+    callData,
+    callStatus,
+    phoneNumber,
+    showCallPopup,
+    showSmallCallPopup,
+    disposition,
+  ],
+  persistPopupState,
+  { deep: true },
+)
+
+const dispositionRequired = callTerminated
+
+const canClose = computed(() => {
+  if (isSavingDisposition.value) return false
+  if (callActive.value) return false
+  if (callTerminated.value) return !!disposition.value
+  return true
+})
+
+const closeTooltip = computed(() => {
+  if (isSavingDisposition.value) return __('Saving disposition...')
+  if (callActive.value) return __('Wait for the call to end')
+  if (callTerminated.value && !disposition.value)
+    return __('Select a disposition to close')
+  return __('Close')
+})
+
+const STATUS_DEFAULT_DISPOSITION = {
+  'No answer': 'No Answer / Not Reachable',
+  'Call ended': 'Requested Callback',
+}
+
+watch(
+  [callStatus, dispositions],
+  () => {
+    if (disposition.value || dispositions.value.length === 0) return
+    const target = STATUS_DEFAULT_DISPOSITION[callStatus.value]
+    if (!target) return
+    const preselect = dispositions.value.find((d) => d.name === target)
+    if (preselect) disposition.value = preselect.name
+  },
+  { immediate: true },
+)
+
 function updateWindowHeight(condition) {
   let callPopup = callPopupHeader.value.parentElement
   let top = parseInt(callPopup.style.top)
@@ -383,12 +559,18 @@ function updateWindowHeight(condition) {
   callPopup.style.top = updatedTop + 'px'
 }
 
-function makeOutgoingCall(number) {
+function makeOutgoingCall(number, context) {
   phoneNumber.value = number
+
+  const params = { to_number: phoneNumber.value }
+  if (context?.reference_doctype && context?.reference_docname) {
+    params.reference_doctype = context.reference_doctype
+    params.reference_docname = context.reference_docname
+  }
 
   createResource({
     url: 'crm.integrations.exotel.handler.make_a_call',
-    params: { to_number: phoneNumber.value },
+    params,
     auto: true,
     onSuccess(callDetails) {
       callData.value = callDetails
@@ -405,6 +587,8 @@ function makeOutgoingCall(number) {
 }
 
 function setup() {
+  dispositionsResource.fetch()
+  restorePopupState()
   $socket.on('exotel_call', (data) => {
     callData.value = data
     console.log(data)
@@ -460,6 +644,37 @@ function closeCallPopup() {
     due_date: '',
     status: 'Backlog',
     priority: 'Low',
+  }
+  disposition.value = null
+  callData.value = null
+  callStatus.value = ''
+  clearPopupState()
+}
+
+async function attemptCloseCallPopup() {
+  if (isSavingDisposition.value) return
+  if (!dispositionRequired.value) {
+    closeCallPopup()
+    return
+  }
+  if (!disposition.value) return
+  if (!callData.value?.CallSid) {
+    closeCallPopup()
+    return
+  }
+  isSavingDisposition.value = true
+  try {
+    await call('crm.integrations.api.add_disposition_to_call_log', {
+      call_sid: callData.value.CallSid,
+      disposition: disposition.value,
+    })
+    closeCallPopup()
+  } catch (err) {
+    toast.error(
+      err?.messages?.[0] || err?.message || __('Failed to save disposition'),
+    )
+  } finally {
+    isSavingDisposition.value = false
   }
 }
 
