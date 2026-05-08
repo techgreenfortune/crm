@@ -83,38 +83,10 @@ def add_note_to_call_log(call_sid: str, note: dict):
 
 @frappe.whitelist()
 def add_disposition_to_call_log(call_sid: str, disposition: str):
-	"""Persist a disposition on the call log.
-
-	Ownership: only the agent who handled the call (caller for outbound,
-	receiver for inbound) can set the disposition. Sales Manager / System
-	Manager / Administrator can override.
-
-	Policy: a call that ended in "No Answer" can only carry the
-	"No Answer / Not Reachable" disposition. The agent has no discretion to
-	mark it Interested / Not Interested / etc — multiple no-answers escalate
-	to Cold via the retry engine (PRD §5.2), not via this endpoint.
-
-	The disposition → C-stage transition is handled by the
-	`CRM Call Log — After Save — Disposition Stage Move` Server Script,
-	which fires when the saved disposition value changes.
-	"""
+	"""Persist a disposition on a call log. Ownership and No-Answer validation
+	live in the `CRM Call Log — Before Save — Disposition Validation` server
+	script (see fixture)."""
 	call_log = frappe.get_doc("CRM Call Log", call_sid)
-
-	user = frappe.session.user
-	user_roles = set(frappe.get_roles(user))
-	is_privileged = bool(user_roles & {"Sales Manager", "System Manager", "Administrator"})
-	if not is_privileged and user not in (call_log.caller, call_log.receiver):
-		frappe.throw(
-			_("You can only set the disposition on calls you handled."),
-			title=_("Not Allowed"),
-			exc=frappe.PermissionError,
-		)
-
-	if call_log.status == "No Answer" and disposition != "No Answer / Not Reachable":
-		frappe.throw(
-			_("A No Answer call can only be tagged 'No Answer / Not Reachable'."),
-			title=_("Disposition Not Allowed"),
-		)
 	call_log.disposition = disposition
 	call_log.save(ignore_permissions=True)
 	return {"name": call_sid, "disposition": disposition}

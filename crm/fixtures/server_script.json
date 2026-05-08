@@ -188,5 +188,24 @@
   "reference_doctype": "CRM Call Log",
   "script": "old_doc = doc.get_doc_before_save()\nold_disposition = old_doc.disposition if old_doc else None\nnew_disposition = doc.disposition\n\nif new_disposition and new_disposition != old_disposition:\n    next_status = frappe.db.get_value(\"CRM Call Disposition\", new_disposition, \"next_status\")\n    if next_status:\n        lead_name = None\n        if doc.reference_doctype == \"CRM Lead\" and doc.reference_docname:\n            lead_name = doc.reference_docname\n        else:\n            for row in (doc.links or []):\n                if row.link_doctype == \"CRM Lead\" and row.link_name:\n                    lead_name = row.link_name\n                    break\n        if lead_name:\n            current_status = frappe.db.get_value(\"CRM Lead\", lead_name, \"status\")\n            if current_status in (\"C0\", \"Cold\", \"Reactivated\") and current_status != next_status:\n                try:\n                    lead = frappe.get_doc(\"CRM Lead\", lead_name)\n                    lead.status = next_status\n                    lead.save(ignore_permissions=True)\n                except Exception:\n                    # Disposition still recorded; lead validation (e.g. lost_reason mandatory on C6,\n                    # or transition not in ALLOWED_TRANSITIONS for the source stage) blocked the move.\n                    # Static message — frappe.get_traceback() would break RestrictedPython.\n                    frappe.log_error(\n                        message=f\"Lead {lead_name} could not auto-move {current_status} -> {next_status} for disposition {new_disposition!r}. Lead validation rejected the change (e.g. lost_reason mandatory on C6, or transition not allowed from this stage). Agent must finalise the stage manually with the required fields.\",\n                        title=\"Disposition stage move skipped — lead validation failed\",\n                    )\n",
   "script_type": "DocType Event"
+ },
+ {
+  "allow_guest": 0,
+  "api_method": null,
+  "cron_format": null,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Server Script",
+  "doctype_event": "Before Save",
+  "enable_rate_limit": 0,
+  "event_frequency": "All",
+  "modified": "2026-05-08 14:00:00",
+  "module": "FCRM",
+  "name": "CRM Call Log — Before Save — Disposition Validation",
+  "rate_limit_count": 0,
+  "rate_limit_seconds": 0,
+  "reference_doctype": "CRM Call Log",
+  "script": "old_doc = doc.get_doc_before_save()\nold_disposition = old_doc.disposition if old_doc else None\nnew_disposition = doc.disposition\n\n# Only validate when the disposition value is actually changing.\n# (No-op saves and inserts without a disposition are skipped.)\nif new_disposition and new_disposition != old_disposition:\n    user = frappe.session.user\n    user_roles = {r[\"role\"] for r in frappe.db.get_all(\"Has Role\", filters={\"parent\": user, \"parenttype\": \"User\"}, fields=[\"role\"])}\n    is_privileged = bool(user_roles & {\"Sales Manager\", \"System Manager\", \"Administrator\"})\n\n    if not is_privileged and user not in (doc.caller, doc.receiver):\n        frappe.throw(\n            _(\"You can only set the disposition on calls you handled.\"),\n            exc=frappe.PermissionError,\n            title=_(\"Not Allowed\"),\n        )\n\n    # Multiple no-answers escalate to Cold via the retry engine (PRD §5.2);\n    # the agent has no discretion to relabel a No Answer call.\n    if doc.status == \"No Answer\" and new_disposition != \"No Answer / Not Reachable\":\n        frappe.throw(\n            _(\"A No Answer call can only be tagged 'No Answer / Not Reachable'.\"),\n            title=_(\"Disposition Not Allowed\"),\n        )\n",
+  "script_type": "DocType Event"
  }
 ]
