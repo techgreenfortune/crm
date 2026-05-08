@@ -111,18 +111,30 @@ jobs:
           case "${{ github.ref_name }}" in
             "custom/staging")
               echo "EC2_HOST=${{ secrets.STAGING_EC2_HOST }}" >> $GITHUB_ENV
-              echo "EC2_SSH_KEY=${{ secrets.STAGING_EC2_SSH_KEY }}" >> $GITHUB_ENV
               echo "COMPOSE_PROJECT=crm-staging-frappe" >> $GITHUB_ENV
+              {
+                echo "EC2_SSH_KEY<<SSHEOF"
+                echo "${{ secrets.STAGING_EC2_SSH_KEY }}"
+                echo "SSHEOF"
+              } >> $GITHUB_ENV
               ;;
             "custom/uat")
               echo "EC2_HOST=${{ secrets.UAT_EC2_HOST }}" >> $GITHUB_ENV
-              echo "EC2_SSH_KEY=${{ secrets.UAT_EC2_SSH_KEY }}" >> $GITHUB_ENV
               echo "COMPOSE_PROJECT=crm-uat-frappe" >> $GITHUB_ENV
+              {
+                echo "EC2_SSH_KEY<<SSHEOF"
+                echo "${{ secrets.UAT_EC2_SSH_KEY }}"
+                echo "SSHEOF"
+              } >> $GITHUB_ENV
               ;;
             "custom/production")
               echo "EC2_HOST=${{ secrets.PROD_EC2_HOST }}" >> $GITHUB_ENV
-              echo "EC2_SSH_KEY=${{ secrets.PROD_EC2_SSH_KEY }}" >> $GITHUB_ENV
               echo "COMPOSE_PROJECT=crm-prod-frappe" >> $GITHUB_ENV
+              {
+                echo "EC2_SSH_KEY<<SSHEOF"
+                echo "${{ secrets.PROD_EC2_SSH_KEY }}"
+                echo "SSHEOF"
+              } >> $GITHUB_ENV
               ;;
           esac
 
