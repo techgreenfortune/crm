@@ -115,6 +115,10 @@ def _trail_parts(message: str | None, payload: dict) -> list[str]:
 	bits: list[str] = []
 	if message:
 		bits.append(f"Message: {message}")
+	if payload.get("city"):
+		bits.append(f"City: {payload['city']}")
+	if payload.get("project_type"):
+		bits.append(f"Project Type: {payload['project_type']}")
 	utm = ", ".join(
 		f"{k}={payload[k]}"
 		for k in ("utm_source", "utm_medium", "utm_campaign", "utm_content")
@@ -137,16 +141,19 @@ def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
 	return clean, None
 
 
-@rate_limit(limit=60, seconds=60)  # nosemgrep -- public lead-capture endpoint for website forms; protected by rate_limit and input validation
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=60, seconds=60)  # nosemgrep -- public lead-capture endpoint for website forms; protected by rate_limit and input validation
 def create_lead(
-	name: str,
-	mobile: str,
+	name: str | None = None,
+	mobile: str | None = None,
 	email: str | None = None,
 	pincode: str | None = None,
+	city: str | None = None,
+	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
 	lead_type: str | None = None,
+	project_type: str | None = None,
 	utm_source: str | None = None,
 	utm_medium: str | None = None,
 	utm_campaign: str | None = None,
@@ -155,6 +162,10 @@ def create_lead(
 ) -> dict:
 	"""Create or re-attribute a CRM Lead from an indiframe.com form submission.
 
+	The website (indiframe-web) is responsible for sending canonical snake_case
+	keys and properly-cased Select values (`Homeowner` not `homeowner`, etc.).
+	This endpoint does not perform alias / case normalization.
+
 	Returns one of:
 	  ``{"status": "created",      "name": <lead-name>, "stage": "C0"}``
 	  ``{"status": "existing",     "name": <lead-name>, "stage": <stage>}``
@@ -162,15 +173,21 @@ def create_lead(
 	"""
 	_verify_token()
 
-	if not name or not name.strip():
+	# Narrow required fields to non-empty `str` for the type-checker and so the
+	# helpers below can pass them through without re-checking for None.
+	name = (name or "").strip()
+	mobile = (mobile or "").strip()
+	if not name:
 		frappe.throw(_("'name' is required."), exc=frappe.ValidationError)
-	if not mobile or not mobile.strip():
+	if not mobile:
 		frappe.throw(_("'mobile' is required."), exc=frappe.ValidationError)
 
 	e164, national_number = _normalize_phone(mobile)
 	clean_email, email_note = _clean_email(email)
 	payload = {
 		"message": message,
+		"city": city,
+		"project_type": project_type,
 		"utm_source": utm_source,
 		"utm_medium": utm_medium,
 		"utm_campaign": utm_campaign,
@@ -208,6 +225,7 @@ def create_lead(
 				"last_name": last_name,
 				"mobile_no": e164,
 				"email": clean_email,
+				"organization": (company or "").strip() or None,
 				"status": DEFAULT_STATUS,
 				"source": WEBSITE_SOURCE,
 				"custom_sub_source": WEBSITE_SUB_SOURCE,
