@@ -1,4 +1,7 @@
 import './index.css'
+// MUST be first import — registers frappeRequest as the resourceFetcher
+// before any module triggers createResource at module-eval time.
+import './setup'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -18,7 +21,6 @@ import {
   Dialog,
   Alert,
   Badge,
-  setConfig,
   frappeRequest,
   FeatherIcon,
 } from 'frappe-ui'
@@ -42,7 +44,6 @@ let pinia = createPinia()
 
 let app = createApp(App)
 
-setConfig('resourceFetcher', frappeRequest)
 app.use(FrappeUI)
 app.use(pinia)
 app.use(router)

@@ -82,6 +82,17 @@ def add_note_to_call_log(call_sid: str, note: dict):
 
 
 @frappe.whitelist()
+def add_disposition_to_call_log(call_sid: str, disposition: str):
+	"""Persist a disposition on a call log. Ownership and No-Answer validation
+	live in the `CRM Call Log — Before Save — Disposition Validation` server
+	script (see fixture)."""
+	call_log = frappe.get_doc("CRM Call Log", call_sid)
+	call_log.disposition = disposition
+	call_log.save(ignore_permissions=True)
+	return {"name": call_sid, "disposition": disposition}
+
+
+@frappe.whitelist()
 def add_task_to_call_log(call_sid: str, task: dict):
 	"""Add/Update task to call log based on call sid."""
 	_task = None
@@ -116,9 +127,6 @@ def add_task_to_call_log(call_sid: str, task: dict):
 	call_log.save(ignore_permissions=True)
 
 	return _task
-
-
-frappe.whitelist()
 
 
 def get_contact_lead_or_deal_from_number(number):

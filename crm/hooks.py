@@ -216,7 +216,9 @@ fixtures = [
 	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
+	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
+	{"dt": "CRM Call Disposition"},
 	{"dt": "CRM Lost Reason"},
 ]
 
