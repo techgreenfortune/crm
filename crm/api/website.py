@@ -141,10 +141,10 @@ def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
 	return clean, None
 
 
-@rate_limit(
+@rate_limit(  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method -- public lead-capture endpoint; protected by rate_limit and input validation
 	limit=60, seconds=60
 )
-@frappe.whitelist(allow_guest=True, methods=["POST"])  # nosemgrep -- public lead-capture endpoint for website forms; protected by rate_limit and input validation
+@frappe.whitelist(allow_guest=True, methods=["POST"])
 def create_lead(
 	name: str | None = None,
 	mobile: str | None = None,
