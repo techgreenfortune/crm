@@ -3,6 +3,17 @@
   "color": "gray",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
+  "lead_status": "New Lead",
+  "modified": "2026-05-06 14:05:51.257407",
+  "name": "New Lead",
+  "position": 1,
+  "stage_label": null,
+  "type": "Open"
+ },
+ {
+  "color": "gray",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
   "lead_status": "C0",
   "modified": "2026-05-03 23:52:35.865261",
   "name": "C0",

@@ -311,6 +311,14 @@ const detailFields = computed(() => {
     },
     {
       icon: h(FeatherIcon, {
+        name: 'tag',
+        class: 'h-4 w-4',
+      }),
+      name: 'disposition',
+      value: data.disposition,
+    },
+    {
+      icon: h(FeatherIcon, {
         name: 'play-circle',
         class: 'h-4 w-4 mt-2',
       }),

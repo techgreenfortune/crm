@@ -1,8 +1,17 @@
 import frappe
 
 
+@frappe.whitelist()
 def send_retry_whatsapp(lead_name: str, day: int) -> None:
 	"""Send AiSensy follow-up message. Called via frappe.enqueue from Scheduler Event Server Script."""
+
+	# Re-check: small window between scheduler enqueue and worker pickup
+	current_status = frappe.db.get_value("CRM Lead", lead_name, "status")
+	if current_status not in ("C0", "Cold"):
+		frappe.logger().info(
+			f"[RetryEngine] Lead {lead_name} moved out of C0/Cold — skipping Day {day} WhatsApp"
+		)
+		return
 
 	from crm.integrations.aisensy.aisensy_handler import (
 		get_aisensy_settings,
