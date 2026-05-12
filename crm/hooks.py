@@ -211,7 +211,7 @@ fixtures = [
 	},
 	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
 	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
-	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
+	{"dt": "Notification", "filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]]},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
 	{"dt": "CRM Lead Source"},
