@@ -7,7 +7,7 @@
  "field_order": [
   "enabled",
   "api_key",
-  "project_id",
+  "default_user_name",
   "retry_followup_template",
   "templates"
  ],
@@ -27,10 +27,10 @@
   },
   {
    "depends_on": "enabled",
-   "fieldname": "project_id",
+   "fieldname": "default_user_name",
    "fieldtype": "Data",
-   "label": "Project ID",
-   "mandatory_depends_on": "eval: doc.enabled"
+   "label": "Default User Name",
+   "description": "Fallback value sent as AiSensy's `userName` payload field (the recipient's display name shown in the AiSensy dashboard chat history). Used only when the caller doesn't pass a recipient name explicitly. The retry engine passes the lead's real `lead_name`, so in normal flow this fallback is never used. Leaving blank is safe."
   },
   {
    "depends_on": "enabled",

@@ -218,8 +218,8 @@ fixtures = [
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
-	{"dt": "CRM Call Disposition"},
 	{"dt": "CRM Lost Reason"},
+	{"dt": "CRM Call Disposition"},
 ]
 
 # Scheduled Tasks

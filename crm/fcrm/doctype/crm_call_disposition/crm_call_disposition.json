@@ -9,6 +9,7 @@
   "disposition_name",
   "label",
   "next_status",
+  "default_lost_reason",
   "column_break_main",
   "color",
   "position",
@@ -36,6 +37,13 @@
    "in_list_view": 1,
    "label": "Next Lead Status",
    "options": "CRM Lead Status"
+  },
+  {
+   "description": "Auto-applied as the lead's lost_reason when this disposition triggers a move to a type=Lost status (C6 / Archived). Bypasses the partial-state where validate_lost_reason rejects the auto-move. Do NOT set to 'Other' — that reason additionally requires lost_notes, which the script does not populate, and the auto-move will fail.",
+   "fieldname": "default_lost_reason",
+   "fieldtype": "Link",
+   "label": "Default Lost Reason",
+   "options": "CRM Lost Reason"
   },
   {
    "fieldname": "column_break_main",

@@ -1,6 +1,6 @@
 [
  {
-  "assign_condition": "doc.status == \"C7\" and not doc._assign",
+  "assign_condition": "status == \"C7\"",
   "assign_condition_json": null,
   "assignment_days": [
    {
@@ -48,7 +48,7 @@
   ],
   "close_condition": null,
   "description": "Assign C7 leads to B2F Team members",
-  "disabled": 0,
+  "disabled": 1,
   "docstatus": 0,
   "doctype": "Assignment Rule",
   "document_type": "CRM Lead",

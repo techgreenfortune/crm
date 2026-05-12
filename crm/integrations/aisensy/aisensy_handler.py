@@ -18,10 +18,11 @@ def send_template_message(
 	variables: list,
 	reference_doctype: str = "",
 	reference_name: str = "",
+	recipient_name: str | None = None,
 ) -> dict:
 	settings = get_aisensy_settings()
 	api_key = settings.get_password("api_key")
-	project_id = settings.project_id
+	user_name = recipient_name or settings.default_user_name or ""
 
 	phone = "".join(c for c in to if c.isdigit())
 	if not phone.startswith("91") and len(phone) == 10:
@@ -31,7 +32,7 @@ def send_template_message(
 		"apiKey": api_key,
 		"campaignName": template_name,
 		"destination": phone,
-		"userName": project_id,
+		"userName": user_name,
 		"templateParams": variables,
 		"source": "frappe-crm",
 		"media": {},
@@ -65,7 +66,11 @@ def send_template_message(
 			"template_name": template_name,
 			"variables": str(variables),
 			"status": "Sent",
-			"message_id": result.get("messageId", ""),
+			# AiSensy v2 campaign API returns `submitted_message_id` in the success body
+			# (verified empirically 2026-05-12 against backend.aisensy.com/campaign/t1/api/v2:
+			# `{"success": "true", "submitted_message_id": "<uuid>"}`). Earlier code read
+			# `messageId` which is not a real key — every row got message_id = "".
+			"message_id": result.get("submitted_message_id", ""),
 		}
 	).insert(ignore_permissions=True)
 
