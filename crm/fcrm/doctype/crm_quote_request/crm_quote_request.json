@@ -16,7 +16,9 @@
   "quote_value",
   "quote_margin",
   "section_break_1",
-  "revision_notes"
+  "revision_notes",
+  "activity_log_section",
+  "activity_log"
  ],
  "fields": [
   {
@@ -49,7 +51,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Pending\nQuote Received\nRevision Requested\nAccepted",
+   "options": "Pending\nQuote Received\nRevision Requested",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -93,6 +95,18 @@
    "fieldname": "revision_notes",
    "fieldtype": "Small Text",
    "label": "Revision Notes"
+  },
+  {
+   "fieldname": "activity_log_section",
+   "fieldtype": "Section Break",
+   "label": "Activity Log"
+  },
+  {
+   "fieldname": "activity_log",
+   "fieldtype": "Table",
+   "label": "Activity Log",
+   "options": "CRM Quote Activity Log",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,

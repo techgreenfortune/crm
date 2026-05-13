@@ -48,6 +48,7 @@ def after_install(force=False):
 	create_default_manager_dashboard(force)
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
+	add_default_crm_lead_assignment_rules()
 	frappe.db.commit()
 
 
@@ -287,6 +288,90 @@ def add_property_setter():
 		doc.property = "search_fields"
 		doc.property_type = "Data"
 		doc.value = "email_id"
+		doc.insert()
+
+	add_crm_lead_property_setters()
+
+
+def add_crm_lead_property_setters():
+	"""Seed CRM Lead Customize-Form property setters. Idempotent — admin tweaks via Desk UI are never overwritten."""
+	field_order_value = (
+		'["person_tab", "salutation", "first_name", "last_name", "column_break_opsm", '
+		'"lead_name", "email", "mobile_no", "details", "organization", "website", '
+		'"territory", "industry", "job_title", "source", "custom_indiframe_details_section", '
+		'"lead_owner", "organization_tab", "section_break_uixv", "naming_series", '
+		'"middle_name", "gender", "phone", "column_break_dbsv", "status", "no_of_employees", '
+		'"annual_revenue", "image", "converted", "products_tab", "products", '
+		'"section_break_ggwh", "total", "column_break_uisv", "net_total", "sla_tab", "sla", '
+		'"sla_creation", "column_break_ffnp", "sla_status", "communication_status", '
+		'"response_details_section", "response_by", "column_break_pweh", "first_response_time", '
+		'"first_responded_on", "section_break_xnpz", "rolling_responses", "section_break_kikl", '
+		'"column_break_ygds", "last_response_time", "column_break_tcqb", "last_responded_on", '
+		'"log_tab", "status_change_log", "syncing_tab", "facebook_lead_id", "column_break_ixmu", '
+		'"facebook_form_id", "lost_details_tab", "lost_reason", "lost_notes", "custom_indiframe", '
+		'"custom_indiframe_details", "custom_lead_type", "custom_c2_sub_status", '
+		'"custom_customer_type", "custom_account", "custom_fabricator_routing_reason", '
+		'"custom_final_price", "custom_final_margin", "custom_final_quote", '
+		'"custom_property_section", "custom_pincode", "custom_area", "custom_latitude", '
+		'"custom_longitude", "custom_tentative_area_sqft", "custom_tentative_value", '
+		'"custom_site_photos", "custom_sub_source", "custom_competitors", "custom_utm_section", '
+		'"custom_utm_source", "custom_utm_medium", "custom_utm_campaign", "custom_utm_content"]'
+	)
+
+	setters = [
+		{
+			"name": "CRM Lead-main-field_order",
+			"doctype_or_field": "DocType",
+			"field_name": None,
+			"property": "field_order",
+			"property_type": "Data",
+			"value": field_order_value,
+		},
+		{
+			"name": "CRM Lead-lost_reason-mandatory_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lost_reason",
+			"property": "mandatory_depends_on",
+			"property_type": "Code",
+			"value": 'eval:doc.status == "C6"',
+		},
+		{
+			"name": "CRM Lead-lost_reason-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lost_reason",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			"value": 'eval:doc.status == "C6" && !!doc.lost_reason',
+		},
+		{
+			"name": "CRM Lead-status-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "status",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			"value": 'eval:["C6","C8","Archived"].includes(doc.status)',
+		},
+		{
+			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "custom_sub_source",
+			"property": "mandatory_depends_on",
+			"property_type": "Code",
+			"value": 'eval:["Referral","Channel Partner","Event","Chat","Lead Spotting"].includes(doc.source)',
+		},
+	]
+
+	for setter in setters:
+		if frappe.db.exists("Property Setter", setter["name"]):
+			continue
+		doc = frappe.new_doc("Property Setter")
+		doc.doc_type = "CRM Lead"
+		doc.doctype_or_field = setter["doctype_or_field"]
+		doc.field_name = setter["field_name"]
+		doc.property = setter["property"]
+		doc.property_type = setter["property_type"]
+		doc.value = setter["value"]
+		doc.is_system_generated = 1
 		doc.insert()
 
 
@@ -586,3 +671,37 @@ def create_assignment_rule_custom_fields():
 		)
 
 		frappe.clear_cache(doctype="Assignment Rule")
+
+
+def add_default_crm_lead_assignment_rules():
+	"""Seed B2F-on-C7 and ASM-on-C2 rules. Idempotent — admin's `users` roster and `disabled` flag are never overwritten."""
+	rules = [
+		{
+			"name": "B2F Assignment on C7",
+			"description": "Assign C7 leads to B2F Team members",
+			"assign_condition": 'status == "C7"',
+			"priority": 1,
+		},
+		{
+			"name": "ASM Assignment on C2",
+			"description": "Assign C2 leads to Area Sales Manager — enable in Phase 2",
+			"assign_condition": 'doc.status == "C2" and doc.custom_lead_type',
+			"priority": 2,
+		},
+	]
+	days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+	for rule in rules:
+		if frappe.db.exists("Assignment Rule", rule["name"]):
+			continue
+		doc = frappe.new_doc("Assignment Rule")
+		doc.name = rule["name"]
+		doc.document_type = "CRM Lead"
+		doc.description = rule["description"]
+		doc.assign_condition = rule["assign_condition"]
+		doc.priority = rule["priority"]
+		doc.rule = "Round Robin"
+		doc.disabled = 1
+		for day in days:
+			doc.append("assignment_days", {"day": day})
+		doc.insert()

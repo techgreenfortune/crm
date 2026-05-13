@@ -22,6 +22,12 @@ DEFAULT_STATUS = "C0"
 TOKEN_HEADER = "X-IndiFrame-Token"
 TOKEN_CONF_KEY = "indiframe_website_token"
 
+PROJECTS_CUSTOMER_TYPES = frozenset({"Architect", "Builder", "Contractor"})
+
+
+def _derive_lead_type(customer_type: str | None) -> str:
+	return "Projects" if customer_type in PROJECTS_CUSTOMER_TYPES else "Retail"
+
 
 def _verify_token() -> None:
 	expected_raw = frappe.conf.get(TOKEN_CONF_KEY)
@@ -141,10 +147,9 @@ def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
 	return clean, None
 
 
-@rate_limit(  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method -- public lead-capture endpoint; protected by rate_limit and input validation
-	limit=60, seconds=60
-)
+# nosemgrep -- public lead-capture endpoint; allow_guest=True is intentional, protected by rate_limit and input validation
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=60, seconds=60)
 def create_lead(
 	name: str | None = None,
 	mobile: str | None = None,
@@ -154,7 +159,7 @@ def create_lead(
 	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
-	lead_type: str | None = None,
+	lead_type: str | None = None,  # ignored; custom_lead_type is derived from customer_type
 	project_type: str | None = None,
 	utm_source: str | None = None,
 	utm_medium: str | None = None,
@@ -186,6 +191,23 @@ def create_lead(
 
 	e164, national_number = _normalize_phone(mobile)
 	clean_email, email_note = _clean_email(email)
+
+	# Warn (don't fail) if caller passed `lead_type` and it disagrees with the
+	# value we derive from `customer_type`. The endpoint authoritatively derives
+	# custom_lead_type from customer_type — passing lead_type is a no-op from a
+	# legacy / drifted frontend that should be cleaned up.
+	derived_lead_type = _derive_lead_type(customer_type)
+	if lead_type and lead_type != derived_lead_type:
+		frappe.log_error(
+			title="Website Lead: lead_type override ignored",
+			message=(
+				f"Caller passed lead_type={lead_type!r}, but custom_lead_type is "
+				f"derived as {derived_lead_type!r} from customer_type={customer_type!r}. "
+				f"The passed lead_type value was ignored. Update the website frontend "
+				f"to stop sending lead_type, or align it with the derivation rule."
+			),
+		)
+
 	payload = {
 		"message": message,
 		"city": city,
@@ -233,7 +255,7 @@ def create_lead(
 				"custom_sub_source": WEBSITE_SUB_SOURCE,
 				"custom_pincode": pincode or None,
 				"custom_customer_type": customer_type or None,
-				"custom_lead_type": lead_type or None,
+				"custom_lead_type": derived_lead_type,
 				"custom_utm_source": utm_source or None,
 				"custom_utm_medium": utm_medium or None,
 				"custom_utm_campaign": utm_campaign or None,

@@ -370,7 +370,14 @@ def on_comment_insert(doc: Comment, method: str | None = None):
 	if not (doc.reference_doctype and doc.reference_name):
 		return
 
-	if doc.reference_doctype not in ["CRM Lead", "CRM Deal"] or doc.comment_type != "Comment":
+	if doc.comment_type != "Comment":
+		return
+
+	if doc.reference_doctype == "CRM Quote Request":
+		_handle_quote_request_comment(doc)
+		return
+
+	if doc.reference_doctype not in ["CRM Lead", "CRM Deal"]:
 		return
 
 	if not _should_update_modified(doc):
@@ -378,6 +385,99 @@ def on_comment_insert(doc: Comment, method: str | None = None):
 
 	if doc.reference_doctype and doc.reference_name:
 		frappe.enqueue(update_modified_background, doctype=doc.reference_doctype, docname=doc.reference_name)
+
+
+def _handle_quote_request_comment(doc: Comment):
+	"""On a new Comment against a CRM Quote Request, dispatch the activity-log
+	append + cross-party notification off the Comment after_insert hot path.
+
+	The actual work — role lookup, parent load + child-table append + save, and
+	one Notification Log insert per recipient — lives in
+	`_process_quote_request_comment`, run by a background worker so the comment
+	insert itself stays snappy regardless of Estimation Team size.
+	"""
+	frappe.enqueue(
+		"crm.utils.process_quote_request_comment",
+		queue="short",
+		comment_name=doc.name,
+	)
+
+
+def process_quote_request_comment(comment_name: str):
+	"""Worker target invoked by `_handle_quote_request_comment`. Re-loads the
+	Comment by name so we work against committed data, then performs the
+	activity-log append and recipient notifications.
+
+	**Deliberately NOT @frappe.whitelist()** — exposing this on
+	`POST /api/method/...` would let any authenticated user replay the
+	activity-log append + cross-party notification by hitting the endpoint
+	with an existing comment_name (bounded but real spam vector). The
+	caller path is `Comment.after_insert` → `_handle_quote_request_comment`
+	(regular Python doc-event hook) → `frappe.enqueue(...)`. Regular-Python
+	enqueue doesn't require the target to be whitelisted; only HTTP dispatch
+	and RestrictedPython's safe_exec gate do. Neither applies here.
+	"""
+	comment = frappe.get_doc("Comment", comment_name)
+	if comment.reference_doctype != "CRM Quote Request" or comment.comment_type != "Comment":
+		return
+
+	commenter = comment.owner
+	commenter_roles = {
+		r["role"]
+		for r in frappe.db.get_all(
+			"Has Role",
+			filters={"parent": commenter, "parenttype": "User"},
+			fields=["role"],
+		)
+	}
+
+	is_estimation = "Estimation Team" in commenter_roles
+	event_type = "Clarification Asked" if is_estimation else "Clarification Answered"
+
+	qr = frappe.get_doc("CRM Quote Request", comment.reference_name)
+	qr.append(
+		"activity_log",
+		{
+			"event_type": event_type,
+			"by_user": commenter,
+			"at_time": now(),
+			"note": (comment.content or "").strip()[:200],
+		},
+	)
+	qr.save(ignore_permissions=True)
+
+	subject = f"Quote {qr.name} — {event_type.lower()}"
+	message = f"<p>{commenter} on Quote Request <strong>{qr.name}</strong> (lead {qr.lead_name or qr.lead}):</p><blockquote>{(comment.content or '').strip()}</blockquote>"
+
+	recipients: list[str] = []
+	if is_estimation:
+		if qr.lead_owner:
+			recipients = [qr.lead_owner]
+	else:
+		recipients = [
+			r["parent"]
+			for r in frappe.db.get_all(
+				"Has Role",
+				filters={"role": "Estimation Team", "parenttype": "User"},
+				fields=["parent"],
+			)
+			if r["parent"] != commenter
+		]
+
+	for user in recipients:
+		notif = frappe.new_doc("Notification Log")
+		notif.update(
+			{
+				"subject": subject,
+				"email_content": message,
+				"for_user": user,
+				"document_type": "CRM Quote Request",
+				"document_name": qr.name,
+				"from_user": commenter,
+				"type": "Alert",
+			}
+		)
+		notif.insert(ignore_permissions=True)
 
 
 def update_modified_background(doctype, docname):
