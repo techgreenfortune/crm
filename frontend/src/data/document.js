@@ -65,11 +65,12 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
               return
             }
 
-            err.messages?.forEach((msg) => {
+            const uniqueMessages = [...new Set(err.messages || [])]
+            uniqueMessages.forEach((msg) => {
               toast.error(msg)
             })
 
-            if (err.messages?.length === 0) {
+            if (uniqueMessages.length === 0) {
               toast.error(__('An error occurred while updating the document'))
             }
 

@@ -538,7 +538,11 @@ function setLostReason() {
     (document.doc.lost_reason === 'Other' && document.doc.lost_notes)
   ) {
     document.save.submit(null, {
-      onSuccess: () => sections.reload(),
+      onSuccess: () => {
+        sections.reload()
+        activities.value?.all_activities?.reload()
+        activities.value?.quoteRequests?.reload()
+      },
     })
     return
   }
@@ -568,6 +572,8 @@ function reloadResources(data) {
     getLeadStatus(data.status).type != 'Lost'
   ) {
     sections.reload()
+    activities.value?.all_activities?.reload()
+    activities.value?.quoteRequests?.reload()
   }
 }
 </script>
