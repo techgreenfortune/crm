@@ -1,9 +1,11 @@
+from typing import Any, cast
+
 import frappe
 from frappe import _
 from frappe.utils import today
 
 
-def _add_lead_comment(lead_name: str, content: str) -> None:
+def add_lead_comment(lead_name: str, content: str) -> None:
 	try:
 		frappe.get_doc(
 			{
@@ -34,7 +36,7 @@ def register_no_answer(lead_name: str) -> None:
 				"next_attempt_date": today(),  # due same day; scheduler fires end-of-business
 			}
 		).insert(ignore_permissions=True)
-		_add_lead_comment(lead_name, "Retry sequence started — Day 1.")
+		add_lead_comment(lead_name, "Retry sequence started — Day 1.")
 	except frappe.DuplicateEntryError:
 		pass  # concurrent request already inserted; safe to ignore
 
@@ -47,11 +49,13 @@ def cancel_retry_log(lead_name: str, permanent: bool = True) -> None:
 		"name",
 	)
 	if existing:
-		log = frappe.get_doc("CRM Retry Log", existing)
+		# get_doc accepts the unique name as a str; stub return type is over-broad.
+		# cast log to Any because dynamic doctype fields aren't on the Document stub.
+		log = cast(Any, frappe.get_doc("CRM Retry Log", cast(str, existing)))
 		log.status = "Cancelled" if permanent else "Paused"
 		log.next_attempt_date = None
 		log.save(ignore_permissions=True)
 		if permanent:
-			_add_lead_comment(lead_name, "Retry sequence cancelled — lead progressed out of retry path.")
+			add_lead_comment(lead_name, "Retry sequence cancelled — lead progressed out of retry path.")
 		else:
-			_add_lead_comment(lead_name, "Retry sequence paused — callback scheduled.")
+			add_lead_comment(lead_name, "Retry sequence paused — callback scheduled.")

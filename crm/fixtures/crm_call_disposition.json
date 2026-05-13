@@ -85,12 +85,13 @@
  },
  {
   "color": "red",
+  "default_lost_reason": "Chose Competitor",
   "disposition_name": "Requirement Closed with Competitor",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Requirement Closed with Competitor",
-  "modified": "2026-05-08 00:00:00",
+  "modified": "2026-05-12 00:00:00.000000",
   "name": "Requirement Closed with Competitor",
   "next_status": "C6",
   "position": 8
@@ -109,12 +110,13 @@
  },
  {
   "color": "gray",
+  "default_lost_reason": "Junk",
   "disposition_name": "Junk",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Junk",
-  "modified": "2026-05-08 00:00:00",
+  "modified": "2026-05-12 00:00:00.000000",
   "name": "Junk",
   "next_status": "Archived",
   "position": 10

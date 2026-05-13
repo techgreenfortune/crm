@@ -1,0 +1,65 @@
+{
+ "actions": [],
+ "creation": "2026-05-12 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "event_type",
+  "by_user",
+  "at_time",
+  "state_from",
+  "state_to",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Select",
+   "label": "Event",
+   "options": "Created\nPool Task Claimed\nClarification Asked\nClarification Answered\nQuote Received\nRevision Requested",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "by_user",
+   "fieldtype": "Link",
+   "label": "By User",
+   "options": "User",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "at_time",
+   "fieldtype": "Datetime",
+   "label": "At",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "state_from",
+   "fieldtype": "Data",
+   "label": "From"
+  },
+  {
+   "fieldname": "state_to",
+   "fieldtype": "Data",
+   "label": "To"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-12 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Quote Activity Log",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC"
+}
