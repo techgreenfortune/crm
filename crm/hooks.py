@@ -210,16 +210,17 @@ fixtures = [
 		],
 	},
 	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
-	{"dt": "Property Setter", "filters": [["doc_type", "=", "CRM Lead"]]},
 	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
-	{"dt": "Assignment Rule", "filters": [["document_type", "=", "CRM Lead"]]},
-	{"dt": "Notification", "filters": [["document_type", "=", "CRM Lead"]]},
+	{
+		"dt": "Notification",
+		"filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]],
+	},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
-	{"dt": "CRM Call Disposition"},
 	{"dt": "CRM Lost Reason"},
+	{"dt": "CRM Call Disposition"},
 ]
 
 # Scheduled Tasks

@@ -86,5 +86,13 @@
   "lost_reason": "Other",
   "modified": "2026-05-04 18:20:58.042862",
   "name": "Other"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Junk",
+  "modified": "2026-05-12 00:00:00.000000",
+  "name": "Junk"
  }
 ]

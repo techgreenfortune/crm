@@ -1,5 +1,6 @@
 import frappe
 import requests
+from frappe import _
 
 from crm.integrations.brevo.brevo_handler import get_brevo_settings, send_email
 from crm.integrations.brevo.brevo_handler import is_brevo_enabled as _is_enabled
@@ -13,14 +14,35 @@ def is_brevo_enabled():
 	return _is_enabled()
 
 
+@frappe.whitelist()
 def enroll_in_sequence(email: str, lead_name: str) -> None:
 	"""
 	Upsert the contact in Brevo and add them to the configured C1 nurture list.
 	The list ID is stored in CRM Brevo Settings as nurture_list_id.
 	Silently skips if Brevo is disabled or email is missing.
+
+	Decorated with @frappe.whitelist() because the Lead After-Save server script
+	enqueues this function via frappe.enqueue(...); Frappe's RestrictedPython
+	gate on frappe.enqueue targets requires the destination to be whitelisted.
+
+	**Anti-spam guard:** `email` must match the lead's `email` field on record.
+	This prevents an authenticated user from POSTing to the endpoint with an
+	arbitrary email + lead_name pair to inject spam contacts into the Brevo
+	nurture list. The server-script enqueue path passes `doc.email` straight
+	from the lead, so it satisfies the match trivially. Caller must also have
+	`read` permission on the lead — `frappe.get_doc` enforces this implicitly.
 	"""
 	if not email:
 		return
+
+	# Permission + email-match gate. frappe.get_doc throws PermissionError if
+	# the caller can't read the lead.
+	lead = frappe.get_doc("CRM Lead", lead_name)
+	if lead.email != email:
+		frappe.throw(
+			_("Email must match the lead's stored email."),
+			frappe.PermissionError,
+		)
 
 	settings = get_brevo_settings()
 	if not settings.enabled:
