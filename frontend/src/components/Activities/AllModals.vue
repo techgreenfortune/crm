@@ -18,7 +18,7 @@ const { showModal } = useDoctypeModal()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
 
-async function showQuoteRequest(leadName) {
+async function showQuoteRequest(leadName, title = 'Quote Request') {
   const rows = await call('frappe.client.get_list', {
     doctype: 'CRM Quote Request',
     filters: { lead: leadName },
@@ -30,7 +30,7 @@ async function showQuoteRequest(leadName) {
   showModal({
     name: rows[0].name,
     doctype: 'CRM Quote Request',
-    title: 'Upload Quote',
+    customTitle: title,
     callbacks: {
       afterUpdate: () => activities.value.reload(),
     },

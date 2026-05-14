@@ -1,0 +1,13 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "CRM Form Script",
+  "dt": "CRM Quote Request",
+  "enabled": 1,
+  "is_standard": 0,
+  "modified": "2026-05-14 02:53:59.293477",
+  "name": "CRM Quote Request — Form",
+  "script": "function getCurrentUser() {\n  // frappe/crm Vue app stores the logged-in user in the `user_id` cookie.\n  // window.frappe.session.user is not exposed in this Vue app, so read the\n  // cookie directly (matches frontend/src/stores/session.js).\n  const cookies = new URLSearchParams(document.cookie.split('; ').join('&'))\n  const u = cookies.get('user_id')\n  return u === 'Guest' ? null : u\n}\n\nclass CRMQuoteRequest {\n  onRender() {\n    const currentUser = getCurrentUser()\n    const isLeadOwner = this.doc.lead_owner === currentUser\n\n    if (isLeadOwner) {\n      // Lead Owner workflow:\n      //   - Reviews the quote (file/value/margin etc., already read-only via\n      //     permlevel + the explicit lock on quote_file below).\n      //   - Picks Accepted or Revision Requested from the Status dropdown.\n      //   - Clicks the standard Update button. Save fires:\n      //       Before Save Transition Trail writes the activity log row.\n      //       After Save Tentative Value Sync marks the review_quote task Done\n      //       and advances the lead C2-Q -> C3 (for Accepted).\n      //   - For Revision Requested, mandatory_depends_on on revision_notes\n      //     forces them to type a reason before save commits.\n      this.setFieldProperty('quote_file', 'read_only', true)\n      return\n    }\n\n    // Estimation Team and everyone else: status is auto-managed by the Before\n    // Validate server script (Pending -> Quote Received on file attach).\n    // Hiding the dropdown prevents accidental manual changes.\n    this.setFieldProperty('status', 'hidden', true)\n  }\n}",
+  "view": "Form"
+ }
+]
