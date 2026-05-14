@@ -15,10 +15,10 @@
   "quote_file",
   "quote_value",
   "quote_margin",
+  "quote_validity",
   "section_break_1",
-  "revision_notes",
-  "activity_log_section",
-  "activity_log"
+  "estimation_remarks",
+  "revision_notes"
  ],
  "fields": [
   {
@@ -27,6 +27,7 @@
    "label": "Lead",
    "options": "CRM Lead",
    "reqd": 1,
+   "read_only": 1,
    "in_list_view": 1
   },
   {
@@ -51,7 +52,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Pending\nQuote Received\nRevision Requested",
+   "options": "Pending\nQuote Received\nRevision Requested\nAccepted",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -60,12 +61,14 @@
    "fieldname": "requested_by",
    "fieldtype": "Link",
    "label": "Requested By",
-   "options": "User"
+   "options": "User",
+   "read_only": 1
   },
   {
    "fieldname": "requested_on",
    "fieldtype": "Date",
-   "label": "Requested On"
+   "label": "Requested On",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_1",
@@ -74,17 +77,29 @@
   {
    "fieldname": "quote_file",
    "fieldtype": "Attach",
-   "label": "Quote File"
+   "label": "Quote File",
+   "reqd": 1
   },
   {
    "fieldname": "quote_value",
    "fieldtype": "Currency",
-   "label": "Quote Value"
+   "label": "Quote Value",
+   "reqd": 1,
+   "permlevel": 1
   },
   {
    "fieldname": "quote_margin",
    "fieldtype": "Percent",
-   "label": "Quote Margin"
+   "label": "Quote Margin",
+   "reqd": 1,
+   "permlevel": 1
+  },
+  {
+   "fieldname": "quote_validity",
+   "fieldtype": "Date",
+   "label": "Quote Validity",
+   "description": "Date this quote expires. Optional.",
+   "permlevel": 1
   },
   {
    "fieldname": "section_break_1",
@@ -92,21 +107,17 @@
    "label": "Notes"
   },
   {
+   "fieldname": "estimation_remarks",
+   "fieldtype": "Small Text",
+   "label": "Estimation Remarks",
+   "description": "Assumptions, exclusions, or context the Sales team should know.",
+   "permlevel": 1
+  },
+  {
    "fieldname": "revision_notes",
    "fieldtype": "Small Text",
-   "label": "Revision Notes"
-  },
-  {
-   "fieldname": "activity_log_section",
-   "fieldtype": "Section Break",
-   "label": "Activity Log"
-  },
-  {
-   "fieldname": "activity_log",
-   "fieldtype": "Table",
-   "label": "Activity Log",
-   "options": "CRM Quote Activity Log",
-   "read_only": 1
+   "label": "Revision Notes",
+   "mandatory_depends_on": "eval:doc.status == 'Revision Requested'"
   }
  ],
  "index_web_pages_for_search": 0,
@@ -199,6 +210,59 @@
    "role": "Sales Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Estimation Team",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Head"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Executive"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales Coordinator"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "ASM"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Project Sales Executive"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "RSM"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales User"
   }
  ],
  "row_format": "Dynamic",
