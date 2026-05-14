@@ -309,8 +309,8 @@ def add_crm_lead_property_setters():
 		'"column_break_ygds", "last_response_time", "column_break_tcqb", "last_responded_on", '
 		'"log_tab", "status_change_log", "syncing_tab", "facebook_lead_id", "column_break_ixmu", '
 		'"facebook_form_id", "lost_details_tab", "lost_reason", "lost_notes", "custom_indiframe", '
-		'"custom_indiframe_details", "custom_lead_type", "custom_c2_sub_status", '
-		'"custom_customer_type", "custom_account", "custom_fabricator_routing_reason", '
+		'"custom_indiframe_details", "custom_lead_type", "custom_customer_type", '
+		'"custom_account", "custom_fabricator_routing_reason", "custom_fabricator_routing_notes", '
 		'"custom_final_price", "custom_final_margin", "custom_final_quote", '
 		'"custom_property_section", "custom_pincode", "custom_area", "custom_latitude", '
 		'"custom_longitude", "custom_tentative_area_sqft", "custom_tentative_value", '
@@ -349,7 +349,7 @@ def add_crm_lead_property_setters():
 			"field_name": "status",
 			"property": "read_only_depends_on",
 			"property_type": "Code",
-			"value": 'eval:["C6","C8","Archived"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C6","C8","Archived"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
