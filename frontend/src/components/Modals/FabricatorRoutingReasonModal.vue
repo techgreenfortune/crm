@@ -27,7 +27,9 @@
         <div>
           <div class="mb-2 text-sm text-ink-gray-5">
             {{ __('Routing Notes') }}
-            <span v-if="routingReason === 'Other'" class="text-ink-red-2">*</span>
+            <span v-if="routingReason === 'Other'" class="text-ink-red-2"
+              >*</span
+            >
           </div>
           <FormControl
             class="form-control flex-1 truncate"

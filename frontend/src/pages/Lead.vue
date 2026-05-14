@@ -572,10 +572,7 @@ function beforeStatusChange(data) {
     getLeadStatus(data.status).type == 'Lost'
   ) {
     setLostReason()
-  } else if (
-    Object.hasOwn(data ?? {}, 'status') &&
-    data.status === 'C7'
-  ) {
+  } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
     showFabricatorRoutingReasonModal.value = true
   } else {
     document.save.submit(null, {
