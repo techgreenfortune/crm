@@ -1,7 +1,6 @@
 import frappe
 from frappe import _
 
-
 ROLE_STAGE_FILTER = {
 	"B2F Team": {"C7"},
 	"Estimation Team": {"C2-Q"},
