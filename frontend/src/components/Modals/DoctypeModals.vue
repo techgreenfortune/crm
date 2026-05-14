@@ -3,6 +3,7 @@
     v-if="doctypeModal.show.value"
     v-model="doctypeModal.show.value"
     :doctypeTitle="doctypeModal.title.value"
+    :customTitle="doctypeModal.customTitle.value"
     :doctype="doctypeModal.doctype.value"
     :docname="doctypeModal.name.value"
     :defaults="doctypeModal.defaults.value"

@@ -73,6 +73,7 @@ function editValues(selections, unselectAll) {
   unselectAllAction.value = unselectAll
 }
 
+/* disabled: convert-to-deal flow retired
 function convertToDeal(selections, unselectAll) {
   $dialog({
     title: __('Convert to Deal'),
@@ -102,6 +103,7 @@ function convertToDeal(selections, unselectAll) {
     ],
   })
 }
+*/
 
 function deleteValues(selections, unselectAll) {
   unselectAllAction.value = unselectAll
@@ -190,12 +192,14 @@ function bulkActions(selections, unselectAll) {
     })
   }
 
+  /* disabled: convert-to-deal flow retired
   if (props.doctype === 'CRM Lead') {
     actions.push({
       label: __('Convert to Deal'),
       onClick: () => convertToDeal(selections, unselectAll),
     })
   }
+  */
 
   customBulkActions.value.forEach((action) => {
     actions.push({

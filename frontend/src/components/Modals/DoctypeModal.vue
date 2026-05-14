@@ -6,9 +6,11 @@
           <div class="flex gap-2 items-center">
             <h3 class="text-2xl font-semibold leading-6 text-ink-gray-9">
               {{
-                editMode
-                  ? __('Edit ' + (doctypeTitle || doctype))
-                  : __('Create ' + (doctypeTitle || doctype))
+                customTitle
+                  ? __(customTitle)
+                  : editMode
+                    ? __('Edit ' + (doctypeTitle || doctype))
+                    : __('Create ' + (doctypeTitle || doctype))
               }}
             </h3>
           </div>
@@ -74,6 +76,7 @@ import { useRouter } from 'vue-router'
 
 const props = defineProps({
   doctypeTitle: { type: String, default: '' },
+  customTitle: { type: String, default: '' },
   doctype: { type: String, default: '' },
   docname: { type: String, default: '' },
   defaults: { type: Object, default: () => ({}) },

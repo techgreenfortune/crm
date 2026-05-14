@@ -405,17 +405,24 @@ def _handle_quote_request_comment(doc: Comment):
 
 def process_quote_request_comment(comment_name: str):
 	"""Worker target invoked by `_handle_quote_request_comment`. Re-loads the
-	Comment by name so we work against committed data, then performs the
-	activity-log append and recipient notifications.
+	Comment by name so we work against committed data, then dispatches the
+	cross-party notification (Estimation ↔ Lead Owner).
 
 	**Deliberately NOT @frappe.whitelist()** — exposing this on
 	`POST /api/method/...` would let any authenticated user replay the
-	activity-log append + cross-party notification by hitting the endpoint
-	with an existing comment_name (bounded but real spam vector). The
-	caller path is `Comment.after_insert` → `_handle_quote_request_comment`
-	(regular Python doc-event hook) → `frappe.enqueue(...)`. Regular-Python
-	enqueue doesn't require the target to be whitelisted; only HTTP dispatch
-	and RestrictedPython's safe_exec gate do. Neither applies here.
+	cross-party notification by hitting the endpoint with an existing
+	comment_name (bounded but real spam vector). The caller path is
+	`Comment.after_insert` → `_handle_quote_request_comment` (regular Python
+	doc-event hook) → `frappe.enqueue(...)`. Regular-Python enqueue doesn't
+	require the target to be whitelisted; only HTTP dispatch and
+	RestrictedPython's safe_exec gate do. Neither applies here.
+
+	The QR's `activity_log` child table was retired in favor of `Comment`
+	rows on the parent Lead (which surface in the CRM Lead Activity tab via
+	`crm/api/activities.py::get_lead_activities`). Q&A comments themselves
+	remain scoped to the QR record (regular Comment docs with
+	reference_doctype="CRM Quote Request") and are useful in QR context, so
+	this handler now does *only* notification dispatch.
 	"""
 	comment = frappe.get_doc("Comment", comment_name)
 	if comment.reference_doctype != "CRM Quote Request" or comment.comment_type != "Comment":
@@ -435,16 +442,6 @@ def process_quote_request_comment(comment_name: str):
 	event_type = "Clarification Asked" if is_estimation else "Clarification Answered"
 
 	qr = frappe.get_doc("CRM Quote Request", comment.reference_name)
-	qr.append(
-		"activity_log",
-		{
-			"event_type": event_type,
-			"by_user": commenter,
-			"at_time": now(),
-			"note": (comment.content or "").strip()[:200],
-		},
-	)
-	qr.save(ignore_permissions=True)
 
 	subject = f"Quote {qr.name} — {event_type.lower()}"
 	message = f"<p>{commenter} on Quote Request <strong>{qr.name}</strong> (lead {qr.lead_name or qr.lead}):</p><blockquote>{(comment.content or '').strip()}</blockquote>"

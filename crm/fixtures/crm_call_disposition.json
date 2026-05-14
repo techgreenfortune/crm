@@ -1,6 +1,7 @@
 [
  {
   "color": "amber",
+  "default_lost_reason": null,
   "disposition_name": "No Answer / Not Reachable",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -13,6 +14,7 @@
  },
  {
   "color": "blue",
+  "default_lost_reason": null,
   "disposition_name": "Requested Callback",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -25,6 +27,7 @@
  },
  {
   "color": "green",
+  "default_lost_reason": null,
   "disposition_name": "Requirement Confirmed — Immediate",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -37,6 +40,7 @@
  },
  {
   "color": "green",
+  "default_lost_reason": null,
   "disposition_name": "Requirement Confirmed — Wants Site Visit",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -49,6 +53,7 @@
  },
  {
   "color": "cyan",
+  "default_lost_reason": null,
   "disposition_name": "Requirement Confirmed — High Intent",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -61,6 +66,7 @@
  },
  {
   "color": "cyan",
+  "default_lost_reason": null,
   "disposition_name": "Future Requirement",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -73,6 +79,7 @@
  },
  {
   "color": "gray",
+  "default_lost_reason": null,
   "disposition_name": "Casual Inquiry",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -91,13 +98,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Requirement Closed with Competitor",
-  "modified": "2026-05-12 00:00:00.000000",
+  "modified": "2026-05-12 00:00:00",
   "name": "Requirement Closed with Competitor",
   "next_status": "C6",
   "position": 8
  },
  {
   "color": "violet",
+  "default_lost_reason": null,
   "disposition_name": "Route to Fabricator",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",
@@ -116,13 +124,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Junk",
-  "modified": "2026-05-12 00:00:00.000000",
+  "modified": "2026-05-12 00:00:00",
   "name": "Junk",
   "next_status": "Archived",
   "position": 10
  },
  {
   "color": "teal",
+  "default_lost_reason": null,
   "disposition_name": "Existing Customer — Repeat Enquiry",
   "docstatus": 0,
   "doctype": "CRM Call Disposition",

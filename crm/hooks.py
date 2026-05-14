@@ -131,10 +131,10 @@ before_uninstall = "crm.uninstall.before_uninstall"
 # permission_query_conditions = {
 # "Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
-#
-# has_permission = {
-# "Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+
+has_permission = {
+	"CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
+}
 
 # DocType Class
 # ---------------
@@ -217,6 +217,7 @@ fixtures = [
 	},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
 	{"dt": "CRM Fields Layout", "filters": [["dt", "=", "CRM Quote Request"]]},
+	{"dt": "CRM Form Script", "filters": [["dt", "=", "CRM Quote Request"]]},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
 	{"dt": "CRM Lost Reason"},

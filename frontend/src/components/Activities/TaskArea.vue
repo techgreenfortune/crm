@@ -4,8 +4,13 @@
       <div
         class="activity flex cursor-pointer gap-6 rounded p-2.5 duration-300 ease-in-out hover:bg-surface-gray-1"
         @click="
-          task.task_type === 'upload_quote'
-            ? modalRef.showQuoteRequest(task.reference_docname)
+          task.task_type === 'upload_quote' || task.task_type === 'review_quote'
+            ? modalRef.showQuoteRequest(
+                task.reference_docname,
+                task.task_type === 'upload_quote'
+                  ? __('Upload Quote')
+                  : __('Review Quote'),
+              )
             : modalRef.showTask(task)
         "
       >
@@ -42,11 +47,25 @@
         </div>
         <div class="flex items-center gap-1">
           <Button
-            v-if="task.task_type === 'upload_quote'"
-            :label="__('Upload Quote')"
+            v-if="
+              task.task_type === 'upload_quote' ||
+              task.task_type === 'review_quote'
+            "
+            :label="
+              task.task_type === 'upload_quote'
+                ? __('Upload Quote')
+                : __('Review Quote')
+            "
             variant="subtle"
             size="sm"
-            @click.stop="modalRef.showQuoteRequest(task.reference_docname)"
+            @click.stop="
+              modalRef.showQuoteRequest(
+                task.reference_docname,
+                task.task_type === 'upload_quote'
+                  ? __('Upload Quote')
+                  : __('Review Quote'),
+              )
+            "
           />
           <Dropdown
             v-if="task.can_update !== false"
