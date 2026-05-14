@@ -2,10 +2,15 @@
   <div></div>
 </template>
 <script setup>
+import { inject } from 'vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { call, toast } from 'frappe-ui'
 import { useRoute, useRouter } from 'vue-router'
+
+// Provided by Lead.vue (and any other parent that wants its resources refreshed
+// when a child modal saves). null fallback for parents that don't provide it.
+const reloadAfterChildModal = inject('reloadAfterChildModal', null)
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -32,7 +37,10 @@ async function showQuoteRequest(leadName, title = 'Quote Request') {
     doctype: 'CRM Quote Request',
     customTitle: title,
     callbacks: {
-      afterUpdate: () => activities.value.reload(),
+      afterUpdate: () => {
+        activities.value.reload()
+        reloadAfterChildModal?.()
+      },
     },
   })
 }
@@ -61,9 +69,11 @@ function deleteTask(name) {
   })
     .then(() => {
       activities.value.reload()
+      reloadAfterChildModal?.()
     })
     .catch((err) => {
       activities.value.reload()
+      reloadAfterChildModal?.()
       toast.error(
         err?.message || __('You are not permitted to delete this task.'),
       )
@@ -79,9 +89,11 @@ function updateTaskStatus(status, task) {
   })
     .then(() => {
       activities.value.reload()
+      reloadAfterChildModal?.()
     })
     .catch((err) => {
       activities.value.reload()
+      reloadAfterChildModal?.()
       toast.error(
         err?.message || __('You are not permitted to update this task.'),
       )
@@ -107,6 +119,7 @@ function showNote(note) {
 
 function afterDoctype(d, isInsert = false) {
   activities.value.reload()
+  reloadAfterChildModal?.()
 
   let name =
     d.doctype == 'FCRM Note'

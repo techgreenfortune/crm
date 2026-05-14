@@ -230,11 +230,13 @@ const links = [
     icon: LeadsIcon,
     to: 'Leads',
   },
+  /* disabled: convert-to-deal flow retired
   {
     label: 'Deals',
     icon: DealsIcon,
     to: 'Deals',
   },
+  */
   {
     label: 'Contacts',
     icon: ContactsIcon,
@@ -407,6 +409,7 @@ const steps = reactive([
     },
     condition: () => isManager(),
   },
+  /* disabled: convert-to-deal flow retired
   {
     name: 'convert_lead_to_deal',
     title: __('Convert lead to deal'),
@@ -435,6 +438,7 @@ const steps = reactive([
       showIntermediateModal.value = true
     },
   },
+  */
   {
     name: 'create_first_task',
     title: __('Create your first task'),

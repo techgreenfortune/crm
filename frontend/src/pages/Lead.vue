@@ -34,11 +34,13 @@
           </Button>
         </template>
       </Dropdown>
+      <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert to Deal')"
         variant="solid"
         @click="showConvertToDealModal = true"
       />
+      -->
     </template>
   </LayoutHeader>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
@@ -205,11 +207,13 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  <!-- disabled: convert-to-deal flow retired
   <ConvertToDealModal
     v-if="showConvertToDealModal"
     v-model="showConvertToDealModal"
     :lead="doc"
   />
+  -->
   <FilesUploader
     v-model="showFilesUploader"
     doctype="CRM Lead"
@@ -234,6 +238,12 @@
     doctype="CRM Lead"
     :document="document"
   />
+  <FabricatorRoutingReasonModal
+    v-if="showFabricatorRoutingReasonModal"
+    v-model="showFabricatorRoutingReasonModal"
+    doctype="CRM Lead"
+    :document="document"
+  />
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -255,6 +265,7 @@ import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import FabricatorRoutingReasonModal from '@/components/Modals/FabricatorRoutingReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
@@ -262,7 +273,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+// import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
   setupCustomizations,
@@ -293,7 +304,7 @@ import {
   usePageMeta,
   toast,
 } from 'frappe-ui'
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
@@ -314,7 +325,7 @@ const activities = ref(null)
 const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
-const showConvertToDealModal = ref(false)
+// const showConvertToDealModal = ref(false) // disabled: convert-to-deal flow retired
 const showFilesUploader = ref(false)
 
 const {
@@ -486,6 +497,10 @@ const sections = createResource({
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
+  if (value === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+    return
+  }
   setLostReason()
 }
 
@@ -530,6 +545,7 @@ function statusLabel(status) {
 }
 
 const showLostReasonModal = ref(false)
+const showFabricatorRoutingReasonModal = ref(false)
 
 function setLostReason() {
   if (
@@ -556,6 +572,11 @@ function beforeStatusChange(data) {
     getLeadStatus(data.status).type == 'Lost'
   ) {
     setLostReason()
+  } else if (
+    Object.hasOwn(data ?? {}, 'status') &&
+    data.status === 'C7'
+  ) {
+    showFabricatorRoutingReasonModal.value = true
   } else {
     document.save.submit(null, {
       onSuccess: () => reloadResources(data),
@@ -576,4 +597,20 @@ function reloadResources(data) {
     activities.value?.quoteRequests?.reload()
   }
 }
+
+// Child modals (Task / QR / Note) save through `AllModals.vue`, where they
+// can't reach back into this page's resources to trigger a refresh. Provide a
+// single function that pulls every dependent resource — the lead doc itself,
+// assignees, side-panel sections, the activities feed, and the quotes list —
+// so the UI reflects server-side side effects (e.g. Script 5's db.set_value
+// advancing the lead to C3 on Accept) without a manual page reload.
+function reloadAfterChildModal() {
+  document.reload?.()
+  assignees.reload?.()
+  sections.reload?.()
+  activities.value?.all_activities?.reload?.()
+  activities.value?.quoteRequests?.reload?.()
+}
+
+provide('reloadAfterChildModal', reloadAfterChildModal)
 </script>

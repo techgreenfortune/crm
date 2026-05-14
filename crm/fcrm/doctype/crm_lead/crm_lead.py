@@ -21,6 +21,7 @@ _NON_OWNER_EDITABLE = frozenset(
 		"lost_reason",
 		"lost_notes",
 		"custom_fabricator_routing_reason",
+		"custom_fabricator_routing_notes",
 		# SLA/communication tracking — updated automatically by Frappe internals
 		"sla",
 		"sla_status",

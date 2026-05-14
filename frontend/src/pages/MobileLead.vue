@@ -50,11 +50,13 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
+      <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert')"
         variant="solid"
         @click="showConvertToDealModal = true"
       />
+      -->
     </div>
   </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
@@ -103,11 +105,13 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  <!-- disabled: convert-to-deal flow retired
   <ConvertToDealModal
     v-if="showConvertToDealModal"
     v-model="showConvertToDealModal"
     :lead="doc"
   />
+  -->
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -118,6 +122,12 @@
   <LostReasonModal
     v-if="showLostReasonModal"
     v-model="showLostReasonModal"
+    doctype="CRM Lead"
+    :document="document"
+  />
+  <FabricatorRoutingReasonModal
+    v-if="showFabricatorRoutingReasonModal"
+    v-model="showFabricatorRoutingReasonModal"
     doctype="CRM Lead"
     :document="document"
   />
@@ -137,6 +147,7 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import FabricatorRoutingReasonModal from '@/components/Modals/FabricatorRoutingReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
@@ -163,7 +174,7 @@ import {
 } from 'frappe-ui'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+// import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()
@@ -366,7 +377,7 @@ function deleteLead() {
 }
 
 // Convert to Deal
-const showConvertToDealModal = ref(false)
+// const showConvertToDealModal = ref(false) // disabled: convert-to-deal flow retired
 
 function statusLabel(status) {
   if (isTranslatable('CRM Lead Status')) return __(status)
@@ -375,10 +386,15 @@ function statusLabel(status) {
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
+  if (value === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+    return
+  }
   setLostReason()
 }
 
 const showLostReasonModal = ref(false)
+const showFabricatorRoutingReasonModal = ref(false)
 
 function setLostReason() {
   if (
@@ -399,6 +415,11 @@ function beforeStatusChange(data) {
     getLeadStatus(data.status).type == 'Lost'
   ) {
     setLostReason()
+  } else if (
+    Object.hasOwn(data ?? {}, 'status') &&
+    data.status === 'C7'
+  ) {
+    showFabricatorRoutingReasonModal.value = true
   } else {
     document.save.submit(null, {
       onSuccess: () => reloadAssignees(data),

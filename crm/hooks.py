@@ -131,10 +131,10 @@ before_uninstall = "crm.uninstall.before_uninstall"
 # permission_query_conditions = {
 # "Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
-#
-# has_permission = {
-# "Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+
+has_permission = {
+	"CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
+}
 
 # DocType Class
 # ---------------
