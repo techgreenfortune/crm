@@ -8,6 +8,7 @@ Token setup: see admin-ui-setup-guide.md §10a.
 from __future__ import annotations
 
 import hmac
+from typing import TYPE_CHECKING, cast
 
 import frappe
 from frappe import _
@@ -16,9 +17,13 @@ from frappe.utils import validate_email_address
 
 from crm.utils import parse_phone_number
 
+if TYPE_CHECKING:
+	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
+
 WEBSITE_SOURCE = "Direct"
 WEBSITE_SUB_SOURCE = "Website"
 DEFAULT_STATUS = "C0"
+DEFAULT_LEAD_STATUS = "Active"
 TOKEN_HEADER = "X-IndiFrame-Token"
 TOKEN_CONF_KEY = "indiframe_website_token"
 
@@ -176,7 +181,13 @@ def create_lead(
 	Returns one of:
 	  ``{"status": "created",      "name": <lead-name>, "stage": "C0"}``
 	  ``{"status": "existing",     "name": <lead-name>, "stage": <stage>}``
+	  ``{"status": "reactivated",  "name": <lead-name>, "stage": <stage>}``
 	  ``{"status": "closed_match",                       "stage": <terminal-stage>}``
+
+	``reactivated`` fires when the matched lead was at ``lead_status =
+	Cold-Unresponsive`` and got auto-flipped back to ``Reactivated`` by this
+	endpoint. The website should treat it like ``existing`` for display
+	purposes; marketing can mine the signal separately.
 	"""
 	_verify_token()
 
@@ -226,12 +237,26 @@ def create_lead(
 		# Intentionally do not overwrite stored email / pincode / UTM / etc.
 		# on the existing lead — preserve first-touch attribution. The new
 		# values are captured in the re-submission Comment for marketing.
-		lead = frappe.get_doc("CRM Lead", open_name)
+		lead = cast("CRMLead", frappe.get_doc("CRM Lead", open_name))
+
+		# Archived engagement is terminal even on an Open-typed C-stage.
+		if lead.lead_status == "Archived":
+			return {"status": "closed_match", "stage": lead.status}
+
 		trail = [
-			"Re-submission from indiframe.com contact form.",
+			"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 			*_trail_parts(message, payload),
 			*extra_lines,
 		]
+
+		# Auto-reactivate Cold engagement; Script 3 stamps custom_reactivated_at,
+		# Script 1 enforces invariants. C-stage preserved per PRD §7.
+		if lead.lead_status == "Cold-Unresponsive":
+			lead.lead_status = "Reactivated"
+			lead.save(ignore_permissions=True)
+			lead.add_comment("Comment", "<br>".join(trail))
+			return {"status": "reactivated", "name": open_name, "stage": lead.status}
+
 		lead.add_comment("Comment", "<br>".join(trail))
 		return {"status": "existing", "name": open_name, "stage": lead.status}
 
@@ -251,6 +276,7 @@ def create_lead(
 				"email": clean_email,
 				"organization": (company or "").strip() or None,
 				"status": DEFAULT_STATUS,
+				"lead_status": DEFAULT_LEAD_STATUS,
 				"source": WEBSITE_SOURCE,
 				"custom_sub_source": WEBSITE_SUB_SOURCE,
 				"custom_pincode": pincode or None,
@@ -280,7 +306,7 @@ def create_lead(
 		if open_name:
 			lead = frappe.get_doc("CRM Lead", open_name)
 			trail = [
-				"Re-submission from indiframe.com contact form.",
+				"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 				*_trail_parts(message, payload),
 				*extra_lines,
 			]
@@ -292,6 +318,8 @@ def create_lead(
 
 	trail = [*_trail_parts(message, payload), *extra_lines]
 	if trail:
-		lead.add_comment("Comment", "<br>".join(["Captured from indiframe.com contact form.", *trail]))
+		lead.add_comment(
+			"Comment", "<br>".join(["[API_SUBMIT] Captured from indiframe.com contact form.", *trail])
+		)
 
 	return {"status": "created", "name": lead.name, "stage": lead.status}

@@ -78,20 +78,20 @@
    "fieldname": "quote_file",
    "fieldtype": "Attach",
    "label": "Quote File",
-   "reqd": 1
+   "mandatory_depends_on": "eval:doc.status != 'Pending'"
   },
   {
    "fieldname": "quote_value",
    "fieldtype": "Currency",
    "label": "Quote Value",
-   "reqd": 1,
+   "mandatory_depends_on": "eval:doc.status != 'Pending'",
    "permlevel": 1
   },
   {
    "fieldname": "quote_margin",
    "fieldtype": "Percent",
    "label": "Quote Margin",
-   "reqd": 1,
+   "mandatory_depends_on": "eval:doc.status != 'Pending'",
    "permlevel": 1
   },
   {

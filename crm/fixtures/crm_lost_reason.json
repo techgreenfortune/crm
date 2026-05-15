@@ -3,38 +3,6 @@
   "description": null,
   "docstatus": 0,
   "doctype": "CRM Lost Reason",
-  "lost_reason": "Competition",
-  "modified": "2026-05-06 14:05:51.269502",
-  "name": "Competition"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Budget constraints",
-  "modified": "2026-05-06 14:05:51.272756",
-  "name": "Budget constraints"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "No response",
-  "modified": "2026-05-06 14:05:51.274102",
-  "name": "No response"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Not interested",
-  "modified": "2026-05-06 14:05:51.275360",
-  "name": "Not interested"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
   "lost_reason": "Chose Competitor",
   "modified": "2026-05-04 18:20:58.033086",
   "name": "Chose Competitor"

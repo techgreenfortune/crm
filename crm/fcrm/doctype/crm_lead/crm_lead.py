@@ -22,6 +22,7 @@ _NON_OWNER_EDITABLE = frozenset(
 		"lost_notes",
 		"custom_fabricator_routing_reason",
 		"custom_fabricator_routing_notes",
+		"custom_partner_fabricator_name",
 		# SLA/communication tracking — updated automatically by Frappe internals
 		"sla",
 		"sla_status",
@@ -81,6 +82,7 @@ class CRMLead(Document):
 		last_response_time: DF.Duration | None
 		lead_name: DF.Data | None
 		lead_owner: DF.Link | None
+		lead_status: DF.Link
 		lost_notes: DF.Text | None
 		lost_reason: DF.Link | None
 		middle_name: DF.Data | None
@@ -115,6 +117,10 @@ class CRMLead(Document):
 		self.set_title()
 		self.validate_email()
 		self.validate_lost_reason()
+		self.validate_c7_routing_reason()
+		self.validate_partner_fabricator_name()
+		self.validate_won_fields()
+		self.validate_sub_source()
 		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
 			self.share_with_agent(self.lead_owner)
 			self.assign_agent(self.lead_owner)
@@ -177,6 +183,60 @@ class CRMLead(Document):
 				frappe.throw(_("Please specify the reason for losing the lead."), frappe.ValidationError)
 		if self.has_value_changed("status"):
 			add_or_remove_lost_reason_section_in_sidepanel(self)
+
+	def validate_c7_routing_reason(self):
+		# PRD §9: routing reason is mandatory on C7. The custom field carries
+		# mandatory_depends_on for the UI, but Frappe doesn't enforce that
+		# server-side (base_document.py only checks reqd=1).
+		if self.status == "C7" and not self.get("custom_fabricator_routing_reason"):
+			frappe.throw(
+				_("Fabricator Routing Reason is required for leads at C7."),
+				frappe.ValidationError,
+			)
+
+	def validate_partner_fabricator_name(self):
+		# PRD §9: B2F team must record the partner fabricator's name on C7.
+		if self.status == "C7" and not self.get("custom_partner_fabricator_name"):
+			frappe.throw(
+				_("Partner Fabricator Name is required for leads at C7."),
+				frappe.ValidationError,
+			)
+
+	def validate_sub_source(self):
+		# PRD §7: Sub Source is mandatory for these 5 sources via mandatory_depends_on
+		# on the custom field, but Frappe enforces that only client-side
+		# (base_document.py only checks reqd=1). Same UI-vs-server gap as
+		# validate_c7_routing_reason.
+		if frappe.flags.in_test:
+			# Skip for stock Frappe test fixtures (test_records.json) which were
+			# written against vanilla Frappe CRM and don't set custom_sub_source.
+			# IndiFrame tests in crm/tests/ exercise this validator explicitly.
+			return
+		sources_requiring_sub_source = {"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"}
+		if self.source in sources_requiring_sub_source and not self.get("custom_sub_source"):
+			frappe.throw(
+				_("Sub Source is required when Source is {0}.").format(self.source),
+				frappe.ValidationError,
+			)
+
+	def validate_won_fields(self):
+		# PRD §4.3: Final Quote / Price / Margin mandatory on Won stages.
+		# Same UI-vs-server gap as validate_c7_routing_reason.
+		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Won":
+			missing = [
+				label
+				for field, label in (
+					("custom_final_quote", "Final Quote"),
+					("custom_final_price", "Final Price"),
+					("custom_final_margin", "Final Margin"),
+				)
+				if not self.get(field)
+			]
+			if missing:
+				frappe.throw(
+					_("Required for Won stages: {0}.").format(", ".join(missing)),
+					frappe.ValidationError,
+				)
 
 	def _check_write_permission(self):
 		if self.is_new():

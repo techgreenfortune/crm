@@ -1,0 +1,38 @@
+[
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Active",
+  "modified": "2026-05-14 00:00:00",
+  "name": "Active",
+  "position": 1
+ },
+ {
+  "color": "gray",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Cold-Unresponsive",
+  "modified": "2026-05-14 00:00:00",
+  "name": "Cold-Unresponsive",
+  "position": 2
+ },
+ {
+  "color": "cyan",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Reactivated",
+  "modified": "2026-05-14 00:00:00",
+  "name": "Reactivated",
+  "position": 3
+ },
+ {
+  "color": "black",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Archived",
+  "modified": "2026-05-14 00:00:00",
+  "name": "Archived",
+  "position": 4
+ }
+]
