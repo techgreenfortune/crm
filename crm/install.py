@@ -506,20 +506,19 @@ def add_default_industries():
 
 
 def add_default_lead_sources():
+	# IndiFrame canonical Lead Sources — kept in sync with
+	# crm/fixtures/crm_lead_source.json (PRD §7 attribution table).
+	# The previous demo set (Email, Existing Customer, Facebook, etc.)
+	# was retired when source attribution was scoped to indiframe.com lead origins.
 	lead_sources = [
-		"Email",
-		"Existing Customer",
-		"Reference",
-		"Advertisement",
-		"Cold Calling",
-		"Exhibition",
-		"Supplier Reference",
-		"Mass Mailing",
-		"Customer's Vendor",
-		"Campaign",
-		"Walk In",
-		"Facebook",
-		"Website",
+		"Paid",
+		"Organic Search",
+		"Direct",
+		"Chat",
+		"Referral",
+		"Channel Partner",
+		"Event",
+		"Lead Spotting",
 	]
 
 	for source in lead_sources:

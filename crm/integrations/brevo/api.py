@@ -115,6 +115,25 @@ def enroll_in_sequence(email: str, lead_name: str) -> None:
 			f"Lead {lead_name}: status {response.status_code} — {response.text}",
 			"Brevo C1 Nurture Enroll Failed",
 		)
+		# Contact was upserted to Brevo but list-add failed — surface the gap
+		# on the lead so a manual re-enrollment isn't mistaken for a first
+		# attempt. try/except so an audit-write failure never breaks the worker.
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Comment",
+					"comment_type": "Comment",
+					"reference_doctype": "CRM Lead",
+					"reference_name": lead_name,
+					"content": (
+						f"[AUTOMATION] Brevo enrollment incomplete — contact upserted "
+						f"but list-add failed (HTTP {response.status_code}). "
+						f"Manual re-enrollment may be required."
+					),
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			pass
 
 
 @frappe.whitelist()

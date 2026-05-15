@@ -120,6 +120,7 @@ class CRMLead(Document):
 		self.validate_c7_routing_reason()
 		self.validate_partner_fabricator_name()
 		self.validate_won_fields()
+		self.validate_sub_source()
 		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
 			self.share_with_agent(self.lead_owner)
 			self.assign_agent(self.lead_owner)
@@ -198,6 +199,23 @@ class CRMLead(Document):
 		if self.status == "C7" and not self.get("custom_partner_fabricator_name"):
 			frappe.throw(
 				_("Partner Fabricator Name is required for leads at C7."),
+				frappe.ValidationError,
+			)
+
+	def validate_sub_source(self):
+		# PRD §7: Sub Source is mandatory for these 5 sources via mandatory_depends_on
+		# on the custom field, but Frappe enforces that only client-side
+		# (base_document.py only checks reqd=1). Same UI-vs-server gap as
+		# validate_c7_routing_reason.
+		if frappe.flags.in_test:
+			# Skip for stock Frappe test fixtures (test_records.json) which were
+			# written against vanilla Frappe CRM and don't set custom_sub_source.
+			# IndiFrame tests in crm/tests/ exercise this validator explicitly.
+			return
+		sources_requiring_sub_source = {"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"}
+		if self.source in sources_requiring_sub_source and not self.get("custom_sub_source"):
+			frappe.throw(
+				_("Sub Source is required when Source is {0}.").format(self.source),
 				frappe.ValidationError,
 			)
 

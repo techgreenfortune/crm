@@ -181,7 +181,13 @@ def create_lead(
 	Returns one of:
 	  ``{"status": "created",      "name": <lead-name>, "stage": "C0"}``
 	  ``{"status": "existing",     "name": <lead-name>, "stage": <stage>}``
+	  ``{"status": "reactivated",  "name": <lead-name>, "stage": <stage>}``
 	  ``{"status": "closed_match",                       "stage": <terminal-stage>}``
+
+	``reactivated`` fires when the matched lead was at ``lead_status =
+	Cold-Unresponsive`` and got auto-flipped back to ``Reactivated`` by this
+	endpoint. The website should treat it like ``existing`` for display
+	purposes; marketing can mine the signal separately.
 	"""
 	_verify_token()
 
