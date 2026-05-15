@@ -629,7 +629,9 @@ class TestCreateLeadFromIncomingEmail(FrappeTestCase):
 	def test_lead_source_set_to_email_when_source_exists(self):
 		"""Lead source should be set to 'Email' when the CRM Lead Source 'Email' exists."""
 		if not frappe.db.exists("CRM Lead Source", "Email"):
-			frappe.get_doc({"doctype": "CRM Lead Source", "source_name": "Email"}).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "CRM Lead Source", "source_name": "Email"}).insert(
+				ignore_permissions=True
+			)
 
 		email_account = self._make_email_account()
 		doc = self._incoming_comm("leadsource@example.com", email_account.name)
