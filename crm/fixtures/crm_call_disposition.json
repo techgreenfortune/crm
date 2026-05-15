@@ -9,8 +9,12 @@
   "label": "No Answer / Not Reachable",
   "modified": "2026-05-08 00:00:00",
   "name": "No Answer / Not Reachable",
+  "next_lead_status": null,
   "next_status": null,
-  "position": 1
+  "position": 1,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "blue",
@@ -20,10 +24,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Requested Callback",
-  "modified": "2026-05-08 00:00:00",
+  "modified": "2026-05-15 00:00:00",
   "name": "Requested Callback",
+  "next_lead_status": null,
   "next_status": null,
-  "position": 2
+  "position": 2,
+  "requires_callback_datetime": 1,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "green",
@@ -35,8 +43,12 @@
   "label": "Requirement Confirmed — Immediate",
   "modified": "2026-05-08 00:00:00",
   "name": "Requirement Confirmed — Immediate",
+  "next_lead_status": null,
   "next_status": "C2",
-  "position": 3
+  "position": 3,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "green",
@@ -48,8 +60,12 @@
   "label": "Requirement Confirmed — Wants Site Visit",
   "modified": "2026-05-08 00:00:00",
   "name": "Requirement Confirmed — Wants Site Visit",
+  "next_lead_status": null,
   "next_status": "C2",
-  "position": 4
+  "position": 4,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "cyan",
@@ -61,8 +77,12 @@
   "label": "Requirement Confirmed — High Intent",
   "modified": "2026-05-08 00:00:00",
   "name": "Requirement Confirmed — High Intent",
+  "next_lead_status": null,
   "next_status": "C1",
-  "position": 5
+  "position": 5,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "cyan",
@@ -74,8 +94,12 @@
   "label": "Future Requirement",
   "modified": "2026-05-08 00:00:00",
   "name": "Future Requirement",
+  "next_lead_status": null,
   "next_status": "C1",
-  "position": 6
+  "position": 6,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "gray",
@@ -87,8 +111,12 @@
   "label": "Casual Inquiry",
   "modified": "2026-05-08 00:00:00",
   "name": "Casual Inquiry",
+  "next_lead_status": null,
   "next_status": null,
-  "position": 7
+  "position": 7,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "red",
@@ -98,10 +126,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Requirement Closed with Competitor",
-  "modified": "2026-05-12 00:00:00",
+  "modified": "2026-05-15 00:00:00",
   "name": "Requirement Closed with Competitor",
+  "next_lead_status": null,
   "next_status": "C6",
-  "position": 8
+  "position": 8,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "violet",
@@ -111,10 +143,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Route to Fabricator",
-  "modified": "2026-05-08 00:00:00",
+  "modified": "2026-05-15 00:00:00",
   "name": "Route to Fabricator",
+  "next_lead_status": null,
   "next_status": "C7",
-  "position": 9
+  "position": 9,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 1
  },
  {
   "color": "gray",
@@ -124,10 +160,14 @@
   "doctype": "CRM Call Disposition",
   "enabled": 1,
   "label": "Junk",
-  "modified": "2026-05-12 00:00:00",
+  "modified": "2026-05-15 00:00:00",
   "name": "Junk",
-  "next_status": "Archived",
-  "position": 10
+  "next_lead_status": "Archived",
+  "next_status": null,
+  "position": 10,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  },
  {
   "color": "teal",
@@ -139,7 +179,11 @@
   "label": "Existing Customer — Repeat Enquiry",
   "modified": "2026-05-08 00:00:00",
   "name": "Existing Customer — Repeat Enquiry",
+  "next_lead_status": null,
   "next_status": null,
-  "position": 11
+  "position": 11,
+  "requires_callback_datetime": 0,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
  }
 ]

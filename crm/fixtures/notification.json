@@ -89,7 +89,7 @@
   "attach_files": null,
   "attach_print": 0,
   "channel": "System Notification",
-  "condition": "doc.status == \"Cold\"",
+  "condition": "doc.lead_status == \"Cold-Unresponsive\"",
   "date_changed": null,
   "days_in_advance": 0,
   "docstatus": 0,
@@ -99,10 +99,10 @@
   "event": "Value Change",
   "from_attach_field": null,
   "is_standard": 0,
-  "message": "<p>Lead <strong>{{ doc.lead_name }}</strong> retry sequence has been exhausted. The lead is now Cold — Unresponsive.</p>",
+  "message": "<p>Lead <strong>{{ doc.lead_name }}</strong> retry sequence has been exhausted. Engagement state moved to Cold-Unresponsive; C-stage preserved at {{ doc.status }}.</p>",
   "message_type": null,
   "method": null,
-  "modified": "2026-05-04 11:11:09.850390",
+  "modified": "2026-05-14 00:00:00",
   "module": null,
   "name": "Lead Moved to Cold",
   "print_format": null,
@@ -117,6 +117,16 @@
     "parenttype": "Notification",
     "receiver_by_document_field": "lead_owner",
     "receiver_by_role": null
+   },
+   {
+    "bcc": null,
+    "cc": null,
+    "condition": "not doc.lead_owner",
+    "parent": "Lead Moved to Cold",
+    "parentfield": "recipients",
+    "parenttype": "Notification",
+    "receiver_by_document_field": null,
+    "receiver_by_role": "Calling Team"
    }
   ],
   "send_system_notification": 0,
@@ -126,7 +136,7 @@
   "set_property_after_alert": null,
   "slack_webhook_url": null,
   "subject": "Lead {{ doc.lead_name }} is now Cold — retry exhausted",
-  "value_changed": "status"
+  "value_changed": "lead_status"
  },
  {
   "attach_files": null,
@@ -235,6 +245,16 @@
     "parenttype": "Notification",
     "receiver_by_document_field": "lead_owner",
     "receiver_by_role": null
+   },
+   {
+    "bcc": null,
+    "cc": null,
+    "condition": "not doc.lead_owner",
+    "parent": "Quote Received — Review & Share",
+    "parentfield": "recipients",
+    "parenttype": "Notification",
+    "receiver_by_document_field": null,
+    "receiver_by_role": "Sales Manager"
    }
   ],
   "send_system_notification": 1,

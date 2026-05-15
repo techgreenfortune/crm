@@ -301,7 +301,7 @@ const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('CRM Lead')
 const { makeCall } = globalStore()
 const { getUser } = usersStore()
-const { getLeadStatus } = statusesStore()
+const { getLeadStatus, getLeadEngagementStatus } = statusesStore()
 const { on } = useBroadcast()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
@@ -393,6 +393,11 @@ function getGroupedByRows(listRows, groupByField, columns) {
         h(IndicatorIcon, {
           class: getLeadStatus(option)?.color,
         })
+    } else if (groupByField.fieldname == 'lead_status') {
+      groupDetail.icon = () =>
+        h(IndicatorIcon, {
+          class: getLeadEngagementStatus(option)?.color,
+        })
     }
     groupedRows.push(groupDetail)
   })
@@ -458,6 +463,11 @@ function parseRows(rows, columns = []) {
         _rows[row] = {
           label: lead.status,
           color: getLeadStatus(lead.status)?.color,
+        }
+      } else if (row == 'lead_status') {
+        _rows[row] = {
+          label: lead.lead_status,
+          color: getLeadEngagementStatus(lead.lead_status)?.color,
         }
       } else if (row == 'sla_status') {
         let value = lead.sla_status

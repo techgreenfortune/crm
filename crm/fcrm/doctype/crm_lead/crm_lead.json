@@ -34,6 +34,7 @@
   "phone",
   "column_break_dbsv",
   "status",
+  "lead_status",
   "no_of_employees",
   "annual_revenue",
   "image",
@@ -113,8 +114,19 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Status",
+   "label": "C-Stage",
    "options": "CRM Lead Status",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "lead_status",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Lead Status",
+   "options": "CRM Lead Engagement Status",
    "reqd": 1,
    "search_index": 1
   },
