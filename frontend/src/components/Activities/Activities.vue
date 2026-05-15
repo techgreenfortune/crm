@@ -76,7 +76,12 @@
       <div v-else-if="title == 'Quotes'" class="px-3 pb-3 sm:px-10 sm:pb-5">
         <QuoteArea
           :quotes="activities"
-          :onReload="() => { quoteRequests.reload(); quoteRevisions.reload(); }"
+          :onReload="
+            () => {
+              quoteRequests.reload()
+              quoteRevisions.reload()
+            }
+          "
         />
       </div>
       <div v-else-if="title == 'Calls'" class="activity">

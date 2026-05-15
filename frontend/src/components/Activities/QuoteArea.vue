@@ -46,7 +46,10 @@
         </div>
       </div>
 
-      <div v-if="quote.revisions && quote.revisions.length > 1" class="ml-2 mt-1">
+      <div
+        v-if="quote.revisions && quote.revisions.length > 1"
+        class="ml-2 mt-1"
+      >
         <Button
           variant="ghost"
           size="sm"
