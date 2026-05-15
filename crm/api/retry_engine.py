@@ -95,7 +95,14 @@ def advance_retry_sequence() -> dict[str, int]:
 	cadence (1→2→3→5→7→12), or mark Exhausted + auto-move lead to Cold on Day 12.
 	Defensive: marks log Cancelled if lead has moved out of retry-active set.
 	"""
-	summary: dict[str, int] = {"checked": 0, "advanced": 0, "exhausted": 0, "cancelled": 0, "skipped": 0, "errors": 0}
+	summary: dict[str, int] = {
+		"checked": 0,
+		"advanced": 0,
+		"exhausted": 0,
+		"cancelled": 0,
+		"skipped": 0,
+		"errors": 0,
+	}
 
 	due_logs = frappe.get_all(
 		"CRM Retry Log",
@@ -205,9 +212,7 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 	summary["advanced"] += 1
 
 
-def _move_lead_to_cold_after_exhaust(
-	lead_name: str, from_lead_status: str, current_status: str
-) -> None:
+def _move_lead_to_cold_after_exhaust(lead_name: str, from_lead_status: str, current_status: str) -> None:
 	"""Flip lead_status to Cold-Unresponsive via db.set_value to bypass ALLOWED_LEAD_STATUS_TRANSITIONS
 	(Reactivated→Cold-Unresponsive is allowed but still tripped through Script 1 invariants) and avoid
 	cascading the Lead After-Save script (no-op anyway since the retry log is already Exhausted).

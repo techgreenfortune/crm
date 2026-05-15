@@ -31,9 +31,7 @@ def register_no_answer(lead_name: str) -> None:
 	# fixtures/server_script.json "After Save — No Answer Retry Trigger" — kept here
 	# as defense-in-depth so direct callers (console, REST, future server scripts)
 	# can't bypass.
-	state = frappe.db.get_value(
-		"CRM Lead", lead_name, ["status", "lead_status"], as_dict=True
-	) or {}
+	state = frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
 	if state.get("status") != "C0" and state.get("lead_status") not in (
 		"Cold-Unresponsive",
 		"Reactivated",

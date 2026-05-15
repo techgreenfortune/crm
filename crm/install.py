@@ -55,16 +55,21 @@ def after_install(force=False):
 
 def add_default_lead_statuses():
 	statuses = {
-		"C0":   {"color": "gray",   "type": "Open",    "position": 1,  "stage_label": "C0 — New Lead"},
-		"C1":   {"color": "blue",   "type": "Open",    "position": 2,  "stage_label": "C1 — Future Requirement"},
-		"C2":   {"color": "orange", "type": "Ongoing", "position": 3,  "stage_label": "C2 — Active Engagement"},
-		"C2-Q": {"color": "amber",  "type": "Ongoing", "position": 4,  "stage_label": "C2-Q — Quote Sent"},
-		"C3":   {"color": "yellow", "type": "Ongoing", "position": 5,  "stage_label": "C3 — Almost Ready"},
-		"C4":   {"color": "teal",   "type": "Won",     "position": 6,  "stage_label": "C4 — Advance Payment Made"},
-		"C5":   {"color": "green",  "type": "Won",     "position": 7,  "stage_label": "C5 — Invoicing Completed"},
-		"C6":   {"color": "red",    "type": "Lost",    "position": 8,  "stage_label": "C6 — Lost"},
-		"C7":   {"color": "violet", "type": "On Hold", "position": 9,  "stage_label": "C7 — Forwarded to Fabricator"},
-		"C8":   {"color": "green",  "type": "Won",     "position": 10, "stage_label": "C8 — Won"},
+		"C0": {"color": "gray", "type": "Open", "position": 1, "stage_label": "C0 — New Lead"},
+		"C1": {"color": "blue", "type": "Open", "position": 2, "stage_label": "C1 — Future Requirement"},
+		"C2": {"color": "orange", "type": "Ongoing", "position": 3, "stage_label": "C2 — Active Engagement"},
+		"C2-Q": {"color": "amber", "type": "Ongoing", "position": 4, "stage_label": "C2-Q — Quote Sent"},
+		"C3": {"color": "yellow", "type": "Ongoing", "position": 5, "stage_label": "C3 — Almost Ready"},
+		"C4": {"color": "teal", "type": "Won", "position": 6, "stage_label": "C4 — Advance Payment Made"},
+		"C5": {"color": "green", "type": "Won", "position": 7, "stage_label": "C5 — Invoicing Completed"},
+		"C6": {"color": "red", "type": "Lost", "position": 8, "stage_label": "C6 — Lost"},
+		"C7": {
+			"color": "violet",
+			"type": "On Hold",
+			"position": 9,
+			"stage_label": "C7 — Forwarded to Fabricator",
+		},
+		"C8": {"color": "green", "type": "Won", "position": 10, "stage_label": "C8 — Won"},
 	}
 
 	for status in statuses:
@@ -82,10 +87,10 @@ def add_default_lead_statuses():
 
 def add_default_lead_engagement_statuses():
 	statuses = {
-		"Active":            {"color": "green", "position": 1},
-		"Cold-Unresponsive": {"color": "gray",  "position": 2},
-		"Reactivated":       {"color": "cyan",  "position": 3},
-		"Archived":          {"color": "black", "position": 4},
+		"Active": {"color": "green", "position": 1},
+		"Cold-Unresponsive": {"color": "gray", "position": 2},
+		"Reactivated": {"color": "cyan", "position": 3},
+		"Archived": {"color": "black", "position": 4},
 	}
 
 	for status in statuses:

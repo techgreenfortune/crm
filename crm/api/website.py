@@ -312,6 +312,8 @@ def create_lead(
 
 	trail = [*_trail_parts(message, payload), *extra_lines]
 	if trail:
-		lead.add_comment("Comment", "<br>".join(["[API_SUBMIT] Captured from indiframe.com contact form.", *trail]))
+		lead.add_comment(
+			"Comment", "<br>".join(["[API_SUBMIT] Captured from indiframe.com contact form.", *trail])
+		)
 
 	return {"status": "created", "name": lead.name, "stage": lead.status}
