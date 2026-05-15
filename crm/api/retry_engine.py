@@ -8,7 +8,12 @@ from frappe.utils import add_days, today
 from crm.api.call_log import add_lead_comment
 
 RETRY_CADENCE: dict[int, int | None] = {1: 2, 2: 3, 3: 5, 5: 7, 7: 12, 12: None}
-RETRY_ACTIVE_STATUSES: tuple[str, ...] = ("C0", "Cold", "Reactivated")
+RETRY_ACTIVE_STATUS: tuple[str, ...] = ("C0",)
+RETRY_ACTIVE_LEAD_STATUSES: tuple[str, ...] = ("Active", "Cold-Unresponsive", "Reactivated")
+
+
+def _is_retry_active(status: str | None, lead_status: str | None) -> bool:
+	return status in RETRY_ACTIVE_STATUS and lead_status in RETRY_ACTIVE_LEAD_STATUSES
 
 
 @frappe.whitelist()
@@ -16,8 +21,16 @@ def send_retry_whatsapp(lead_name: str, day: int) -> None:
 	"""Send AiSensy follow-up message. Called via frappe.enqueue from Scheduler Event Server Script."""
 
 	# Re-check: small window between scheduler enqueue and worker pickup
-	current_status = frappe.db.get_value("CRM Lead", lead_name, "status")
-	if current_status not in RETRY_ACTIVE_STATUSES:
+	current = cast(
+		"dict[str, Any] | None",
+		frappe.db.get_value(
+			"CRM Lead",
+			lead_name,
+			["status", "lead_status"],  # pyright: ignore[reportArgumentType]
+			as_dict=True,
+		),
+	)
+	if not current or not _is_retry_active(current.get("status"), current.get("lead_status")):
 		frappe.logger().info(
 			f"[RetryEngine] Lead {lead_name} moved out of retry-active set — skipping Day {day} WhatsApp"
 		)
@@ -82,7 +95,7 @@ def advance_retry_sequence() -> dict[str, int]:
 	cadence (1→2→3→5→7→12), or mark Exhausted + auto-move lead to Cold on Day 12.
 	Defensive: marks log Cancelled if lead has moved out of retry-active set.
 	"""
-	summary: dict[str, int] = {"checked": 0, "advanced": 0, "exhausted": 0, "cancelled": 0, "errors": 0}
+	summary: dict[str, int] = {"checked": 0, "advanced": 0, "exhausted": 0, "cancelled": 0, "skipped": 0, "errors": 0}
 
 	due_logs = frappe.get_all(
 		"CRM Retry Log",
@@ -110,8 +123,16 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 	current_day = int(row["day_in_sequence"] or 0)
 	log_name: str = row["name"]
 
-	current_status = frappe.db.get_value("CRM Lead", lead_name, "status")
-	if current_status not in RETRY_ACTIVE_STATUSES:
+	current = cast(
+		"dict[str, Any] | None",
+		frappe.db.get_value(
+			"CRM Lead",
+			lead_name,
+			["status", "lead_status"],  # pyright: ignore[reportArgumentType]
+			as_dict=True,
+		),
+	)
+	if not current or not _is_retry_active(current.get("status"), current.get("lead_status")):
 		frappe.db.set_value(
 			"CRM Retry Log",
 			log_name,
@@ -120,9 +141,33 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 		summary["cancelled"] += 1
 		return
 
-	# Guard above proved current_status is a str from RETRY_ACTIVE_STATUSES;
-	# cast strips the spurious `_dict` arm pyright can't subtract.
-	active_status = cast(str, current_status)
+	# Atomic claim via attempt_count compare-and-swap: only proceed if THIS worker
+	# successfully increments attempt_count from the value we read at the top-level
+	# select. Two scheduler invocations both reading the same row will both attempt
+	# the UPDATE; only one wins the WHERE clause (the loser sees attempt_count
+	# already bumped). Closes the race where the previous read-then-check pattern
+	# let two workers both pass `fresh_status == "Active"` and both fire WhatsApp.
+	# Also subsumes the Paused-flip case (Script 12's cancel_retry_log) because
+	# status != "Active" fails the WHERE.
+	expected_attempt_count = int(row["attempt_count"] or 0)
+	new_attempt_count = expected_attempt_count + 1
+	frappe.db.sql(
+		"""
+		UPDATE `tabCRM Retry Log`
+		SET attempt_count = %s, last_attempt_date = %s
+		WHERE name = %s
+		  AND status = 'Active'
+		  AND attempt_count = %s
+		""",
+		(new_attempt_count, today(), log_name, expected_attempt_count),
+	)
+	affected = frappe.db.sql("SELECT ROW_COUNT()")[0][0]
+	if not affected:
+		summary["skipped"] += 1
+		return
+
+	active_status = cast(str, current["status"])
+	active_lead_status = cast(str, current["lead_status"])
 
 	frappe.enqueue(
 		"crm.api.retry_engine.send_retry_whatsapp",
@@ -132,8 +177,9 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 	)
 
 	next_day = RETRY_CADENCE.get(current_day)
-	new_attempt_count = (row["attempt_count"] or 0) + 1
 
+	# Note: the claim above already set last_attempt_date and attempt_count.
+	# Subsequent updates only touch day_in_sequence / next_attempt_date / status.
 	if next_day is None:
 		frappe.db.set_value(
 			"CRM Retry Log",
@@ -141,11 +187,9 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 			{
 				"status": "Exhausted",
 				"next_attempt_date": None,
-				"last_attempt_date": today(),
-				"attempt_count": new_attempt_count,
 			},
 		)
-		_move_lead_to_cold_after_exhaust(lead_name, active_status)
+		_move_lead_to_cold_after_exhaust(lead_name, active_lead_status, active_status)
 		summary["exhausted"] += 1
 		return
 
@@ -155,24 +199,31 @@ def _advance_one(row: dict[str, Any], summary: dict[str, int]) -> None:
 		log_name,
 		{
 			"day_in_sequence": next_day,
-			"last_attempt_date": today(),
 			"next_attempt_date": add_days(today(), gap_days),
-			"attempt_count": new_attempt_count,
 		},
 	)
 	summary["advanced"] += 1
 
 
-def _move_lead_to_cold_after_exhaust(lead_name: str, from_status: str) -> None:
-	"""Move lead to Cold via db.set_value to bypass ALLOWED_TRANSITIONS (Reactivated→Cold
-	is not in the map) and avoid cascading the Lead After-Save script (no-op anyway since
-	the retry log is already Exhausted, not Active/Paused)."""
-	if from_status == "Cold":
-		add_lead_comment(lead_name, "Retry sequence exhausted on Day 12 — lead remains Cold.")
+def _move_lead_to_cold_after_exhaust(
+	lead_name: str, from_lead_status: str, current_status: str
+) -> None:
+	"""Flip lead_status to Cold-Unresponsive via db.set_value to bypass ALLOWED_LEAD_STATUS_TRANSITIONS
+	(Reactivated→Cold-Unresponsive is allowed but still tripped through Script 1 invariants) and avoid
+	cascading the Lead After-Save script (no-op anyway since the retry log is already Exhausted).
+	C-stage is preserved."""
+	if from_lead_status == "Cold-Unresponsive":
+		add_lead_comment(
+			lead_name,
+			"Retry sequence exhausted on Day 12 — lead remains Cold-Unresponsive.",
+			source="SCHEDULER",
+		)
 		return
 
-	frappe.db.set_value("CRM Lead", lead_name, "status", "Cold")
+	frappe.db.set_value("CRM Lead", lead_name, "lead_status", "Cold-Unresponsive")
 	add_lead_comment(
 		lead_name,
-		f"Retry sequence exhausted on Day 12 — auto-moved {from_status} → Cold (PRD §5.2).",
+		f"Retry sequence exhausted on Day 12 — auto-moved engagement {from_lead_status} → "
+		f"Cold-Unresponsive (PRD §5.2). C-stage unchanged at {current_status}.",
+		source="SCHEDULER",
 	)

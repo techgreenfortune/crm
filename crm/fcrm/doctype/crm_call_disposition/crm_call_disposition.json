@@ -9,7 +9,12 @@
   "disposition_name",
   "label",
   "next_status",
+  "next_lead_status",
   "default_lost_reason",
+  "requirements_section",
+  "requires_callback_datetime",
+  "requires_routing_reason",
+  "requires_lost_reason",
   "column_break_main",
   "color",
   "position",
@@ -31,19 +36,53 @@
    "label": "Label"
   },
   {
-   "description": "If set, picking this disposition moves the linked Lead to this stage (only when the Lead is at C0 / Cold / Reactivated).",
+   "description": "C-stage move triggered by this disposition. Leave blank to preserve C-stage (engagement-only dispositions like Junk). Auto-applied only when the Lead is gated as retry-active (status C0 or lead_status Cold-Unresponsive/Reactivated).",
    "fieldname": "next_status",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Next Lead Status",
+   "label": "Next C-Stage",
    "options": "CRM Lead Status"
   },
   {
-   "description": "Auto-applied as the lead's lost_reason when this disposition triggers a move to a type=Lost status (C6 / Archived). Bypasses the partial-state where validate_lost_reason rejects the auto-move. Do NOT set to 'Other' — that reason additionally requires lost_notes, which the script does not populate, and the auto-move will fail.",
+   "description": "If set, picking this disposition flips the linked Lead's lead_status (engagement) to this value. Use together with or instead of Next C-Stage. Junk → Archived is the canonical engagement-only flow.",
+   "fieldname": "next_lead_status",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Next Lead Status",
+   "options": "CRM Lead Engagement Status"
+  },
+  {
+   "description": "Auto-applied as the lead's lost_reason when this disposition triggers a move to a type=Lost C-stage (C6). Bypasses the partial-state where validate_lost_reason rejects the auto-move. Do NOT set to 'Other' — that reason additionally requires lost_notes, which the script does not populate, and the auto-move will fail.",
    "fieldname": "default_lost_reason",
    "fieldtype": "Link",
    "label": "Default Lost Reason",
    "options": "CRM Lost Reason"
+  },
+  {
+   "fieldname": "requirements_section",
+   "fieldtype": "Section Break",
+   "label": "Required Fields"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and scheduled_callback_at is empty.",
+   "fieldname": "requires_callback_datetime",
+   "fieldtype": "Check",
+   "label": "Requires Callback Datetime"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and the linked Lead has no custom_fabricator_routing_reason.",
+   "fieldname": "requires_routing_reason",
+   "fieldtype": "Check",
+   "label": "Requires Fabricator Routing Reason"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and the linked Lead has no lost_reason (and no lost_notes when reason is Other).",
+   "fieldname": "requires_lost_reason",
+   "fieldtype": "Check",
+   "label": "Requires Lost Reason"
   },
   {
    "fieldname": "column_break_main",

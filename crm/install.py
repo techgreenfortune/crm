@@ -33,6 +33,7 @@ def before_migrate():
 
 def after_install(force=False):
 	add_default_lead_statuses()
+	add_default_lead_engagement_statuses()
 	add_default_deal_statuses()
 	add_default_communication_statuses()
 	add_default_fields_layout(force)
@@ -54,41 +55,16 @@ def after_install(force=False):
 
 def add_default_lead_statuses():
 	statuses = {
-		"New": {
-			"color": "gray",
-			"type": "Open",
-			"position": 1,
-		},
-		"Contacted": {
-			"color": "orange",
-			"type": "Ongoing",
-			"position": 2,
-		},
-		"Nurture": {
-			"color": "blue",
-			"type": "Ongoing",
-			"position": 3,
-		},
-		"Qualified": {
-			"color": "green",
-			"type": "Won",
-			"position": 4,
-		},
-		"Converted": {
-			"color": "teal",
-			"type": "Won",
-			"position": 5,
-		},
-		"Unqualified": {
-			"color": "red",
-			"type": "Lost",
-			"position": 6,
-		},
-		"Junk": {
-			"color": "purple",
-			"type": "Lost",
-			"position": 7,
-		},
+		"C0":   {"color": "gray",   "type": "Open",    "position": 1,  "stage_label": "C0 — New Lead"},
+		"C1":   {"color": "blue",   "type": "Open",    "position": 2,  "stage_label": "C1 — Future Requirement"},
+		"C2":   {"color": "orange", "type": "Ongoing", "position": 3,  "stage_label": "C2 — Active Engagement"},
+		"C2-Q": {"color": "amber",  "type": "Ongoing", "position": 4,  "stage_label": "C2-Q — Quote Sent"},
+		"C3":   {"color": "yellow", "type": "Ongoing", "position": 5,  "stage_label": "C3 — Almost Ready"},
+		"C4":   {"color": "teal",   "type": "Won",     "position": 6,  "stage_label": "C4 — Advance Payment Made"},
+		"C5":   {"color": "green",  "type": "Won",     "position": 7,  "stage_label": "C5 — Invoicing Completed"},
+		"C6":   {"color": "red",    "type": "Lost",    "position": 8,  "stage_label": "C6 — Lost"},
+		"C7":   {"color": "violet", "type": "On Hold", "position": 9,  "stage_label": "C7 — Forwarded to Fabricator"},
+		"C8":   {"color": "green",  "type": "Won",     "position": 10, "stage_label": "C8 — Won"},
 	}
 
 	for status in statuses:
@@ -99,6 +75,26 @@ def add_default_lead_statuses():
 		doc.lead_status = status
 		doc.color = statuses[status]["color"]
 		doc.type = statuses[status]["type"]
+		doc.position = statuses[status]["position"]
+		doc.stage_label = statuses[status]["stage_label"]
+		doc.insert()
+
+
+def add_default_lead_engagement_statuses():
+	statuses = {
+		"Active":            {"color": "green", "position": 1},
+		"Cold-Unresponsive": {"color": "gray",  "position": 2},
+		"Reactivated":       {"color": "cyan",  "position": 3},
+		"Archived":          {"color": "black", "position": 4},
+	}
+
+	for status in statuses:
+		if frappe.db.exists("CRM Lead Engagement Status", status):
+			continue
+
+		doc = frappe.new_doc("CRM Lead Engagement Status")
+		doc.engagement_status = status
+		doc.color = statuses[status]["color"]
 		doc.position = statuses[status]["position"]
 		doc.insert()
 
@@ -211,10 +207,8 @@ def add_default_fields_layout(force=False):
 	}
 
 	sidebar_fields_layouts = {
-		"CRM Lead-Side Panel": {
-			"doctype": "CRM Lead",
-			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_kl92", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_XmW2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
-		},
+		# CRM Lead-Side Panel moved to crm/fixtures/crm_fields_layout.json so it ships as a fixture
+		# (re-applies on bench migrate). Editing here is dead — update the fixture instead.
 		"CRM Deal-Side Panel": {
 			"doctype": "CRM Deal",
 			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Organization Details", "name": "organization_section", "opened": true, "columns": [{"name": "column_na2Q", "fields": ["organization", "website", "territory", "annual_revenue", "close_date", "probability", "next_step", "deal_owner"]}]}]',
@@ -349,7 +343,17 @@ def add_crm_lead_property_setters():
 			"field_name": "status",
 			"property": "read_only_depends_on",
 			"property_type": "Code",
-			"value": 'eval:!doc.name || ["C6","C8","Archived"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+		},
+		{
+			"name": "CRM Lead-lead_status-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lead_status",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			# Read-only on new docs (server default is "Active") and on terminal C-stages
+			# (Script 1 also forces it to "Active" there). Mirrors the `status` property setter.
+			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
@@ -363,6 +367,13 @@ def add_crm_lead_property_setters():
 
 	for setter in setters:
 		if frappe.db.exists("Property Setter", setter["name"]):
+			# Upsert: keep the value aligned with install.py so `after_migrate` can
+			# re-apply the latest values without leaving stale rows behind. Skip
+			# the save when the value already matches to avoid pointless writes.
+			existing = frappe.get_doc("Property Setter", setter["name"])
+			if existing.value != setter["value"]:
+				existing.value = setter["value"]
+				existing.save(ignore_permissions=True)
 			continue
 		doc = frappe.new_doc("Property Setter")
 		doc.doc_type = "CRM Lead"
@@ -555,7 +566,7 @@ def add_default_lost_reasons():
 
 def add_default_quick_filters():
 	quick_filters = {
-		"CRM Lead": ["lead_name", "email", "organization", "status", "source"],
+		"CRM Lead": ["lead_name", "email", "lead_status", "status", "source"],
 		"CRM Deal": ["organization", "status", "probability", "email"],
 		"Contact": ["status", "email_id", "phone"],
 		"CRM Organization": ["organization_name", "no_of_employees", "territory", "industry"],

@@ -1,3 +1,5 @@
+import time
+
 import frappe
 import requests
 from frappe import _
@@ -7,6 +9,31 @@ from crm.integrations.brevo.brevo_handler import is_brevo_enabled as _is_enabled
 
 BREVO_CONTACTS_API_URL = "https://api.brevo.com/v3/contacts"
 BREVO_ADD_TO_LIST_URL = "https://api.brevo.com/v3/contacts/lists/{list_id}/contacts/add"
+
+# Cap on the Retry-After header so a malicious or misconfigured value can't
+# stall a worker. Five seconds is well above Brevo's typical rate-limit
+# windows but short enough that a worker isn't blocked indefinitely.
+_RETRY_AFTER_CAP_SECONDS = 5.0
+
+
+def _post_with_retry(url: str, json: dict, headers: dict, timeout: float = 10):
+	"""POST with a single retry on HTTP 429 (Brevo rate limit).
+
+	Returns the final ``requests.Response``. The caller's existing 4xx/5xx
+	handling (log_error + early return) works unchanged — this helper only
+	adds one retry on a rate-limit response.
+	"""
+	response = requests.post(url, json=json, headers=headers, timeout=timeout)
+	if response.status_code != 429:
+		return response
+
+	retry_after = response.headers.get("Retry-After")
+	try:
+		delay = float(retry_after) if retry_after else 1.0
+	except (TypeError, ValueError):
+		delay = 1.0
+	time.sleep(min(delay, _RETRY_AFTER_CAP_SECONDS))
+	return requests.post(url, json=json, headers=headers, timeout=timeout)
 
 
 @frappe.whitelist()
@@ -63,12 +90,11 @@ def enroll_in_sequence(email: str, lead_name: str) -> None:
 		"content-type": "application/json",
 	}
 
-	# Upsert contact
-	upsert_response = requests.post(
+	# Upsert contact (retries once on 429)
+	upsert_response = _post_with_retry(
 		BREVO_CONTACTS_API_URL,
 		json={"email": email, "updateEnabled": True},
 		headers=headers,
-		timeout=10,
 	)
 	if not upsert_response.ok:
 		frappe.log_error(
@@ -77,12 +103,11 @@ def enroll_in_sequence(email: str, lead_name: str) -> None:
 		)
 		return
 
-	# Add to nurture list
-	response = requests.post(
+	# Add to nurture list (retries once on 429)
+	response = _post_with_retry(
 		BREVO_ADD_TO_LIST_URL.format(list_id=nurture_list_id),
 		json={"emails": [email]},
 		headers=headers,
-		timeout=10,
 	)
 
 	if not response.ok:

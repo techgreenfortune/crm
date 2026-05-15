@@ -76,7 +76,7 @@
       <div v-else-if="title == 'Quotes'" class="px-3 pb-3 sm:px-10 sm:pb-5">
         <QuoteArea
           :quotes="activities"
-          :onReload="() => quoteRequests.reload()"
+          :onReload="() => { quoteRequests.reload(); quoteRevisions.reload(); }"
         />
       </div>
       <div v-else-if="title == 'Calls'" class="activity">
@@ -583,6 +583,17 @@ const quoteRequests = createResource({
   onSuccess: () => nextTick(() => scroll()),
 })
 
+// Per-round revision history — parsed server-side from the audit Comments
+// Script 14 writes on every `→ Quote Received` transition. One entry per
+// upload round, oldest first. Used by QuoteArea to render a collapsible
+// revisions list under each QR card.
+const quoteRevisions = createResource({
+  url: 'crm.api.activities.get_quote_revisions',
+  cache: ['quote_revisions', props.docname],
+  params: { lead: props.docname },
+  auto: props.doctype === 'CRM Lead',
+})
+
 const showWhatsappTemplates = ref(false)
 
 const whatsappMessages = createResource({
@@ -680,7 +691,17 @@ const activities = computed(() => {
     if (!all_activities.data?.tasks) return []
     return sortByModified(all_activities.data.tasks)
   } else if (title.value == 'Quotes') {
-    return quoteRequests.data || []
+    const quotes = quoteRequests.data || []
+    const revisions = quoteRevisions.data || []
+    if (!revisions.length) return quotes
+    // Group revisions by their parent QR and attach to each quote card.
+    const byQR = {}
+    for (const r of revisions) {
+      if (!r.quote_request) continue
+      if (!byQR[r.quote_request]) byQR[r.quote_request] = []
+      byQR[r.quote_request].push(r)
+    }
+    return quotes.map((q) => ({ ...q, revisions: byQR[q.name] || [] }))
   } else if (title.value == 'Notes') {
     if (!all_activities.data?.notes) return []
     return sortByModified(all_activities.data.notes)

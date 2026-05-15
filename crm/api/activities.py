@@ -562,3 +562,93 @@ def parse_attachment_log(html: str, type: str):
 
 def is_translatable(doctype: str) -> bool:
 	return doctype in get_translated_doctypes()
+
+
+@frappe.whitelist()
+def get_quote_revisions(lead: str) -> list[dict]:
+	"""Return per-round quote-upload history for the lead.
+
+	The Quote Request flow uses one QR per lead (status flips through Pending →
+	Quote Received → Revision Requested → Quote Received → Accepted). Each
+	`→ Quote Received` transition writes an `[AUTOMATION] Quote uploaded — …`
+	Comment on the parent CRM Lead with the file URL inline. We parse those
+	Comments to reconstruct the revision history without a schema change.
+
+	Returned shape (one entry per round, oldest first):
+	    [
+	      {
+	        "round": 1,
+	        "quote_request": "CRM-QR-2026-0001",
+	        "value": 100000.0,
+	        "margin": 18.0,
+	        "file_url": "/files/q1.txt",
+	        "timestamp": "2026-05-15 12:34:56.789",
+	      },
+	      ...
+	    ]
+	"""
+	if not frappe.has_permission("CRM Lead", "read", lead):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	qrs = frappe.get_all(
+		"CRM Quote Request",
+		filters={"lead": lead},
+		fields=["name"],
+		pluck="name",
+	)
+	if not qrs:
+		return []
+
+	comments = frappe.get_all(
+		"Comment",
+		filters={
+			"reference_doctype": "CRM Lead",
+			"reference_name": lead,
+			"content": ["like", "[AUTOMATION] Quote uploaded —%"],
+		},
+		fields=["name", "content", "creation"],
+		order_by="creation asc",
+	)
+
+	revisions: list[dict] = []
+	for round_idx, c in enumerate(comments, start=1):
+		revisions.append(
+			{
+				"round": round_idx,
+				"quote_request": qrs[0] if len(qrs) == 1 else None,
+				"value": _extract_currency(c["content"], "Value: "),
+				"margin": _extract_currency(c["content"], "Margin: ", trailing="%"),
+				"file_url": _extract_file_url(c["content"]),
+				"timestamp": str(c["creation"]),
+			}
+		)
+	return revisions
+
+
+def _extract_currency(content: str, prefix: str, trailing: str = "") -> float | None:
+	"""Parse `Value: 100000` or `Margin: 18%` out of the audit Comment text."""
+	idx = content.find(prefix)
+	if idx == -1:
+		return None
+	tail = content[idx + len(prefix) :]
+	end = len(tail)
+	for stopper in (",", "—", "<", "\n"):
+		pos = tail.find(stopper)
+		if pos != -1 and pos < end:
+			end = pos
+	raw = tail[:end].strip()
+	if trailing and raw.endswith(trailing):
+		raw = raw[: -len(trailing)].strip()
+	try:
+		return float(raw)
+	except (TypeError, ValueError):
+		return None
+
+
+def _extract_file_url(content: str) -> str | None:
+	"""Parse the `href` of the `<a … View File</a>` anchor in the audit Comment."""
+	soup = BeautifulSoup(content, "html.parser")
+	a = soup.find("a")
+	if a and a.get("href"):
+		return a["href"]
+	return None
