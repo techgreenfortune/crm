@@ -212,8 +212,10 @@ def add_default_fields_layout(force=False):
 	}
 
 	sidebar_fields_layouts = {
-		# CRM Lead-Side Panel moved to crm/fixtures/crm_fields_layout.json so it ships as a fixture
-		# (re-applies on bench migrate). Editing here is dead — update the fixture instead.
+		"CRM Lead-Side Panel": {
+			"doctype": "CRM Lead",
+			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_lead_sp_1", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_lead_sp_2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
+		},
 		"CRM Deal-Side Panel": {
 			"doctype": "CRM Deal",
 			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Organization Details", "name": "organization_section", "opened": true, "columns": [{"name": "column_na2Q", "fields": ["organization", "website", "territory", "annual_revenue", "close_date", "probability", "next_step", "deal_owner"]}]}]',
