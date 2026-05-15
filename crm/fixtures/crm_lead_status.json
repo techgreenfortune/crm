@@ -1,145 +1,112 @@
 [
-  {
-    "color": "gray",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C0",
-    "modified": "2026-05-03 23:52:35.865261",
-    "name": "C0",
-    "position": 1,
-    "stage_label": "C0 — New Lead",
-    "type": "Open"
-  },
-  {
-    "color": "blue",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C1",
-    "modified": "2026-05-03 23:56:23.678412",
-    "name": "C1",
-    "position": 2,
-    "stage_label": "C1 — Future Requirement",
-    "type": "Open"
-  },
-  {
-    "color": "orange",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C2",
-    "modified": "2026-05-03 23:56:51.520154",
-    "name": "C2",
-    "position": 3,
-    "stage_label": "C2 — Active Engagement",
-    "type": "Ongoing"
-  },
-  {
-    "color": "amber",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C2-Q",
-    "modified": "2026-05-03 23:57:22.506480",
-    "name": "C2-Q",
-    "position": 4,
-    "stage_label": "C2-Q — Quote Sent",
-    "type": "Ongoing"
-  },
-  {
-    "color": "yellow",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C3",
-    "modified": "2026-05-03 23:57:43.770079",
-    "name": "C3",
-    "position": 5,
-    "stage_label": "C3 — Almost Ready",
-    "type": "Ongoing"
-  },
-  {
-    "color": "teal",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C4",
-    "modified": "2026-05-03 23:58:18.695399",
-    "name": "C4",
-    "position": 6,
-    "stage_label": "C4 — Advance Payment Made",
-    "type": "Won"
-  },
-  {
-    "color": "green",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C5",
-    "modified": "2026-05-03 23:59:23.337726",
-    "name": "C5",
-    "position": 7,
-    "stage_label": "C5 — Invoicing Completed",
-    "type": "Won"
-  },
-  {
-    "color": "red",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C6",
-    "modified": "2026-05-04 00:00:56.389864",
-    "name": "C6",
-    "position": 8,
-    "stage_label": "C6 — Lost",
-    "type": "Lost"
-  },
-  {
-    "color": "violet",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C7",
-    "modified": "2026-05-04 00:00:39.056511",
-    "name": "C7",
-    "position": 9,
-    "stage_label": "C7 — Forwarded to Fabricator",
-    "type": "On Hold"
-  },
-  {
-    "color": "green",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "C8",
-    "modified": "2026-05-04 00:02:47.964850",
-    "name": "C8",
-    "position": 10,
-    "stage_label": "C8 — Won",
-    "type": "Won"
-  },
-  {
-    "color": "gray",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "Cold",
-    "modified": "2026-05-04 00:03:13.575897",
-    "name": "Cold",
-    "position": 11,
-    "stage_label": "Cold — Unresponsive",
-    "type": "On Hold"
-  },
-  {
-    "color": "cyan",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "Reactivated",
-    "modified": "2026-05-04 00:03:42.423132",
-    "name": "Reactivated",
-    "position": 12,
-    "stage_label": "Reactivated",
-    "type": "Open"
-  },
-  {
-    "color": "black",
-    "docstatus": 0,
-    "doctype": "CRM Lead Status",
-    "lead_status": "Archived",
-    "modified": "2026-05-04 00:04:04.425120",
-    "name": "Archived",
-    "position": 13,
-    "stage_label": "Archived",
-    "type": "Lost"
-  }
+ {
+  "color": "gray",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C0",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C0",
+  "position": 1,
+  "stage_label": "C0 — New Lead",
+  "type": "Open"
+ },
+ {
+  "color": "blue",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C1",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C1",
+  "position": 2,
+  "stage_label": "C1 — Future Requirement",
+  "type": "Open"
+ },
+ {
+  "color": "orange",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C2",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C2",
+  "position": 3,
+  "stage_label": "C2 — Active Engagement",
+  "type": "Ongoing"
+ },
+ {
+  "color": "amber",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C2-Q",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C2-Q",
+  "position": 4,
+  "stage_label": "C2-Q — Quote Sent",
+  "type": "Ongoing"
+ },
+ {
+  "color": "yellow",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C3",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C3",
+  "position": 5,
+  "stage_label": "C3 — Almost Ready",
+  "type": "Ongoing"
+ },
+ {
+  "color": "teal",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C4",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C4",
+  "position": 6,
+  "stage_label": "C4 — Advance Payment Made",
+  "type": "Won"
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C5",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C5",
+  "position": 7,
+  "stage_label": "C5 — Invoicing Completed",
+  "type": "Won"
+ },
+ {
+  "color": "red",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C6",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C6",
+  "position": 8,
+  "stage_label": "C6 — Lost",
+  "type": "Lost"
+ },
+ {
+  "color": "violet",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C7",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C7",
+  "position": 9,
+  "stage_label": "C7 — Forwarded to Fabricator",
+  "type": "On Hold"
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C8",
+  "modified": "2026-05-14 00:00:00",
+  "name": "C8",
+  "position": 10,
+  "stage_label": "C8 — Won",
+  "type": "Won"
+ }
 ]

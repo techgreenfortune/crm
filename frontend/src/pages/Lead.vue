@@ -34,6 +34,24 @@
           </Button>
         </template>
       </Dropdown>
+      <Dropdown
+        v-if="doc.lead_status && doc.lead_status !== 'Active'"
+        :options="engagementStatuses"
+        placement="right"
+      >
+        <template #default="{ open }">
+          <Button
+            :label="doc.lead_status"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          >
+            <template #prefix>
+              <IndicatorIcon
+                :class="getLeadEngagementStatus(doc.lead_status)?.color"
+              />
+            </template>
+          </Button>
+        </template>
+      </Dropdown>
       <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert to Deal')"
@@ -310,7 +328,12 @@ import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
 const { brand } = getSettings()
 const { $dialog, $socket, makeCall } = globalStore()
-const { statusOptions, getLeadStatus } = statusesStore()
+const {
+  statusOptions,
+  getLeadStatus,
+  engagementStatusOptions,
+  getLeadEngagementStatus,
+} = statusesStore()
 const { doctypeMeta } = getMeta('CRM Lead')
 
 const route = useRoute()
@@ -419,6 +442,10 @@ const statuses = computed(() => {
   return statusOptions('lead', customStatuses, triggerStatusChange)
 })
 
+const engagementStatuses = computed(() =>
+  engagementStatusOptions(triggerLeadStatusChange),
+)
+
 usePageMeta(() => {
   return { title: title.value, icon: brand.favicon }
 })
@@ -490,7 +517,7 @@ const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastLeadTab')
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Lead'],
+  cache: ['sidePanelSections', 'CRM Lead', 'v2-engagement'],
   params: { doctype: 'CRM Lead' },
   auto: true,
 })
@@ -502,6 +529,21 @@ async function triggerStatusChange(value) {
     return
   }
   setLostReason()
+}
+
+async function triggerLeadStatusChange(value) {
+  if (
+    value === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    return
+  }
+  await triggerOnChange('lead_status', value)
+  document.save.submit(null, {
+    onSuccess: () => reloadResources({ lead_status: value }),
+  })
 }
 
 function updateField(name, value) {
@@ -574,6 +616,15 @@ function beforeStatusChange(data) {
     setLostReason()
   } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
     showFabricatorRoutingReasonModal.value = true
+  } else if (
+    Object.hasOwn(data ?? {}, 'lead_status') &&
+    data.lead_status === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    // user cancelled archive — revert the field change locally
+    if (document.doc) document.doc.lead_status = doc.value?.lead_status
   } else {
     document.save.submit(null, {
       onSuccess: () => reloadResources(data),

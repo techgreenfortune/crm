@@ -185,11 +185,11 @@
       v-else-if="
         ['Small Text', 'Text', 'Long Text', 'Code'].includes(field.fieldtype)
       "
+      v-model="data[field.fieldname]"
       type="textarea"
-      :value="data[field.fieldname]"
       :placeholder="getPlaceholder(field)"
       :description="field.description"
-      @change="fieldChange($event.target.value, field)"
+      @update:modelValue="(v) => fieldChange(v, field)"
     />
     <Password
       v-else-if="field.fieldtype === 'Password'"
@@ -284,12 +284,12 @@
     />
     <FormControl
       v-else
+      v-model="data[field.fieldname]"
       type="text"
       :placeholder="getPlaceholder(field)"
-      :value="data[field.fieldname]"
       :disabled="Boolean(field.read_only)"
       :description="field.description"
-      @change="fieldChange($event.target.value, field)"
+      @update:modelValue="(v) => fieldChange(v, field)"
     />
   </div>
 </template>

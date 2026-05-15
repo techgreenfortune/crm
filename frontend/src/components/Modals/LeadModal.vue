@@ -64,7 +64,12 @@ const props = defineProps({
 
 const { user } = sessionStore()
 const { getUser, isManager } = usersStore()
-const { getLeadStatus, statusOptions } = statusesStore()
+const {
+  getLeadStatus,
+  statusOptions,
+  getLeadEngagementStatus,
+  engagementStatusOptions,
+} = statusesStore()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 
 const show = defineModel({ type: Boolean })
@@ -92,6 +97,14 @@ const tabs = createResource({
               field.fieldtype = 'Select'
               field.options = leadStatuses.value
               field.prefix = getLeadStatus(lead.doc.status).color
+            }
+
+            if (field.fieldname == 'lead_status') {
+              field.fieldtype = 'Select'
+              field.options = engagementStatusOptions()
+              field.prefix = getLeadEngagementStatus(
+                lead.doc.lead_status,
+              )?.color
             }
 
             if (field.fieldtype === 'Table') {
@@ -191,6 +204,9 @@ onMounted(() => {
   }
   if (!lead.doc?.status && leadStatuses.value[0]?.value) {
     lead.doc.status = leadStatuses.value[0].value
+  }
+  if (!lead.doc?.lead_status) {
+    lead.doc.lead_status = 'Active'
   }
 })
 </script>

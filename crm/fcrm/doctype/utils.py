@@ -15,7 +15,11 @@ def add_or_remove_lost_reason_section_in_sidepanel(doc):
 		status = frappe.db.get_value(status_doctype, doc.status, "type")
 	is_lost = status and status == "Lost"
 
-	layout_doc = frappe.get_doc("CRM Fields Layout", f"{doctype}-Side Panel")
+	layout_name = f"{doctype}-Side Panel"
+	if not frappe.db.exists("CRM Fields Layout", layout_name):
+		return
+
+	layout_doc = frappe.get_doc("CRM Fields Layout", layout_name)
 	sections = json.loads(layout_doc.layout)
 
 	lost_reason_section = {

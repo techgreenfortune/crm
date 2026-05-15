@@ -9,5 +9,16 @@
   "name": "CRM Quote Request — Form",
   "script": "function getCurrentUser() {\n  // frappe/crm Vue app stores the logged-in user in the `user_id` cookie.\n  // window.frappe.session.user is not exposed in this Vue app, so read the\n  // cookie directly (matches frontend/src/stores/session.js).\n  const cookies = new URLSearchParams(document.cookie.split('; ').join('&'))\n  const u = cookies.get('user_id')\n  return u === 'Guest' ? null : u\n}\n\nfunction getUserRoles() {\n  // Frappe's boot object exposes the logged-in user's roles. The frappe-ui Vue\n  // app inherits from Frappe's session/boot. Fall back to an empty set if the\n  // boot payload isn't there yet (defensive — should always be populated by\n  // the time a doctype modal renders).\n  const roles = window.frappe?.boot?.user?.roles\n  return new Set(Array.isArray(roles) ? roles : [])\n}\n\nclass CRMQuoteRequest {\n  onRender() {\n    const currentUser = getCurrentUser()\n    const userRoles = getUserRoles()\n    const isLeadOwner = this.doc.lead_owner === currentUser\n    // Privileged-user bypass mirrors Script 1's is_privileged check on the\n    // server. Lets Admin / Sales Manager review / accept / request-revision\n    // even when the lead has no Lead Owner assigned yet (common during\n    // testing or when a lead is mid-handoff).\n    const isPrivileged =\n      currentUser === 'Administrator' ||\n      userRoles.has('Administrator') ||\n      userRoles.has('Sales Manager') ||\n      userRoles.has('System Manager')\n    const canReview = isLeadOwner || isPrivileged\n\n    if (canReview) {\n      // Lead Owner / privileged workflow:\n      //   - Reviews the quote (file/value/margin etc., already read-only via\n      //     permlevel + the explicit lock on quote_file below).\n      //   - Picks Accepted or Revision Requested from the Status dropdown.\n      //   - Clicks Update. Server-side scripts handle the rest.\n      this.setFieldProperty('quote_file', 'read_only', true)\n      return\n    }\n\n    // Estimation Team and everyone else: status is auto-managed by the Before\n    // Validate server script (Pending -> Quote Received on file attach).\n    // Hiding the dropdown prevents accidental manual changes.\n    this.setFieldProperty('status', 'hidden', true)\n  }\n}",
   "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Form Script",
+  "dt": "CRM Lead",
+  "enabled": 1,
+  "is_standard": 0,
+  "modified": "2026-05-15 00:00:00.000000",
+  "name": "Filter Sub Source by Source",
+  "script": "class CRMLead {\n  onLoad() {\n    // Seed the filter from whatever Source the lead already has when\n    // the form opens (covers existing leads, not just new ones).\n    this.setFieldProperty(\n      'custom_sub_source',\n      'link_filters',\n      JSON.stringify({ source: this.doc.source || '' })\n    )\n  }\n\n  source() {\n    // Fires whenever the Source field changes. this.value is the new\n    // value; setFieldProperty mutates the reactive fieldPropertyOverrides\n    // map, which Field.vue's computed reads — Link.vue then reloads its\n    // search_link dropdown with the new filter.\n    this.setFieldProperty(\n      'custom_sub_source',\n      'link_filters',\n      JSON.stringify({ source: this.value || '' })\n    )\n  }\n}",
+  "view": "Form"
  }
 ]

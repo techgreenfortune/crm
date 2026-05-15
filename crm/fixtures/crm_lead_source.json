@@ -60,14 +60,6 @@
   "docstatus": 0,
   "doctype": "CRM Lead Source",
   "modified": "2026-05-08 00:00:00",
-  "name": "Sales Team",
-  "source_name": "Sales Team"
- },
- {
-  "details": null,
-  "docstatus": 0,
-  "doctype": "CRM Lead Source",
-  "modified": "2026-05-08 00:00:00",
   "name": "Lead Spotting",
   "source_name": "Lead Spotting"
  }
