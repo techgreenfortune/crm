@@ -148,5 +148,8 @@ jobs:
             PROJECT="${{ env.COMPOSE_PROJECT }}"
             COMPOSE_FILE=~/${PROJECT}-compose.yml
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" pull --policy always
-            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --remove-orphans
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d \
+              --force-recreate --remove-orphans
+            docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -T backend \
+              bench --site all clear-cache
             docker image prune -f
