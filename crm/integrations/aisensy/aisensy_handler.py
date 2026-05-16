@@ -1,0 +1,77 @@
+import frappe
+import requests
+
+AISENSY_API_URL = "https://backend.aisensy.com/campaign/t1/api/v2"
+
+
+def is_aisensy_enabled() -> bool:
+	return bool(frappe.db.get_single_value("CRM AISensy Settings", "enabled"))
+
+
+def get_aisensy_settings():
+	return frappe.get_single("CRM AISensy Settings")
+
+
+def send_template_message(
+	to: str,
+	template_name: str,
+	variables: list,
+	reference_doctype: str = "",
+	reference_name: str = "",
+	recipient_name: str | None = None,
+) -> dict:
+	settings = get_aisensy_settings()
+	api_key = settings.get_password("api_key")
+	user_name = recipient_name or settings.default_user_name or ""
+
+	phone = "".join(c for c in to if c.isdigit())
+	if not phone.startswith("91") and len(phone) == 10:
+		phone = "91" + phone
+
+	payload = {
+		"apiKey": api_key,
+		"campaignName": template_name,
+		"destination": phone,
+		"userName": user_name,
+		"templateParams": variables,
+		"source": "frappe-crm",
+		"media": {},
+		"buttons": [],
+		"carouselCards": [],
+		"location": {},
+	}
+
+	response = requests.post(
+		AISENSY_API_URL,
+		json=payload,
+		headers={"Content-Type": "application/json"},
+		timeout=10,
+	)
+
+	if not response.ok:
+		frappe.log_error(
+			title="AISensy Send Error",
+			message=f"Status {response.status_code}: {response.text}",
+		)
+		frappe.throw(frappe._("AISensy: failed to send message - {0}").format(response.text))
+
+	result = response.json()
+
+	frappe.get_doc(
+		{
+			"doctype": "CRM AISensy Message",
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"to": phone,
+			"template_name": template_name,
+			"variables": str(variables),
+			"status": "Sent",
+			# AiSensy v2 campaign API returns `submitted_message_id` in the success body
+			# (verified empirically 2026-05-12 against backend.aisensy.com/campaign/t1/api/v2:
+			# `{"success": "true", "submitted_message_id": "<uuid>"}`). Earlier code read
+			# `messageId` which is not a real key — every row got message_id = "".
+			"message_id": result.get("submitted_message_id", ""),
+		}
+	).insert(ignore_permissions=True)
+
+	return result

@@ -56,10 +56,20 @@ const props = defineProps({
   icon: { type: [Object, String, Function], default: null },
   label: { type: String, default: '' },
   to: { type: [Object, String], default: null },
+  href: { type: String, default: null },
   isCollapsed: { type: Boolean, default: false },
+  onClick: { type: Function, default: null },
 })
 
 function handleClick() {
+  if (props.onClick) {
+    props.onClick()
+    return
+  }
+  if (props.href) {
+    window.open(props.href, '_blank')
+    return
+  }
   if (!props.to) return
   if (typeof props.to === 'object') {
     router.push(props.to)

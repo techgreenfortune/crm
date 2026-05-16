@@ -1,6 +1,7 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 import json
+import os
 
 import click
 import frappe
@@ -14,8 +15,25 @@ def before_install():
 	pass
 
 
+def before_migrate():
+	"""Clear stale document lock files left by any previously interrupted bench migrate."""
+	from frappe.utils import file_lock, get_site_path
+
+	locks_dir = get_site_path(file_lock.LOCKS_DIR)
+	if not os.path.isdir(locks_dir):
+		return
+	for fname in os.listdir(locks_dir):
+		if fname.endswith(".lock"):
+			try:
+				os.remove(os.path.join(locks_dir, fname))
+				frappe.logger().warning(f"before_migrate: removed stale lock file {fname}")
+			except OSError:
+				pass
+
+
 def after_install(force=False):
 	add_default_lead_statuses()
+	add_default_lead_engagement_statuses()
 	add_default_deal_statuses()
 	add_default_communication_statuses()
 	add_default_fields_layout(force)
@@ -31,46 +49,27 @@ def after_install(force=False):
 	create_default_manager_dashboard(force)
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
+	add_default_crm_lead_assignment_rules()
 	frappe.db.commit()
 
 
 def add_default_lead_statuses():
 	statuses = {
-		"New": {
-			"color": "gray",
-			"type": "Open",
-			"position": 1,
+		"C0": {"color": "gray", "type": "Open", "position": 1, "stage_label": "C0 — New Lead"},
+		"C1": {"color": "blue", "type": "Open", "position": 2, "stage_label": "C1 — Future Requirement"},
+		"C2": {"color": "orange", "type": "Ongoing", "position": 3, "stage_label": "C2 — Active Engagement"},
+		"C2-Q": {"color": "amber", "type": "Ongoing", "position": 4, "stage_label": "C2-Q — Quote Sent"},
+		"C3": {"color": "yellow", "type": "Ongoing", "position": 5, "stage_label": "C3 — Almost Ready"},
+		"C4": {"color": "teal", "type": "Won", "position": 6, "stage_label": "C4 — Advance Payment Made"},
+		"C5": {"color": "green", "type": "Won", "position": 7, "stage_label": "C5 — Invoicing Completed"},
+		"C6": {"color": "red", "type": "Lost", "position": 8, "stage_label": "C6 — Lost"},
+		"C7": {
+			"color": "violet",
+			"type": "On Hold",
+			"position": 9,
+			"stage_label": "C7 — Forwarded to Fabricator",
 		},
-		"Contacted": {
-			"color": "orange",
-			"type": "Ongoing",
-			"position": 2,
-		},
-		"Nurture": {
-			"color": "blue",
-			"type": "Ongoing",
-			"position": 3,
-		},
-		"Qualified": {
-			"color": "green",
-			"type": "Won",
-			"position": 4,
-		},
-		"Converted": {
-			"color": "teal",
-			"type": "Won",
-			"position": 5,
-		},
-		"Unqualified": {
-			"color": "red",
-			"type": "Lost",
-			"position": 6,
-		},
-		"Junk": {
-			"color": "purple",
-			"type": "Lost",
-			"position": 7,
-		},
+		"C8": {"color": "green", "type": "Won", "position": 10, "stage_label": "C8 — Won"},
 	}
 
 	for status in statuses:
@@ -81,6 +80,26 @@ def add_default_lead_statuses():
 		doc.lead_status = status
 		doc.color = statuses[status]["color"]
 		doc.type = statuses[status]["type"]
+		doc.position = statuses[status]["position"]
+		doc.stage_label = statuses[status]["stage_label"]
+		doc.insert()
+
+
+def add_default_lead_engagement_statuses():
+	statuses = {
+		"Active": {"color": "green", "position": 1},
+		"Cold-Unresponsive": {"color": "gray", "position": 2},
+		"Reactivated": {"color": "cyan", "position": 3},
+		"Archived": {"color": "black", "position": 4},
+	}
+
+	for status in statuses:
+		if frappe.db.exists("CRM Lead Engagement Status", status):
+			continue
+
+		doc = frappe.new_doc("CRM Lead Engagement Status")
+		doc.engagement_status = status
+		doc.color = statuses[status]["color"]
 		doc.position = statuses[status]["position"]
 		doc.insert()
 
@@ -195,7 +214,7 @@ def add_default_fields_layout(force=False):
 	sidebar_fields_layouts = {
 		"CRM Lead-Side Panel": {
 			"doctype": "CRM Lead",
-			"layout": '[{"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_kl92", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_XmW2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
+			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_lead_sp_1", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_lead_sp_2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
 		},
 		"CRM Deal-Side Panel": {
 			"doctype": "CRM Deal",
@@ -270,6 +289,107 @@ def add_property_setter():
 		doc.property = "search_fields"
 		doc.property_type = "Data"
 		doc.value = "email_id"
+		doc.insert()
+
+	add_crm_lead_property_setters()
+
+
+def add_crm_lead_property_setters():
+	"""Seed CRM Lead Customize-Form property setters. Idempotent — admin tweaks via Desk UI are never overwritten."""
+	field_order_value = (
+		'["person_tab", "salutation", "first_name", "last_name", "column_break_opsm", '
+		'"lead_name", "email", "mobile_no", "details", "organization", "website", '
+		'"territory", "industry", "job_title", "source", "custom_indiframe_details_section", '
+		'"lead_owner", "organization_tab", "section_break_uixv", "naming_series", '
+		'"middle_name", "gender", "phone", "column_break_dbsv", "status", "no_of_employees", '
+		'"annual_revenue", "image", "converted", "products_tab", "products", '
+		'"section_break_ggwh", "total", "column_break_uisv", "net_total", "sla_tab", "sla", '
+		'"sla_creation", "column_break_ffnp", "sla_status", "communication_status", '
+		'"response_details_section", "response_by", "column_break_pweh", "first_response_time", '
+		'"first_responded_on", "section_break_xnpz", "rolling_responses", "section_break_kikl", '
+		'"column_break_ygds", "last_response_time", "column_break_tcqb", "last_responded_on", '
+		'"log_tab", "status_change_log", "syncing_tab", "facebook_lead_id", "column_break_ixmu", '
+		'"facebook_form_id", "lost_details_tab", "lost_reason", "lost_notes", "custom_indiframe", '
+		'"custom_indiframe_details", "custom_lead_type", "custom_customer_type", '
+		'"custom_account", "custom_fabricator_routing_reason", "custom_fabricator_routing_notes", '
+		'"custom_final_price", "custom_final_margin", "custom_final_quote", '
+		'"custom_property_section", "custom_pincode", "custom_area", "custom_latitude", '
+		'"custom_longitude", "custom_tentative_area_sqft", "custom_tentative_value", '
+		'"custom_site_photos", "custom_sub_source", "custom_competitors", "custom_utm_section", '
+		'"custom_utm_source", "custom_utm_medium", "custom_utm_campaign", "custom_utm_content"]'
+	)
+
+	setters = [
+		{
+			"name": "CRM Lead-main-field_order",
+			"doctype_or_field": "DocType",
+			"field_name": None,
+			"property": "field_order",
+			"property_type": "Data",
+			"value": field_order_value,
+		},
+		{
+			"name": "CRM Lead-lost_reason-mandatory_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lost_reason",
+			"property": "mandatory_depends_on",
+			"property_type": "Code",
+			"value": 'eval:doc.status == "C6"',
+		},
+		{
+			"name": "CRM Lead-lost_reason-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lost_reason",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			"value": 'eval:doc.status == "C6" && !!doc.lost_reason',
+		},
+		{
+			"name": "CRM Lead-status-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "status",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+		},
+		{
+			"name": "CRM Lead-lead_status-read_only_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "lead_status",
+			"property": "read_only_depends_on",
+			"property_type": "Code",
+			# Read-only on new docs (server default is "Active") and on terminal C-stages
+			# (Script 1 also forces it to "Active" there). Mirrors the `status` property setter.
+			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+		},
+		{
+			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
+			"doctype_or_field": "DocField",
+			"field_name": "custom_sub_source",
+			"property": "mandatory_depends_on",
+			"property_type": "Code",
+			"value": 'eval:["Referral","Channel Partner","Event","Chat","Lead Spotting"].includes(doc.source)',
+		},
+	]
+
+	for setter in setters:
+		if frappe.db.exists("Property Setter", setter["name"]):
+			# Upsert: keep the value aligned with install.py so `after_migrate` can
+			# re-apply the latest values without leaving stale rows behind. Skip
+			# the save when the value already matches to avoid pointless writes.
+			existing = frappe.get_doc("Property Setter", setter["name"])
+			if existing.value != setter["value"]:
+				existing.value = setter["value"]
+				existing.save(ignore_permissions=True)
+			continue
+		doc = frappe.new_doc("Property Setter")
+		doc.doc_type = "CRM Lead"
+		doc.doctype_or_field = setter["doctype_or_field"]
+		doc.field_name = setter["field_name"]
+		doc.property = setter["property"]
+		doc.property_type = setter["property_type"]
+		doc.value = setter["value"]
+		doc.is_system_generated = 1
 		doc.insert()
 
 
@@ -388,20 +508,19 @@ def add_default_industries():
 
 
 def add_default_lead_sources():
+	# IndiFrame canonical Lead Sources — kept in sync with
+	# crm/fixtures/crm_lead_source.json (PRD §7 attribution table).
+	# The previous demo set (Email, Existing Customer, Facebook, etc.)
+	# was retired when source attribution was scoped to indiframe.com lead origins.
 	lead_sources = [
-		"Email",
-		"Existing Customer",
-		"Reference",
-		"Advertisement",
-		"Cold Calling",
-		"Exhibition",
-		"Supplier Reference",
-		"Mass Mailing",
-		"Customer's Vendor",
-		"Campaign",
-		"Walk In",
-		"Facebook",
-		"Website",
+		"Paid",
+		"Organic Search",
+		"Direct",
+		"Chat",
+		"Referral",
+		"Channel Partner",
+		"Event",
+		"Lead Spotting",
 	]
 
 	for source in lead_sources:
@@ -453,7 +572,7 @@ def add_default_lost_reasons():
 
 def add_default_quick_filters():
 	quick_filters = {
-		"CRM Lead": ["lead_name", "email", "organization", "status", "source"],
+		"CRM Lead": ["lead_name", "email", "lead_status", "status", "source"],
 		"CRM Deal": ["organization", "status", "probability", "email"],
 		"Contact": ["status", "email_id", "phone"],
 		"CRM Organization": ["organization_name", "no_of_employees", "territory", "industry"],
@@ -569,3 +688,37 @@ def create_assignment_rule_custom_fields():
 		)
 
 		frappe.clear_cache(doctype="Assignment Rule")
+
+
+def add_default_crm_lead_assignment_rules():
+	"""Seed B2F-on-C7 and ASM-on-C2 rules. Idempotent — admin's `users` roster and `disabled` flag are never overwritten."""
+	rules = [
+		{
+			"name": "B2F Assignment on C7",
+			"description": "Assign C7 leads to B2F Team members",
+			"assign_condition": 'status == "C7"',
+			"priority": 1,
+		},
+		{
+			"name": "ASM Assignment on C2",
+			"description": "Assign C2 leads to Area Sales Manager — enable in Phase 2",
+			"assign_condition": 'doc.status == "C2" and doc.custom_lead_type',
+			"priority": 2,
+		},
+	]
+	days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+	for rule in rules:
+		if frappe.db.exists("Assignment Rule", rule["name"]):
+			continue
+		doc = frappe.new_doc("Assignment Rule")
+		doc.name = rule["name"]
+		doc.document_type = "CRM Lead"
+		doc.description = rule["description"]
+		doc.assign_condition = rule["assign_condition"]
+		doc.priority = rule["priority"]
+		doc.rule = "Round Robin"
+		doc.disabled = 1
+		for day in days:
+			doc.append("assignment_days", {"day": day})
+		doc.insert()

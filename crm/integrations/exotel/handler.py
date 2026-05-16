@@ -67,7 +67,13 @@ def handle_request(**kwargs):
 
 # Outgoing Call
 @frappe.whitelist()
-def make_a_call(to_number: str, from_number: str | None = None, caller_id: str | None = None):
+def make_a_call(
+	to_number: str,
+	from_number: str | None = None,
+	caller_id: str | None = None,
+	reference_doctype: str | None = None,
+	reference_docname: str | None = None,
+):
 	if not is_integration_enabled():
 		frappe.throw(_("Please setup Exotel intergration"), title=_("Integration Not Enabled"))
 
@@ -122,6 +128,8 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 			medium=call_payload.get("PhoneNumberSid"),
 			call_type="Outgoing",
 			agent=frappe.session.user,
+			reference_doctype=reference_doctype,
+			reference_docname=reference_docname,
 		)
 
 	call_details = response.json().get("Call", {})
@@ -183,6 +191,8 @@ def create_call_log(
 	agent,
 	status="Ringing",
 	call_type="Incoming",
+	reference_doctype=None,
+	reference_docname=None,
 ):
 	call_log = frappe.new_doc("CRM Call Log")
 	call_log.id = call_id
@@ -198,9 +208,13 @@ def create_call_log(
 	else:
 		call_log.caller = agent
 
-	# link call log with lead/deal
-	contact_number = from_number if call_type == "Incoming" else to_number
-	link(contact_number, call_log)
+	# Prefer caller-supplied lead/deal context (set when call is initiated from a lead/deal page).
+	# Falls back to phone-number lookup via link() for incoming calls and outgoing calls without context.
+	if reference_doctype and reference_docname:
+		call_log.link_with_reference_doc(reference_doctype, reference_docname)
+	else:
+		contact_number = from_number if call_type == "Incoming" else to_number
+		link(contact_number, call_log)
 
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()

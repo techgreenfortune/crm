@@ -131,10 +131,10 @@ before_uninstall = "crm.uninstall.before_uninstall"
 # permission_query_conditions = {
 # "Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
-#
-# has_permission = {
-# "Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+
+has_permission = {
+	"CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
+}
 
 # DocType Class
 # ---------------
@@ -179,6 +179,51 @@ doc_events = {
 		"validate_reset_password": ["crm.api.live_demo.validate_reset_password"],
 	},
 }
+
+# Fixtures
+# --------
+
+fixtures = [
+	"CRM Lead Status",
+	"CRM Lead Engagement Status",
+	{"dt": "Role", "filters": [["is_custom", "=", 1]]},
+	{
+		"dt": "Role Profile",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"B2F Team",
+					"Calling Team",
+					"Jr. Sales Executive",
+					"Sales Coordinator",
+					"Sales Executive",
+					"ASM",
+					"Project Sales Executive",
+					"RSM",
+					"Marketing",
+					"Management",
+					"Sales Head",
+					"Estimation Team",
+				],
+			]
+		],
+	},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
+	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
+	{
+		"dt": "Notification",
+		"filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]],
+	},
+	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
+	{"dt": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
+	{"dt": "CRM Form Script", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
+	{"dt": "CRM Lead Source"},
+	{"dt": "CRM Sub Source"},
+	{"dt": "CRM Lost Reason"},
+	{"dt": "CRM Call Disposition"},
+]
 
 # Scheduled Tasks
 # ---------------
@@ -263,9 +308,15 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 # "crm.auth.validate"
 # ]
 
+before_migrate = ["crm.install.before_migrate"]
+
 after_migrate = [
 	"crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",
 	"crm.api.whatsapp.add_roles",
+	# Re-apply install.py property setters on every migrate so updates to
+	# add_crm_lead_property_setters() (e.g. read_only_depends_on value changes)
+	# propagate without an after_install path. The function is upsert-aware.
+	"crm.install.add_property_setter",
 ]
 
 standard_dropdown_items = [

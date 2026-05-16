@@ -7,6 +7,7 @@ import { reactive, h } from 'vue'
 
 export const statusesStore = defineStore('crm-statuses', () => {
   let leadStatusesByName = reactive({})
+  let leadEngagementStatusesByName = reactive({})
   let dealStatusesByName = reactive({})
   let communicationStatusesByName = reactive({})
 
@@ -23,6 +24,22 @@ export const statusesStore = defineStore('crm-statuses', () => {
       for (let status of statuses) {
         status.color = parseColor(status.color)
         leadStatusesByName[status.name] = status
+      }
+      return statuses
+    },
+  })
+
+  const leadEngagementStatuses = createListResource({
+    doctype: 'CRM Lead Engagement Status',
+    fields: ['name', 'color', 'position'],
+    orderBy: 'position asc',
+    cache: 'lead-engagement-statuses',
+    initialData: [],
+    auto: true,
+    transform(statuses) {
+      for (let status of statuses) {
+        status.color = parseColor(status.color)
+        leadEngagementStatusesByName[status.name] = status
       }
       return statuses
     },
@@ -63,6 +80,31 @@ export const statusesStore = defineStore('crm-statuses', () => {
       name = leadStatuses.data[0].name
     }
     return leadStatusesByName[name]
+  }
+
+  function getLeadEngagementStatus(name) {
+    if (!name) {
+      name = leadEngagementStatuses.data?.[0]?.name
+    }
+    return leadEngagementStatusesByName[name]
+  }
+
+  function engagementStatusOptions(triggerLeadStatusChange = null) {
+    const translatable = isTranslatable('CRM Lead Engagement Status')
+    const options = []
+    for (const status in leadEngagementStatusesByName) {
+      const entry = leadEngagementStatusesByName[status]
+      options.push({
+        label: translatable ? __(entry?.name) : entry?.name,
+        value: entry?.name,
+        icon: () => h(IndicatorIcon, { class: entry?.color }),
+        onClick: async () => {
+          await triggerLeadStatusChange?.(entry?.name)
+          capture('lead_status_changed', { doctype: 'lead', status })
+        },
+      })
+    }
+    return options
   }
 
   function getDealStatus(name) {
@@ -113,11 +155,14 @@ export const statusesStore = defineStore('crm-statuses', () => {
 
   return {
     leadStatuses,
+    leadEngagementStatuses,
     dealStatuses,
     communicationStatuses,
     getLeadStatus,
+    getLeadEngagementStatus,
     getDealStatus,
     getCommunicationStatus,
     statusOptions,
+    engagementStatusOptions,
   }
 })

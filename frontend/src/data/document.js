@@ -13,6 +13,20 @@ const controllersCache = {}
 const assigneesCache = {}
 const permissionsCache = {}
 
+const recentErrorToasts = new Map()
+const ERROR_TOAST_DEDUP_MS = 1500
+
+function showErrorToastOnce(message) {
+  if (!message) return
+  const now = Date.now()
+  for (const [msg, ts] of recentErrorToasts) {
+    if (now - ts > ERROR_TOAST_DEDUP_MS) recentErrorToasts.delete(msg)
+  }
+  if (recentErrorToasts.has(message)) return
+  recentErrorToasts.set(message, now)
+  toast.error(message)
+}
+
 export function useDocument(doctype, docname, resourceOverrides = {}) {
   const { setupScript, scripts } = getScript(doctype)
   const meta = getMeta(doctype)
@@ -61,16 +75,18 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
                   return arr[arr.length - 1].trim()
                 })
                 .join(', ')
-              toast.error(__('Mandatory field error: {0}', [fieldName]))
+              showErrorToastOnce(__('Mandatory field error: {0}', [fieldName]))
               return
             }
 
             err.messages?.forEach((msg) => {
-              toast.error(msg)
+              showErrorToastOnce(msg)
             })
 
             if (err.messages?.length === 0) {
-              toast.error(__('An error occurred while updating the document'))
+              showErrorToastOnce(
+                __('An error occurred while updating the document'),
+              )
             }
 
             console.error(err)
@@ -216,10 +232,11 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
     })
 
     if (missingFields.length > 0) {
-      toast.error(
-        __('Mandatory fields required: {0}', [missingFields.join(', ')]),
-      )
-      return __('Mandatory fields required: {0}', [missingFields.join(', ')])
+      const message = __('Mandatory fields required: {0}', [
+        missingFields.join(', '),
+      ])
+      showErrorToastOnce(message)
+      return message
     }
   }
 

@@ -1,0 +1,66 @@
+[
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Paid",
+  "source_name": "Paid"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Organic Search",
+  "source_name": "Organic Search"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Direct",
+  "source_name": "Direct"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Chat",
+  "source_name": "Chat"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Referral",
+  "source_name": "Referral"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Channel Partner",
+  "source_name": "Channel Partner"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Event",
+  "source_name": "Event"
+ },
+ {
+  "details": null,
+  "docstatus": 0,
+  "doctype": "CRM Lead Source",
+  "modified": "2026-05-08 00:00:00",
+  "name": "Lead Spotting",
+  "source_name": "Lead Spotting"
+ }
+]

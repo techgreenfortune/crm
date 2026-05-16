@@ -115,11 +115,13 @@ const links = [
     icon: LeadsIcon,
     to: 'Leads',
   },
+  /* disabled: convert-to-deal flow retired
   {
     label: 'Deals',
     icon: DealsIcon,
     to: 'Deals',
   },
+  */
   {
     label: 'Contacts',
     icon: ContactsIcon,

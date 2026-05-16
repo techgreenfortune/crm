@@ -27,6 +27,8 @@
   "recording_url",
   "end_time",
   "note",
+  "disposition",
+  "scheduled_callback_at",
   "section_break_kebz",
   "links"
  ],
@@ -105,6 +107,20 @@
    "fieldtype": "Link",
    "label": "Note",
    "options": "FCRM Note"
+  },
+  {
+   "fieldname": "disposition",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Disposition",
+   "options": "CRM Call Disposition",
+   "search_index": 1
+  },
+  {
+   "description": "When the disposition requires a callback (e.g. 'Requested Callback'), enter the agreed-upon callback datetime here.",
+   "fieldname": "scheduled_callback_at",
+   "fieldtype": "Datetime",
+   "label": "Scheduled Callback At"
   },
   {
    "depends_on": "eval:doc.type == 'Incoming'",

@@ -8,7 +8,7 @@
           <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
         </template>
       </Breadcrumbs>
-      <div class="absolute right-0">
+      <div class="absolute right-0 flex items-center gap-2">
         <Dropdown
           v-if="doc"
           :options="
@@ -33,6 +33,23 @@
             </Button>
           </template>
         </Dropdown>
+        <Dropdown
+          v-if="doc.lead_status && doc.lead_status !== 'Active'"
+          :options="engagementStatusOptions(triggerLeadStatusChange)"
+        >
+          <template #default="{ open }">
+            <Button
+              :label="doc.lead_status"
+              :iconRight="open ? 'chevron-up' : 'chevron-down'"
+            >
+              <template #prefix>
+                <IndicatorIcon
+                  :class="getLeadEngagementStatus(doc.lead_status)?.color"
+                />
+              </template>
+            </Button>
+          </template>
+        </Dropdown>
       </div>
     </header>
   </LayoutHeader>
@@ -50,11 +67,13 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
+      <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert')"
         variant="solid"
         @click="showConvertToDealModal = true"
       />
+      -->
     </div>
   </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
@@ -103,11 +122,13 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  <!-- disabled: convert-to-deal flow retired
   <ConvertToDealModal
     v-if="showConvertToDealModal"
     v-model="showConvertToDealModal"
     :lead="doc"
   />
+  -->
   <DeleteLinkedDocModal
     v-if="showDeleteLinkedDocModal"
     v-model="showDeleteLinkedDocModal"
@@ -118,6 +139,12 @@
   <LostReasonModal
     v-if="showLostReasonModal"
     v-model="showLostReasonModal"
+    doctype="CRM Lead"
+    :document="document"
+  />
+  <FabricatorRoutingReasonModal
+    v-if="showFabricatorRoutingReasonModal"
+    v-model="showFabricatorRoutingReasonModal"
     doctype="CRM Lead"
     :document="document"
   />
@@ -137,6 +164,7 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import FabricatorRoutingReasonModal from '@/components/Modals/FabricatorRoutingReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
@@ -163,11 +191,16 @@ import {
 } from 'frappe-ui'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+// import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 
 const { brand } = getSettings()
 const { $dialog, $socket } = globalStore()
-const { statusOptions, getLeadStatus } = statusesStore()
+const {
+  statusOptions,
+  getLeadStatus,
+  engagementStatusOptions,
+  getLeadEngagementStatus,
+} = statusesStore()
 const { doctypeMeta } = getMeta('CRM Lead')
 
 const route = useRoute()
@@ -333,7 +366,7 @@ const { tabIndex } = useActiveTabManager(tabs, 'lastLeadTab')
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Lead'],
+  cache: ['sidePanelSections', 'CRM Lead', 'v2-engagement'],
   params: { doctype: 'CRM Lead' },
   auto: true,
 })
@@ -366,7 +399,7 @@ function deleteLead() {
 }
 
 // Convert to Deal
-const showConvertToDealModal = ref(false)
+// const showConvertToDealModal = ref(false) // disabled: convert-to-deal flow retired
 
 function statusLabel(status) {
   if (isTranslatable('CRM Lead Status')) return __(status)
@@ -375,10 +408,30 @@ function statusLabel(status) {
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
+  if (value === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+    return
+  }
   setLostReason()
 }
 
+async function triggerLeadStatusChange(value) {
+  if (
+    value === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    return
+  }
+  await triggerOnChange('lead_status', value)
+  document.save.submit(null, {
+    onSuccess: () => reloadAssignees({ lead_status: value }),
+  })
+}
+
 const showLostReasonModal = ref(false)
+const showFabricatorRoutingReasonModal = ref(false)
 
 function setLostReason() {
   if (
@@ -399,6 +452,16 @@ function beforeStatusChange(data) {
     getLeadStatus(data.status).type == 'Lost'
   ) {
     setLostReason()
+  } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+  } else if (
+    Object.hasOwn(data ?? {}, 'lead_status') &&
+    data.lead_status === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    if (document.doc) document.doc.lead_status = doc.value?.lead_status
   } else {
     document.save.submit(null, {
       onSuccess: () => reloadAssignees(data),

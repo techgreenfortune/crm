@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:disposition_name",
+ "creation": "2026-05-07 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "disposition_name",
+  "label",
+  "next_status",
+  "next_lead_status",
+  "default_lost_reason",
+  "requirements_section",
+  "requires_callback_datetime",
+  "requires_routing_reason",
+  "requires_lost_reason",
+  "column_break_main",
+  "color",
+  "position",
+  "enabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "disposition_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Disposition Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "description": "C-stage move triggered by this disposition. Leave blank to preserve C-stage (engagement-only dispositions like Junk). Auto-applied only when the Lead is gated as retry-active (status C0 or lead_status Cold-Unresponsive/Reactivated).",
+   "fieldname": "next_status",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Next C-Stage",
+   "options": "CRM Lead Status"
+  },
+  {
+   "description": "If set, picking this disposition flips the linked Lead's lead_status (engagement) to this value. Use together with or instead of Next C-Stage. Junk → Archived is the canonical engagement-only flow.",
+   "fieldname": "next_lead_status",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Next Lead Status",
+   "options": "CRM Lead Engagement Status"
+  },
+  {
+   "description": "Auto-applied as the lead's lost_reason when this disposition triggers a move to a type=Lost C-stage (C6). Bypasses the partial-state where validate_lost_reason rejects the auto-move. Do NOT set to 'Other' — that reason additionally requires lost_notes, which the script does not populate, and the auto-move will fail.",
+   "fieldname": "default_lost_reason",
+   "fieldtype": "Link",
+   "label": "Default Lost Reason",
+   "options": "CRM Lost Reason"
+  },
+  {
+   "fieldname": "requirements_section",
+   "fieldtype": "Section Break",
+   "label": "Required Fields"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and scheduled_callback_at is empty.",
+   "fieldname": "requires_callback_datetime",
+   "fieldtype": "Check",
+   "label": "Requires Callback Datetime"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and the linked Lead has no custom_fabricator_routing_reason.",
+   "fieldname": "requires_routing_reason",
+   "fieldtype": "Check",
+   "label": "Requires Fabricator Routing Reason"
+  },
+  {
+   "default": "0",
+   "description": "Block Call Log save when this disposition is chosen and the linked Lead has no lost_reason (and no lost_notes when reason is Other).",
+   "fieldname": "requires_lost_reason",
+   "fieldtype": "Check",
+   "label": "Requires Lost Reason"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "gray",
+   "fieldname": "color",
+   "fieldtype": "Select",
+   "label": "Color",
+   "options": "black\ngray\nblue\ngreen\nred\npink\norange\namber\nyellow\ncyan\nteal\nviolet\npurple"
+  },
+  {
+   "default": "1",
+   "fieldname": "position",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Position"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-07 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Call Disposition",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "position",
+ "sort_order": "ASC",
+ "states": []
+}

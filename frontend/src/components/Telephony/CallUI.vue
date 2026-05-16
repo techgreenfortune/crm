@@ -66,8 +66,12 @@ const isDefaultMedium = ref(false)
 
 const show = ref(false)
 const mobileNumber = ref('')
+// context: { reference_doctype, reference_docname } — passed through to backend make_a_call
+// so the new Call Log is linked to the originating lead/deal
+const callContext = ref(null)
 
-function makeCall(number) {
+function makeCall(number, context) {
+  callContext.value = context || null
   if (
     twilioEnabled.value &&
     exotelEnabled.value &&
@@ -93,11 +97,11 @@ function makeCallUsing() {
   }
 
   if (callMedium.value === 'Twilio') {
-    twilio.value.makeOutgoingCall(mobileNumber.value)
+    twilio.value.makeOutgoingCall(mobileNumber.value, callContext.value)
   }
 
   if (callMedium.value === 'Exotel') {
-    exotel.value.makeOutgoingCall(mobileNumber.value)
+    exotel.value.makeOutgoingCall(mobileNumber.value, callContext.value)
   }
   show.value = false
 }

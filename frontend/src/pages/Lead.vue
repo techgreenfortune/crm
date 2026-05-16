@@ -34,11 +34,31 @@
           </Button>
         </template>
       </Dropdown>
+      <Dropdown
+        v-if="doc.lead_status && doc.lead_status !== 'Active'"
+        :options="engagementStatuses"
+        placement="right"
+      >
+        <template #default="{ open }">
+          <Button
+            :label="doc.lead_status"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          >
+            <template #prefix>
+              <IndicatorIcon
+                :class="getLeadEngagementStatus(doc.lead_status)?.color"
+              />
+            </template>
+          </Button>
+        </template>
+      </Dropdown>
+      <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert to Deal')"
         variant="solid"
         @click="showConvertToDealModal = true"
       />
+      -->
     </template>
   </LayoutHeader>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
@@ -129,7 +149,10 @@
                   @click="
                     () =>
                       doc.mobile_no
-                        ? makeCall(doc.mobile_no)
+                        ? makeCall(doc.mobile_no, {
+                            reference_doctype: 'CRM Lead',
+                            reference_docname: doc.name,
+                          })
                         : toast.error(
                             __('Please set a mobile number to make calls'),
                           )
@@ -202,11 +225,13 @@
     :errorTitle="errorTitle"
     :errorMessage="errorMessage"
   />
+  <!-- disabled: convert-to-deal flow retired
   <ConvertToDealModal
     v-if="showConvertToDealModal"
     v-model="showConvertToDealModal"
     :lead="doc"
   />
+  -->
   <FilesUploader
     v-model="showFilesUploader"
     doctype="CRM Lead"
@@ -231,6 +256,12 @@
     doctype="CRM Lead"
     :document="document"
   />
+  <FabricatorRoutingReasonModal
+    v-if="showFabricatorRoutingReasonModal"
+    v-model="showFabricatorRoutingReasonModal"
+    doctype="CRM Lead"
+    :document="document"
+  />
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -250,7 +281,9 @@ import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import LinkIcon from '@/components/Icons/LinkIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import LostReasonModal from '@/components/Modals/LostReasonModal.vue'
+import FabricatorRoutingReasonModal from '@/components/Modals/FabricatorRoutingReasonModal.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import Activities from '@/components/Activities/Activities.vue'
 import AssignTo from '@/components/AssignTo.vue'
@@ -258,7 +291,7 @@ import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
 import CustomActions from '@/components/CustomActions.vue'
-import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue'
+// import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
   setupCustomizations,
@@ -272,7 +305,11 @@ import { globalStore } from '@/stores/global'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
-import { whatsappEnabled, callEnabled } from '@/composables/settings'
+import {
+  whatsappEnabled,
+  callEnabled,
+  aisensyEnabled,
+} from '@/composables/settings'
 import {
   createResource,
   FileUploader,
@@ -285,13 +322,18 @@ import {
   usePageMeta,
   toast,
 } from 'frappe-ui'
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
 const { brand } = getSettings()
 const { $dialog, $socket, makeCall } = globalStore()
-const { statusOptions, getLeadStatus } = statusesStore()
+const {
+  statusOptions,
+  getLeadStatus,
+  engagementStatusOptions,
+  getLeadEngagementStatus,
+} = statusesStore()
 const { doctypeMeta } = getMeta('CRM Lead')
 
 const route = useRoute()
@@ -306,7 +348,7 @@ const activities = ref(null)
 const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
-const showConvertToDealModal = ref(false)
+// const showConvertToDealModal = ref(false) // disabled: convert-to-deal flow retired
 const showFilesUploader = ref(false)
 
 const {
@@ -400,6 +442,10 @@ const statuses = computed(() => {
   return statusOptions('lead', customStatuses, triggerStatusChange)
 })
 
+const engagementStatuses = computed(() =>
+  engagementStatusOptions(triggerLeadStatusChange),
+)
+
 usePageMeta(() => {
   return { title: title.value, icon: brand.favicon }
 })
@@ -437,6 +483,11 @@ const tabs = computed(() => {
       icon: TaskIcon,
     },
     {
+      name: 'Quotes',
+      label: __('Quotes'),
+      icon: DocumentIcon,
+    },
+    {
       name: 'Notes',
       label: __('Notes'),
       icon: NoteIcon,
@@ -452,6 +503,12 @@ const tabs = computed(() => {
       icon: WhatsAppIcon,
       condition: () => whatsappEnabled.value,
     },
+    {
+      name: 'AISensy',
+      label: __('WhatsApp (AISensy)'),
+      icon: WhatsAppIcon,
+      condition: () => aisensyEnabled.value,
+    },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
 })
@@ -460,14 +517,33 @@ const { tabIndex, changeTabTo } = useActiveTabManager(tabs, 'lastLeadTab')
 
 const sections = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_sidepanel_sections',
-  cache: ['sidePanelSections', 'CRM Lead'],
+  cache: ['sidePanelSections', 'CRM Lead', 'v2-engagement'],
   params: { doctype: 'CRM Lead' },
   auto: true,
 })
 
 async function triggerStatusChange(value) {
   await triggerOnChange('status', value)
+  if (value === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+    return
+  }
   setLostReason()
+}
+
+async function triggerLeadStatusChange(value) {
+  if (
+    value === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    return
+  }
+  await triggerOnChange('lead_status', value)
+  document.save.submit(null, {
+    onSuccess: () => reloadResources({ lead_status: value }),
+  })
 }
 
 function updateField(name, value) {
@@ -511,6 +587,7 @@ function statusLabel(status) {
 }
 
 const showLostReasonModal = ref(false)
+const showFabricatorRoutingReasonModal = ref(false)
 
 function setLostReason() {
   if (
@@ -519,7 +596,11 @@ function setLostReason() {
     (document.doc.lost_reason === 'Other' && document.doc.lost_notes)
   ) {
     document.save.submit(null, {
-      onSuccess: () => sections.reload(),
+      onSuccess: () => {
+        sections.reload()
+        activities.value?.all_activities?.reload()
+        activities.value?.quoteRequests?.reload()
+      },
     })
     return
   }
@@ -533,6 +614,17 @@ function beforeStatusChange(data) {
     getLeadStatus(data.status).type == 'Lost'
   ) {
     setLostReason()
+  } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
+    showFabricatorRoutingReasonModal.value = true
+  } else if (
+    Object.hasOwn(data ?? {}, 'lead_status') &&
+    data.lead_status === 'Archived' &&
+    !window.confirm(
+      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+    )
+  ) {
+    // user cancelled archive — revert the field change locally
+    if (document.doc) document.doc.lead_status = doc.value?.lead_status
   } else {
     document.save.submit(null, {
       onSuccess: () => reloadResources(data),
@@ -549,6 +641,24 @@ function reloadResources(data) {
     getLeadStatus(data.status).type != 'Lost'
   ) {
     sections.reload()
+    activities.value?.all_activities?.reload()
+    activities.value?.quoteRequests?.reload()
   }
 }
+
+// Child modals (Task / QR / Note) save through `AllModals.vue`, where they
+// can't reach back into this page's resources to trigger a refresh. Provide a
+// single function that pulls every dependent resource — the lead doc itself,
+// assignees, side-panel sections, the activities feed, and the quotes list —
+// so the UI reflects server-side side effects (e.g. Script 5's db.set_value
+// advancing the lead to C3 on Accept) without a manual page reload.
+function reloadAfterChildModal() {
+  document.reload?.()
+  assignees.reload?.()
+  sections.reload?.()
+  activities.value?.all_activities?.reload?.()
+  activities.value?.quoteRequests?.reload?.()
+}
+
+provide('reloadAfterChildModal', reloadAfterChildModal)
 </script>

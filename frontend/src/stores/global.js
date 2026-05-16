@@ -11,8 +11,9 @@ export const globalStore = defineStore('crm-global', () => {
     callMethod = value
   }
 
-  function makeCall(number) {
-    callMethod(number)
+  // context: { reference_doctype, reference_docname } — links the call log to a lead/deal
+  function makeCall(number, context) {
+    callMethod(number, context)
   }
 
   return {

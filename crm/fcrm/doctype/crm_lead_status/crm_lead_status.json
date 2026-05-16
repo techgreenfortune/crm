@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "lead_status",
+  "stage_label",
   "type",
   "column_break_qwtp",
   "color",
@@ -28,6 +29,12 @@
    "label": "Status",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "stage_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Stage Label"
   },
   {
    "default": "1",

@@ -1,0 +1,66 @@
+[
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Chose Competitor",
+  "modified": "2026-05-04 18:20:58.033086",
+  "name": "Chose Competitor"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Price Too High",
+  "modified": "2026-05-04 18:20:58.034794",
+  "name": "Price Too High"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Requirement Cancelled",
+  "modified": "2026-05-04 18:20:58.035839",
+  "name": "Requirement Cancelled"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Went with Local Fabricator",
+  "modified": "2026-05-04 18:20:58.037019",
+  "name": "Went with Local Fabricator"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Timeline Mismatch",
+  "modified": "2026-05-04 18:20:58.038166",
+  "name": "Timeline Mismatch"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Customer Unresponsive After Quote",
+  "modified": "2026-05-04 18:20:58.039329",
+  "name": "Customer Unresponsive After Quote"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Other",
+  "modified": "2026-05-04 18:20:58.042862",
+  "name": "Other"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Junk",
+  "modified": "2026-05-12 00:00:00",
+  "name": "Junk"
+ }
+]
