@@ -120,6 +120,8 @@ class CRMLead(Document):
 		self.validate_c7_routing_reason()
 		self.validate_partner_fabricator_name()
 		self.validate_won_fields()
+		self.validate_project_specific_fields()
+		self.validate_c8_handoff_fields()
 		self.validate_sub_source()
 		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
 			self.share_with_agent(self.lead_owner)
@@ -237,6 +239,69 @@ class CRMLead(Document):
 					_("Required for Won stages: {0}.").format(", ".join(missing)),
 					frappe.ValidationError,
 				)
+
+	def validate_project_specific_fields(self):
+		# Project-type leads (custom_lead_type='Projects') must carry full project
+		# metadata before reaching C8. mandatory_depends_on enforces client-side;
+		# this validator closes the UI-vs-server gap (same pattern as validate_won_fields).
+		# Retail leads short-circuit immediately — the cluster is hidden for them.
+		# Hardcoded status == "C8" (see validate_c8_handoff_fields for the gating
+		# idiom rationale + the future-proofing follow-up note).
+		if self.status != "C8":
+			return
+		if self.get("custom_lead_type") != "Projects":
+			return
+		missing = [
+			label
+			for field, label in (
+				("custom_project_category", "Project Category"),
+				("custom_project_configuration", "Project Configuration"),
+				("custom_site_address_full", "Site Address (Full)"),
+				("custom_site_pincode", "Site Pincode"),
+			)
+			if not self.get(field)
+		]
+		if missing:
+			frappe.throw(
+				_("Required for Project leads at C8: {0}.").format(", ".join(missing)),
+				frappe.ValidationError,
+			)
+
+	def validate_c8_handoff_fields(self):
+		# Fields that must be present on EVERY lead at C8 (Retail + Projects).
+		# Backend's createProjectFromFrappe now rejects empty customer_email;
+		# city/state/pincode/customer_type were silently filled with "Unknown" /
+		# "000000" / NULL placeholders, breaking regional + profession reporting.
+		# Catching these at save-time beats a post-hoc HTTP 400 + audit Comment.
+		# `custom_lead_type` is in the list because an unset value silently
+		# defaults to order_type="project" in the payload (see api.py) while
+		# validate_project_specific_fields skips its cluster — yielding a project
+		# row with no project metadata on the backend.
+		#
+		# Note: this validator hardcodes status == "C8" while validate_won_fields
+		# (above) keys on CRM Lead Status.type == "Won". If a new Won-type status
+		# is ever added or C8 renamed, this validator + validate_project_specific_fields
+		# will silently skip; validate_won_fields will still fire. Future-proofing
+		# is intentionally deferred — see plan Phase 9 note #2.
+		if self.status != "C8":
+			return
+		missing = [
+			label
+			for field, label in (
+				("email", "Email"),
+				("custom_lead_type", "Lead Type"),
+				("custom_customer_type", "Customer Type"),
+				("custom_city", "City"),
+				("custom_state", "State"),
+				("custom_pincode", "Pincode"),
+			)
+			if not self.get(field)
+		]
+		if missing:
+			frappe.throw(
+				_("Required at C8 (Won): {0}.").format(", ".join(missing)),
+				frappe.ValidationError,
+			)
 
 	def _check_write_permission(self):
 		if self.is_new():
