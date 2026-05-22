@@ -164,12 +164,16 @@ def create_project_on_won(lead_name: str) -> None:
 		)
 
 	# Site location is a "<lat>,<lng>" string. Send it only when both halves
-	# are populated — a half-populated coord is misleading downstream.
+	# are populated AND non-zero. The Float column default-coerces missing
+	# lat/lng to 0.0 after any save (the column is NOT NULL DEFAULT 0), so a
+	# strict `is not None` test would let every un-geocoded lead through as
+	# "0.0,0.0" — bogus coordinates downstream. The (0, 0) false-negative for
+	# a hypothetical Null-Island lead is an accepted edge case.
 	lat = lead.get("custom_latitude")
 	lng = lead.get("custom_longitude")
-	site_location = (
-		f"{lat},{lng}" if (lat is not None and lat != "" and lng is not None and lng != "") else None
-	)
+	has_lat = lat is not None and lat != "" and float(lat) != 0.0
+	has_lng = lng is not None and lng != "" and float(lng) != 0.0
+	site_location = f"{lat},{lng}" if (has_lat and has_lng) else None
 
 	# B1 — order_type derived from the lead's Retail/Projects flag. Backend
 	# validator accepts only lowercase "retail" or "project" (singular).
