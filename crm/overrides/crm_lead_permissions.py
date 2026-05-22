@@ -53,9 +53,7 @@ OWNER_SCOPE_ROLES = {
 }
 
 # Roles that cannot create a CRM Lead (pool / stage-locked / owner-scoped).
-_NO_CREATE_ROLES = (
-	set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | NO_C7_ROLES | {"Marketing"}
-)
+_NO_CREATE_ROLES = set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | NO_C7_ROLES | {"Marketing"}
 
 
 def has_permission(doc, ptype, user):
@@ -82,14 +80,7 @@ def has_permission(doc, ptype, user):
 	# Calling Team / JSE). In that case the writable role wins via the union
 	# below.
 	if roles & TIER1_READ_ONLY and not (
-		roles
-		& (
-			TIER1_FULL_RW
-			| FIELD_GATED_RW
-			| set(OWNER_SCOPE_ROLES)
-			| set(STAGE_LOCKED)
-			| NO_C7_ROLES
-		)
+		roles & (TIER1_FULL_RW | FIELD_GATED_RW | set(OWNER_SCOPE_ROLES) | set(STAGE_LOCKED) | NO_C7_ROLES)
 	):
 		return ptype == "read"
 
@@ -196,9 +187,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 			in_list = ",".join(esc(u) for u in sorted(downstream)) or esc(user)
 			owner_clause = f"`tabCRM Lead`.lead_owner IN ({in_list})"
 		if rule["lead_type"]:
-			clauses.append(
-				f"(`tabCRM Lead`.custom_lead_type = '{rule['lead_type']}' AND {owner_clause})"
-			)
+			clauses.append(f"(`tabCRM Lead`.custom_lead_type = '{rule['lead_type']}' AND {owner_clause})")
 		else:
 			clauses.append(f"({owner_clause})")
 
@@ -209,7 +198,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 
 
 def _downstream_users(user: str) -> set[str]:
-	"""Return ``{user}`` ∪ all users at or below ``user`` in CRM Sales Hierarchy.
+	"""Return ``{user}`` plus all users at or below ``user`` in CRM Sales Hierarchy.
 
 	Uses NestedSet ``lft / rgt`` for an O(1) range scan on the hierarchy table.
 	Cached at a version key; invalidated on every CRM Sales Hierarchy save by
