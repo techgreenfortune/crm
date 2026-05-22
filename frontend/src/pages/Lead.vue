@@ -52,6 +52,25 @@
           </Button>
         </template>
       </Dropdown>
+      <Tooltip
+        v-if="canShowCreateProject"
+        :text="
+          projectFieldsReady
+            ? __('Create project and archive this lead')
+            : __(
+                'Fill all project fields (category, configuration, site address, site pincode) before handing off.',
+              )
+        "
+      >
+        <Button
+          variant="solid"
+          :label="__('Create Project')"
+          iconLeft="briefcase"
+          :loading="createProjectResource.loading"
+          :disabled="!projectFieldsReady"
+          @click="triggerCreateProject"
+        />
+      </Tooltip>
       <!-- disabled: convert-to-deal flow retired
       <Button
         :label="__('Convert to Deal')"
@@ -86,6 +105,16 @@
         @click="copyToClipboard(leadId)"
       >
         {{ __(leadId) }}
+      </div>
+      <div
+        v-if="isLocked"
+        class="mx-5 mt-3 rounded border border-outline-amber-2 bg-surface-amber-1 px-3 py-2 text-xs text-ink-amber-9"
+      >
+        {{
+          __(
+            'This lead is Won (C4 + Won) and is locked for edits. Contact a System Manager to unlock.',
+          )
+        }}
       </div>
       <FileUploader
         :validateFile="validateIsImageFile"
@@ -302,6 +331,7 @@ import {
 import { getView } from '@/utils/view'
 import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
+import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
@@ -522,7 +552,77 @@ const sections = createResource({
   auto: true,
 })
 
+// --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
+const { isManager } = usersStore()
+const sessionUser = window.frappe?.session?.user || ''
+
+const canShowCreateProject = computed(() => {
+  if (!doc.value) return false
+  if (doc.value.status !== 'C4') return false
+  if (doc.value.lead_status === 'Won') return false
+  if (doc.value.custom_external_project_id) return false
+  // Owner OR manager (incl. System Manager / Administrator via isManager).
+  // Visible for ALL lead types (Retail + Projects) — the downstream project
+  // API derives the order type from custom_lead_type and adapts payloads.
+  return doc.value.lead_owner === sessionUser || isManager()
+})
+
+const projectFieldsReady = computed(() => {
+  if (!doc.value) return false
+  // Retail leads have no project-specific fields to fill; they're ready as
+  // soon as the C4 baseline (validate_won_fields + validate_c4_handoff_fields)
+  // is satisfied, which is enforced at the status change.
+  if (doc.value.custom_lead_type !== 'Projects') return true
+  return !!(
+    doc.value.custom_project_category &&
+    doc.value.custom_project_configuration &&
+    doc.value.custom_site_address_full &&
+    doc.value.custom_site_pincode
+  )
+})
+
+const createProjectResource = createResource({
+  url: 'crm.api.projects.create_project_for_lead',
+  onSuccess: (projectId) => {
+    toast.success(__('Project created: {0}', [projectId || __('(pending id)')]))
+    reload.value = true
+  },
+  onError: (err) => {
+    toast.error(
+      err?.messages?.[0] || err?.message || __('Could not create project.'),
+    )
+  },
+})
+
+function triggerCreateProject() {
+  if (
+    !window.confirm(
+      __(
+        'Create the project for this lead? The lead will be marked Won once creation succeeds.',
+      ),
+    )
+  ) {
+    return
+  }
+  createProjectResource.submit({ lead: props.leadId })
+}
+
+// Lock when lead is at C4 (Won) AND lead_status == Won.
+// Server validators in crm_lead.py (`_enforce_c4_won_lock`) and the
+// "CRM Task — Validate — Write Permission" server script enforce the same
+// rule on the backend. This computed value drives the UI affordances.
+const isLocked = computed(
+  () => doc.value?.status === 'C4' && doc.value?.lead_status === 'Won',
+)
+
+function bailIfLocked() {
+  if (!isLocked.value) return false
+  toast.error(__('Lead is Won (C4 + Won). Contact a System Manager to unlock.'))
+  return true
+}
+
 async function triggerStatusChange(value) {
+  if (bailIfLocked()) return
   await triggerOnChange('status', value)
   if (value === 'C7') {
     showFabricatorRoutingReasonModal.value = true
@@ -532,6 +632,7 @@ async function triggerStatusChange(value) {
 }
 
 async function triggerLeadStatusChange(value) {
+  if (bailIfLocked()) return
   if (
     value === 'Archived' &&
     !window.confirm(
@@ -547,6 +648,7 @@ async function triggerLeadStatusChange(value) {
 }
 
 function updateField(name, value) {
+  if (bailIfLocked()) return
   value = Array.isArray(name) ? '' : value
   let oldValues = Array.isArray(name) ? {} : doc.value[name]
 

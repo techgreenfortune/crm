@@ -58,18 +58,19 @@ def add_default_lead_statuses():
 		"C0": {"color": "gray", "type": "Open", "position": 1, "stage_label": "C0 — New Lead"},
 		"C1": {"color": "blue", "type": "Open", "position": 2, "stage_label": "C1 — Future Requirement"},
 		"C2": {"color": "orange", "type": "Ongoing", "position": 3, "stage_label": "C2 — Active Engagement"},
-		"C2-Q": {"color": "amber", "type": "Ongoing", "position": 4, "stage_label": "C2-Q — Quote Sent"},
-		"C3": {"color": "yellow", "type": "Ongoing", "position": 5, "stage_label": "C3 — Almost Ready"},
-		"C4": {"color": "teal", "type": "Won", "position": 6, "stage_label": "C4 — Advance Payment Made"},
-		"C5": {"color": "green", "type": "Won", "position": 7, "stage_label": "C5 — Invoicing Completed"},
-		"C6": {"color": "red", "type": "Lost", "position": 8, "stage_label": "C6 — Lost"},
+		"C4": {
+			"color": "green",
+			"type": "Won",
+			"position": 4,
+			"stage_label": "C4 — Won (Advance Payment Made)",
+		},
+		"C6": {"color": "red", "type": "Lost", "position": 5, "stage_label": "C6 — Lost"},
 		"C7": {
 			"color": "violet",
 			"type": "On Hold",
-			"position": 9,
+			"position": 6,
 			"stage_label": "C7 — Forwarded to Fabricator",
 		},
-		"C8": {"color": "green", "type": "Won", "position": 10, "stage_label": "C8 — Won"},
 	}
 
 	for status in statuses:
@@ -91,6 +92,10 @@ def add_default_lead_engagement_statuses():
 		"Cold-Unresponsive": {"color": "gray", "position": 2},
 		"Reactivated": {"color": "cyan", "position": 3},
 		"Archived": {"color": "black", "position": 4},
+		# Terminal: set by `crm.api.projects.create_project_for_lead` after the
+		# external project handoff succeeds. Pairs with the C4 + Won lock in
+		# `crm.fcrm.doctype.crm_lead.crm_lead.CRMLead._enforce_c4_won_lock`.
+		"Won": {"color": "green", "position": 5},
 	}
 
 	for status in statuses:
@@ -350,7 +355,7 @@ def add_crm_lead_property_setters():
 			"field_name": "status",
 			"property": "read_only_depends_on",
 			"property_type": "Code",
-			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C4","C6"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-lead_status-read_only_depends_on",
@@ -360,7 +365,7 @@ def add_crm_lead_property_setters():
 			"property_type": "Code",
 			# Read-only on new docs (server default is "Active") and on terminal C-stages
 			# (Script 1 also forces it to "Active" there). Mirrors the `status` property setter.
-			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C4","C6"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
@@ -370,6 +375,11 @@ def add_crm_lead_property_setters():
 			"property_type": "Code",
 			"value": 'eval:["Referral","Channel Partner","Event","Chat","Lead Spotting"].includes(doc.source)',
 		},
+		# NOTE: no read-only property setters for the 5 quote-derived fields
+		# at C4. UI lock lives in the role-aware Form Script
+		# "Won Quote Fields Lock (Role-Aware)" (crm_form_script.json) —
+		# locks for non-tier-1, unlocks for Admin/SysMgr/Sales Head.
+		# Server hard lock: CRMLead._freeze_quote_fields_at_won.
 	]
 
 	for setter in setters:

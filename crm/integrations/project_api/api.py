@@ -5,7 +5,10 @@ import requests
 
 _RETRY_AFTER_CAP_SECONDS = 5.0
 _DEFAULT_TIMEOUT_SECONDS = 10
-_CREATE_PROJECT_PATH = "/api/external/frappe/projects"
+# OpsGate's public Frappe-handoff endpoint (renamed from the legacy
+# /api/external/frappe/projects on 2026-05-22). Mounted before verifyToken
+# in src/routes/v2.routes.ts; auth is via X-Api-Secret + FRAPPE_CRM_SECRET.
+_CREATE_PROJECT_PATH = "/api/v2/projects/public"
 
 
 def _get_settings():
@@ -63,38 +66,48 @@ def _post_with_retry(url: str, json: dict, headers: dict, timeout: float):
 	return requests.post(url, json=json, headers=headers, timeout=timeout)
 
 
-def _extract_project_id(body: dict) -> str | None:
-	"""Pull the created project_id out of the Node controller's response shape.
+def _extract_project_id(body: dict) -> tuple[str | None, bool]:
+	"""Return ``(project_id, idempotent)`` from the controller's response shape.
 
-	Successful response (frappe.controller.ts -> sendSuccess) is:
-	  { success: true, message: "...", data: { project: {...}, idempotent: bool } }
-	but we tolerate a flatter { project: {...} } in case the wrapper changes.
+	V2 public endpoint (project.controller.ts → createProjectPublic) returns:
+	  201 { project: {...}, idempotent: false } on create
+	  200 { project: {...}, idempotent: true  } on retry of a known external_id
+
+	We also tolerate the older ``data``-wrapped shape (``{ data: { project: {...},
+	idempotent: bool } }``) in case the response goes through a wrapper layer —
+	cheap forward-compatibility for the transition window.
 	"""
 	if not isinstance(body, dict):
-		return None
-	project = (body.get("data") or {}).get("project") or body.get("project") or {}
+		return None, False
+	# Prefer the flat shape; fall back to the wrapped one.
+	scope = body if "project" in body else (body.get("data") or {})
+	project = scope.get("project") or {}
 	pid = project.get("project_id") or project.get("id")
-	return str(pid) if pid else None
+	idempotent = bool(scope.get("idempotent"))
+	return (str(pid) if pid else None), idempotent
 
 
 @frappe.whitelist()
 def create_project_on_won(lead_name: str) -> None:
-	"""Fire POST /api/external/frappe/projects for a lead that has reached C8.
+	"""Fire ``POST /api/v2/projects/public`` for a lead that has reached C4 (Won).
 
-	Whitelisted because the CRM Lead After-Save server script enqueues this via
-	frappe.enqueue(...). Frappe's RestrictedPython gate on enqueue targets
-	requires the destination to be whitelisted.
+	Whitelisted so the manual Create Project handler (`crm.api.projects.create_project_for_lead`)
+	can invoke it. Auto-enqueue from After-Save is no longer wired — project creation
+	is triggered by an explicit Sales Owner click; see `crm.api.projects`.
 
-	Idempotency: lead.custom_external_project_id is the local short-circuit;
-	external_id=lead.name lets the backend's unique (external_source, external_id)
-	index serve as the second line of defence on concurrent re-fires.
+	Auth: sends ``X-Api-Secret`` (value taken from ``CRM Project API Settings.api_key``).
+	The receiver does a ``timingSafeEqual`` against its ``FRAPPE_CRM_SECRET`` env var;
+	missing/wrong → 401 and the handler logs + drops an audit comment on the lead.
+
+	Idempotency: ``lead.custom_external_project_id`` is the local short-circuit; the
+	backend uses ``external_id=lead.name`` (unique with the source) as the second line
+	of defence and returns 200 + ``idempotent: true`` if it already saw the id.
 	"""
 	lead = frappe.get_doc("CRM Lead", lead_name)
 
-	if lead.status != "C8":
-		# Defensive: a downstream race could move the lead off C8 between the
-		# enqueue and the worker dequeue. Skip silently — when it returns to C8
-		# the After-Save script will re-enqueue.
+	if lead.status != "C4":
+		# Defensive: a stage change between caller's gate and our run.
+		# Skip silently — the caller will surface its own error.
 		return
 	if lead.get("custom_external_project_id"):
 		return
@@ -113,6 +126,42 @@ def create_project_on_won(lead_name: str) -> None:
 		return
 
 	timeout = int(settings.get("timeout_seconds") or _DEFAULT_TIMEOUT_SECONDS)
+
+	# Resolve the salesperson up front. The V2 public endpoint REQUIRES
+	# sales_person_email: it resolves both sales_manager_id and created_by on the
+	# backend (no more req.user fallback). Empty would 400; surface a clearer
+	# error locally so the user sees "no Sales Manager assigned" instead of a
+	# vague HTTP error.
+	sales_person_email = _resolve_sales_person_email(lead_name)
+	if not sales_person_email:
+		frappe.log_error(
+			f"Lead {lead_name}: no assignee with the Sales Manager role; cannot "
+			f"resolve sales_person_email for the project handoff.",
+			"Project API: missing sales_person_email",
+		)
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Comment",
+					"comment_type": "Comment",
+					"reference_doctype": "CRM Lead",
+					"reference_name": lead_name,
+					"content": (
+						"[AUTOMATION] Project handoff aborted — no assignee on this "
+						"lead carries the Sales Manager role. Assign a Sales Manager "
+						"and re-fire."
+					),
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			pass
+		frappe.throw(
+			frappe._(
+				"Cannot create project: no assignee on this lead has the Sales Manager "
+				"role. Assign a sales manager before clicking Create Project."
+			),
+			title=frappe._("Sales Manager Required"),
+		)
 
 	# Site location is a "<lat>,<lng>" string. Send it only when both halves
 	# are populated — a half-populated coord is misleading downstream.
@@ -170,7 +219,7 @@ def create_project_on_won(lead_name: str) -> None:
 		"site_location": site_location,
 		"project_category": lead.get("custom_project_category") or None,
 		"project_configuration": lead.get("custom_project_configuration") or None,
-		"sales_person_email": _resolve_sales_person_email(lead.name),
+		"sales_person_email": sales_person_email,
 		"customer": {
 			"customer_name": lead.lead_name or "",
 			"customer_mobile": lead.mobile_no or "",
@@ -190,7 +239,11 @@ def create_project_on_won(lead_name: str) -> None:
 	headers = {
 		"accept": "application/json",
 		"content-type": "application/json",
-		"x-api-key": api_key,
+		# Renamed from x-api-key on 2026-05-22. The verifyFrappeSecret middleware
+		# on OpsGate matches against FRAPPE_CRM_SECRET; the value lives in
+		# CRM Project API Settings.api_key (Password field — name kept stable to
+		# avoid migrating existing sites; admins set it to the new secret value).
+		"X-Api-Secret": api_key,
 	}
 
 	response = _post_with_retry(
@@ -232,7 +285,7 @@ def create_project_on_won(lead_name: str) -> None:
 	except ValueError:
 		body = {}
 
-	project_id = _extract_project_id(body)
+	project_id, idempotent = _extract_project_id(body)
 	if project_id:
 		frappe.db.set_value(
 			"CRM Lead",
@@ -240,3 +293,22 @@ def create_project_on_won(lead_name: str) -> None:
 			"custom_external_project_id",
 			project_id,
 		)
+		if idempotent:
+			# Backend recognised the external_id from a prior call — useful audit
+			# signal for ops if the local short-circuit (custom_external_project_id)
+			# ever races a manual edit.
+			try:
+				frappe.get_doc(
+					{
+						"doctype": "Comment",
+						"comment_type": "Comment",
+						"reference_doctype": "CRM Lead",
+						"reference_name": lead_name,
+						"content": (
+							f"[AUTOMATION] Project API returned existing project "
+							f"(idempotent re-fire); external id: {project_id}."
+						),
+					}
+				).insert(ignore_permissions=True)
+			except Exception:
+				pass
