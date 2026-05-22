@@ -2,7 +2,29 @@
 
 > Reference for the moment **frappe/crm PR #2120** (`feat: sales hierarchy
 > permissions for leads and deals`, branch `user-hierrarcy-fe`) lands on
-> `frappe/crm:develop` and we sync it into `custom/develop`.
+> the `frappe/crm` branch that `custom/develop` tracks, and we converge.
+>
+> **Status update 2026-05-22 — CORRECTED:** `custom/develop` was forked from
+> `frappe/crm:main`, NOT `frappe/crm:develop`. `git merge-base custom/develop
+> upstream/main` is ~57 commits behind; `upstream/develop` is 2971 commits
+> behind. The right sync source for us is `main` / `main-hotfix`, never
+> `develop`.
+>
+> PR #2120 merged into `upstream/develop` on 2026-05-21 (commit `5508e1f`).
+> It is **NOT on `upstream/main` or `upstream/main-hotfix`** as of writing.
+>
+> **Bridge:** Backport PR #2215 (Mergify auto-PR onto `main-hotfix`) carries
+> the same code prepared for the main line. Status: OPEN. Once it merges,
+> `main-hotfix` carries the change; the merge procedure below becomes runnable
+> against `upstream/main-hotfix` (or `upstream/main` after the next release
+> cut).
+>
+> **Until PR #2215 lands, do NOT attempt the merge procedure.** Merging
+> `upstream/develop` would drag in ~3000 unrelated commits. Our cherry-pick
+> remains the only path on the main line.
+>
+> The "Open question" section at the bottom is closed: decision is `merge
+> via PR #2215 path, don't revert`.
 
 ## Why this file exists
 
@@ -15,6 +37,8 @@ the conflict surface so the merge is mechanical, not archaeological.
 
 PR #2120 head when we copied from it: `262477886174cc7520748fb078e86e602b9ae818`
 (`chore: use shorter title`, 2026-05-21).
+
+Upstream merge commit on `frappe/crm:develop`: `5508e1f428575b0edbdb2e020293279cccd45d0c` (2026-05-21 11:40 UTC). If you `git log 262477886174cc7520748fb078e86e602b9ae818..5508e1f` against the upstream tree, any non-empty diff is reviewer-requested change that needs reconciling against our copy.
 
 If the PR rebased or accepted reviewer feedback before merge, our copies of
 the Category A files may drift from the merged version. Default action at
@@ -67,16 +91,21 @@ upstream's CRM Deal wiring; keep ours for CRM Lead.
 
 ```python
 permission_query_conditions = {
-    # CRM Lead: NOT wired here — our Server Script "CRM Lead — Permission Query"
-    # handles list filtering. Upstream's `get_lead_permission_query_conditions`
-    # is DROPPED on our fork.
+    # CRM Lead: our 13-role matrix list filter (Python hook — see
+    # crm/overrides/crm_lead_permissions.py:get_permission_query_conditions).
+    # Replaces the legacy "CRM Lead — Permission Query" Server Script which
+    # crashed in safe_exec on frappe.get_attr. Upstream's
+    # get_lead_permission_query_conditions is DROPPED on our fork.
+    "CRM Lead": "crm.overrides.crm_lead_permissions.get_permission_query_conditions",
     "CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 }
 
 has_permission = {
     # CRM Lead: our 13-role matrix (preserves B2F C7-only, Estimation C2-only,
     # Calling Team / JSE pool logic, ASM/RSM downstream scoping, Marketing
-    # read-all, etc.). Do NOT replace with upstream's flat subtree hook.
+    # read-all, SE/PSE Retail/Projects split). Do NOT replace with upstream's
+    # flat subtree hook. Lives in the same module as the list filter above so
+    # the two gates stay in lockstep.
     "CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
     "CRM Deal": "crm.permissions.org_hierarchy.has_deal_permission",
 }
@@ -92,37 +121,72 @@ doc_events = {
 
 Resolution recipe at merge time:
 1. Take upstream's `CRM Deal` wiring (both keys).
-2. Reject upstream's `CRM Lead` entries.
+2. Reject upstream's `CRM Lead` entries — keep our `crm.overrides.crm_lead_permissions.*` for both `permission_query_conditions["CRM Lead"]` and `has_permission["CRM Lead"]`.
 3. Keep our `CRM Sales Hierarchy.on_update/on_trash` doc_events.
 
 ## Category D — pure-ours, no upstream conflict
 
 PR #2120 doesn't touch these. They will pass through the merge untouched:
 
-- `crm/overrides/crm_lead_permissions.py` — 13-role matrix, `_downstream_users`,
-  `bust_downstream_users_cache`.
+- `crm/overrides/crm_lead_permissions.py` — 13-role matrix, `has_permission`,
+  `get_permission_query_conditions` (replaces the deleted Server Script),
+  `_downstream_users`, `bust_downstream_users_cache`.
 - `crm/fcrm/doctype/crm_lead/crm_lead.py` — `_check_write_permission` with
   Calling Team unassigned-claim, ASM cross-team guard, Won lock, quote-freeze.
-- `crm/fixtures/server_script.json` — 13-role-aware Permission Query +
-  Stage Transition + disposition validation.
+- `crm/fixtures/server_script.json` — Stage Transition + disposition validation
+  + after-save side effects. (The 13-role Permission Query for CRM Lead is
+  NOT here anymore — it lives in Python in `crm_lead_permissions.py`.)
 - `crm/install.py` — Won engagement status + lead status seeding.
 - `crm/api/projects.py`, `crm/api/quotes.py` — new endpoints.
 - Doctype JSONs unrelated to hierarchy (call_log, lead, quote_request, etc.).
 
-## Merge procedure (when the day comes)
+## Merge procedure (when PR #2215 lands)
 
-1. `git fetch upstream develop` (or wherever PR #2120 lands).
-2. From `custom/develop`, delete our Category A files first:
+**Pre-check (do this every time before starting):**
+
+```sh
+# Confirm PR #2215 has merged into upstream/main-hotfix (or that the next
+# release already merged main-hotfix → main).
+gh pr view 2215 --repo frappe/crm --json state,mergedAt,mergeCommit
+
+# Then fetch the latest upstream state.
+git fetch upstream main main-hotfix
+git log upstream/main..upstream/main-hotfix --oneline | head -20   # delta to expect
+```
+
+If `gh pr view 2215` still shows `OPEN` — STOP. Do not merge `upstream/develop`
+as a workaround; it would bring ~3000 commits of unrelated work onto our
+main-line fork. Wait for PR #2215 (or check whether a fresh PR was opened by
+upstream maintainers if Mergify's auto-PR got closed without merge).
+
+**Merge steps (run only once the pre-check passes):**
+
+1. Sync `custom/develop` with `origin` and create an integration branch:
+   ```sh
+   git checkout custom/develop && git pull origin custom/develop
+   git checkout -b integration/upstream-2120-merge
+   ```
+
+2. Delete our Category A files first (these are about to arrive from upstream):
    ```sh
    git rm -r crm/fcrm/doctype/crm_sales_hierarchy crm/permissions \
               frontend/src/components/Settings/Hierarchy docs/user-hierarchy.md
    git commit -m "chore: drop pre-merge copy of PR #2120 files (preparing for upstream sync)"
    ```
-3. `git merge upstream/develop` — Category A files arrive cleanly; Category B
-   surfaces hunk conflicts; Category D passes through.
+
+3. Merge from the branch that actually carries the change:
+   - If PR #2215 merged but no `main` release has cut yet:
+     `git merge upstream/main-hotfix`
+   - If a release has happened and PR #2120 is now on `main`:
+     `git merge upstream/main`
+   Either way, Category A files arrive cleanly; Category B surfaces hunk
+   conflicts; Category D passes through.
+
 4. Resolve Category B conflicts file-by-file (Settings.vue, fcrm_settings.json,
    api/user.py).
+
 5. Resolve `crm/hooks.py` per the recipe above.
+
 6. `bench --site crm.localhost migrate` and re-run the verification matrix:
    - Sales Hierarchy tree still renders at `/app/crm-sales-hierarchy`.
    - `_downstream_users("paresh@indiframe.com")` returns expected subtree
@@ -130,12 +194,27 @@ PR #2120 doesn't touch these. They will pass through the merge untouched:
    - CRM Lead permissions still honor the 13-role matrix.
    - CRM Deal now uses upstream's hierarchy hook (toggle via
      `FCRM Settings.enable_sales_hierarchy`).
+
 7. Re-run tests: `bench --site crm.localhost run-tests --app crm`.
 
-## Open question — is the cherry-pick still worth it?
+8. Once green, fast-forward `custom/develop`:
+   ```sh
+   git checkout custom/develop && git merge --ff-only integration/upstream-2120-merge
+   ```
 
-If PR #2120 is taking longer to merge than expected (months, not weeks), the
-calculus may shift toward reverting our cherry-pick and waiting. To revert:
+## Open question — is the cherry-pick still worth it? — **CLOSED 2026-05-21**
+
+Resolved before the question could go cold: upstream merged PR #2120 on the
+same day we cherry-picked (2026-05-21 11:40 UTC). The cherry-pick window was
+hours, not weeks. **Decision: merge, don't revert.** Run the "Merge procedure"
+section above on the next bench session.
+
+The revert recipe below is kept for historical reference only — if anything
+goes wrong during the merge and we need to back out the cherry-pick to
+sync from a clean slate, this is the path. Otherwise ignore.
+
+<details>
+<summary>Historical revert recipe (do not run unless the merge fails)</summary>
 
 1. `git rm` all Category A files.
 2. Revert Category B patches (the upstream-style hunks).
@@ -143,4 +222,7 @@ calculus may shift toward reverting our cherry-pick and waiting. To revert:
 4. Re-introduce the hardcoded `_REPORTS_TO` dict in `crm_lead_permissions.py`
    as a stopgap (see git history around `2026-05-21` for the dict).
 
-Track PR #2120 status via `gh pr view 2120 --repo frappe/crm`.
+</details>
+
+Track upstream status: `gh pr view 2120 --repo frappe/crm` (state: MERGED).
+Backport: `gh pr view 2215 --repo frappe/crm` (state: OPEN on `main-hotfix`).
