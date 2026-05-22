@@ -46,10 +46,15 @@ class TestOrgHierarchy(IntegrationTestCase):
 		super().tearDownClass()
 
 	def setUp(self):
-		frappe.db.savepoint("test_org_hierarchy")
+		frappe.local._test_docs = []
 
 	def tearDown(self):
-		frappe.db.rollback(save_point="test_org_hierarchy")
+		for doctype, name in reversed(frappe.local._test_docs):
+			try:
+				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
+			except Exception:
+				pass
+		frappe.local._test_docs = []
 
 	# ------------------------------------------------------------------
 	# hierarchy_enabled
@@ -159,6 +164,11 @@ class TestOrgHierarchy(IntegrationTestCase):
 			settings.save(ignore_permissions=True)
 
 
+def _track(doctype, name):
+	if hasattr(frappe.local, "_test_docs"):
+		frappe.local._test_docs.append((doctype, name))
+
+
 def make_user(email, roles=None):
 	if frappe.db.exists("User", email):
 		return frappe.get_doc("User", email)
@@ -192,18 +202,22 @@ def make_hierarchy_node(user, reports_to=None, is_group=0):
 def make_lead(owner_email):
 	doc = frappe.get_doc({"doctype": "CRM Lead", "lead_owner": owner_email, "first_name": "Test"})
 	doc.flags.ignore_mandatory = True
-	return doc.insert(ignore_permissions=True)
+	doc = doc.insert(ignore_permissions=True)
+	_track("CRM Lead", doc.name)
+	return doc
 
 
 def make_deal(owner_email):
 	doc = frappe.get_doc({"doctype": "CRM Deal", "deal_owner": owner_email, "organization": "Test Org"})
 	doc.flags.ignore_mandatory = True
 	doc.flags.ignore_links = True
-	return doc.insert(ignore_permissions=True)
+	doc = doc.insert(ignore_permissions=True)
+	_track("CRM Deal", doc.name)
+	return doc
 
 
 def assign_todo(doctype, docname, allocated_to, status="Open"):
-	return frappe.get_doc(
+	doc = frappe.get_doc(
 		{
 			"doctype": "ToDo",
 			"reference_type": doctype,
@@ -213,3 +227,5 @@ def assign_todo(doctype, docname, allocated_to, status="Open"):
 			"description": f"Test assignment to {allocated_to}",
 		}
 	).insert(ignore_permissions=True)
+	_track("ToDo", doc.name)
+	return doc
