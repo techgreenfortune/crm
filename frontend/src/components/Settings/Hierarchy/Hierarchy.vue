@@ -90,10 +90,7 @@
         </TextInput>
       </div>
       <div class="flex-1 min-h-0 overflow-y-auto">
-        <div
-          v-if="!dataReady"
-          class="flex items-center justify-center py-12"
-        >
+        <div v-if="!dataReady" class="flex items-center justify-center py-12">
           <LoadingIndicator class="size-6" />
         </div>
         <EmptyState
@@ -272,12 +269,7 @@ const DOCTYPE = 'CRM Sales Hierarchy'
 // Role metadata comes from usersStore (which fetches crm/permissions/role_config.py).
 // roleRank is a computed — plain destructure unwraps it and loses reactivity, so use storeToRefs.
 const _usersStore = usersStore()
-const {
-  users: usersResource,
-  getUserRole,
-  isAdmin,
-  roleConfig,
-} = _usersStore
+const { users: usersResource, getUserRole, isAdmin, roleConfig } = _usersStore
 const { roleRank } = storeToRefs(_usersStore)
 const canEdit = computed(() => isAdmin())
 
@@ -313,9 +305,7 @@ const nodes = createListResource({
 // Gate on data presence, not `loading` — preserves the tree during drag-drop refetches.
 const dataReady = computed(() =>
   Boolean(
-    nodes.data &&
-      usersResource.data?.crmUsers &&
-      roleConfig.data?.role_rank,
+    nodes.data && usersResource.data?.crmUsers && roleConfig.data?.role_rank,
   ),
 )
 
