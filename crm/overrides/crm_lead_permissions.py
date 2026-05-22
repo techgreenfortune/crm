@@ -36,21 +36,14 @@ ASM/RSM downstream scoping. Cache invalidates on every hierarchy save.
 import frappe
 from frappe import _
 
-TIER1_FULL_RW = {"System Manager", "Sales Head", "Sales Coordinator"}
-TIER1_READ_ONLY = {"Management"}
-FIELD_GATED_RW = {"Marketing", "B2F Team"}
-STAGE_LOCKED = {"B2F Team": {"C7"}, "Estimation Team": {"C2"}}
-NO_C7_ROLES = {"Calling Team", "Jr. Sales Executive"}
-
-# Owner-scoped roles. ``scope`` is ``"self"`` (owner = user) or ``"downstream"``
-# (owner in the user's CRM Sales Hierarchy subtree). ``lead_type`` restricts the
-# rule to a specific ``custom_lead_type`` value or is ``None`` for any-type.
-OWNER_SCOPE_ROLES = {
-	"Sales Executive": {"scope": "self", "lead_type": "Retail"},
-	"Project Sales Executive": {"scope": "self", "lead_type": "Projects"},
-	"ASM": {"scope": "downstream", "lead_type": None},
-	"RSM": {"scope": "downstream", "lead_type": None},
-}
+from crm.permissions.role_config import (
+	FIELD_GATED_RW,
+	NO_C7_ROLES,
+	OWNER_SCOPE_ROLES,
+	STAGE_LOCKED,
+	TIER1_FULL_RW,
+	TIER1_READ_ONLY,
+)
 
 # Roles that cannot create a CRM Lead (pool / stage-locked / owner-scoped).
 _NO_CREATE_ROLES = set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | NO_C7_ROLES | {"Marketing"}
