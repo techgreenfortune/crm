@@ -128,12 +128,18 @@ before_uninstall = "crm.uninstall.before_uninstall"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# "Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
+# CRM Lead: 13-role matrix gated via `crm.overrides.crm_lead_permissions`
+# (single-doc + list-level Python hook). CRM Deal: upstream's Sales Hierarchy
+# hook (PR #2120) is the sole gate — we don't have a custom matrix for Deals.
+permission_query_conditions = {
+	"CRM Lead": "crm.overrides.crm_lead_permissions.get_permission_query_conditions",
+	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
+	"CRM Task": "crm.fcrm.doctype.crm_task.crm_task.get_permission_query_conditions",
+}
 
 has_permission = {
 	"CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
+	"CRM Deal": "crm.permissions.org_hierarchy.has_deal_permission",
 }
 
 # DocType Class
@@ -177,6 +183,13 @@ doc_events = {
 	"User": {
 		"before_validate": ["crm.api.live_demo.validate_user"],
 		"validate_reset_password": ["crm.api.live_demo.validate_reset_password"],
+	},
+	"CRM Sales Hierarchy": {
+		"on_update": ["crm.overrides.crm_lead_permissions.bust_downstream_users_cache"],
+		"on_trash": ["crm.overrides.crm_lead_permissions.bust_downstream_users_cache"],
+	},
+	"CRM Task": {
+		"before_save": ["crm.fcrm.doctype.crm_task.crm_task.validate_write_permission"],
 	},
 }
 

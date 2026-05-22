@@ -44,6 +44,24 @@ def get_users():
 	crm_users = []
 	system_language = frappe.db.get_single_value("System Settings", "language")
 
+	# Priority order: more privileged role wins when assigning the displayed role.
+	_ROLE_PRIORITY = (
+		"System Manager",
+		"Sales Head",
+		"Sales Coordinator",
+		"Management",
+		"Marketing",
+		"ASM",
+		"RSM",
+		"Sales Executive",
+		"Project Sales Executive",
+		"Calling Team",
+		"Jr. Sales Executive",
+		"B2F Team",
+		"Estimation Team",
+		"CRM User",
+	)
+
 	for user in users:
 		if frappe.session.user == user.name:
 			user.session_user = True
@@ -51,15 +69,13 @@ def get_users():
 		user.roles = frappe.get_roles(user.name)
 
 		user.role = ""
-
-		if "System Manager" in user.roles:
-			user.role = "System Manager"
-		elif "Sales Manager" in user.roles:
-			user.role = "Sales Manager"
-		elif "Sales User" in user.roles:
-			user.role = "Sales User"
-		elif "Guest" in user.roles:
-			user.role = "Guest"
+		for role in _ROLE_PRIORITY:
+			if role in user.roles:
+				user.role = role
+				break
+		else:
+			if "Guest" in user.roles:
+				user.role = "Guest"
 
 		if frappe.session.user == user.name:
 			user.session_user = True
@@ -67,7 +83,7 @@ def get_users():
 		user.is_telephony_agent = frappe.db.exists("CRM Telephony Agent", {"user": user.name})
 		user.language = user.language or system_language
 
-		if user.role in ("System Manager", "Sales Manager", "Sales User"):
+		if user.role and user.role != "Guest":
 			crm_users.append(user)
 
 	if not session_roles["is_system_manager"]:

@@ -24,6 +24,15 @@
             <span v-if="quote.quote_margin">
               {{ quote.quote_margin }}% margin
             </span>
+            <span v-if="quote.quote_sq_ft">
+              {{ formatCurrency(quote.quote_sq_ft) }} sqft
+            </span>
+            <span v-if="quote.quote_number">
+              {{ __('Ref:') }} {{ quote.quote_number }}
+            </span>
+            <span v-if="quote.images_count">
+              {{ __('{0} image(s)', [quote.images_count]) }}
+            </span>
             <span v-if="quote.requested_on">
               {{ formatDate(quote.requested_on, 'D MMM YYYY') }}
             </span>

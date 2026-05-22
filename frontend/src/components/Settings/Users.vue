@@ -77,12 +77,7 @@
         <FormControl
           v-model="currentRole"
           type="select"
-          :options="[
-            { label: __('All'), value: 'All' },
-            { label: __('Admin'), value: 'System Manager' },
-            { label: __('Manager'), value: 'Sales Manager' },
-            { label: __('Sales User'), value: 'Sales User' },
-          ]"
+          :options="roleFilterOptions"
         />
       </div>
       <ul class="divide-y divide-outline-gray-modals overflow-y-auto px-2">
@@ -125,12 +120,12 @@
                 v-else
                 :options="getDropdownOptions(user)"
                 :button="{
-                  label: roleMap[user.role],
+                  label: roleMap[user.role] || user.role,
                   iconRight: 'chevron-down',
                   iconLeft:
                     user.role === 'System Manager'
                       ? 'shield'
-                      : user.role === 'Sales Manager'
+                      : user.role === 'Sales Head'
                         ? 'briefcase'
                         : 'user-check',
                 }"
@@ -186,11 +181,32 @@ const searchRef = ref(null)
 const search = ref('')
 const currentRole = ref('All')
 
+// CRM role profiles (must match crm/fixtures/role_profile.json) + System Manager.
+const CRM_ROLES = [
+  'Sales Head',
+  'RSM',
+  'ASM',
+  'Sales Executive',
+  'Project Sales Executive',
+  'Sales Coordinator',
+  'Marketing',
+  'Calling Team',
+  'Jr. Sales Executive',
+  'B2F Team',
+  'Estimation Team',
+  'Management',
+]
+
 const roleMap = {
   'System Manager': __('Admin'),
-  'Sales Manager': __('Manager'),
-  'Sales User': __('Sales User'),
+  ...Object.fromEntries(CRM_ROLES.map((r) => [r, __(r)])),
 }
+
+const roleFilterOptions = [
+  { label: __('All'), value: 'All' },
+  { label: __('Admin'), value: 'System Manager' },
+  ...CRM_ROLES.map((r) => ({ label: __(r), value: r })),
+]
 
 const usersList = computed(() => {
   let filteredUsers =
@@ -221,7 +237,7 @@ function getMoreOptions(user) {
 }
 
 function getDropdownOptions(user) {
-  let options = [
+  const options = [
     {
       label: __('Admin'),
       component: () =>
@@ -233,27 +249,16 @@ function getDropdownOptions(user) {
       onClick: () => updateRole(user, 'System Manager'),
       condition: () => isAdmin(),
     },
-    {
-      label: __('Manager'),
+    ...CRM_ROLES.map((role) => ({
+      label: __(role),
       component: () =>
         DropdownOption({
-          option: __('Manager'),
-          icon: 'briefcase',
-          selected: user.role === 'Sales Manager',
+          option: __(role),
+          icon: role === 'Sales Head' ? 'briefcase' : 'user-check',
+          selected: user.role === role,
         }),
-      onClick: () => updateRole(user, 'Sales Manager'),
-      condition: () => isAdmin(),
-    },
-    {
-      label: __('Sales User'),
-      component: () =>
-        DropdownOption({
-          option: __('Sales User'),
-          icon: 'user-check',
-          selected: user.role === 'Sales User',
-        }),
-      onClick: () => updateRole(user, 'Sales User'),
-    },
+      onClick: () => updateRole(user, role),
+    })),
   ]
 
   return options.filter((option) => option.condition?.() || true)

@@ -108,13 +108,15 @@ def create_crm_user():
 	if not email:
 		frappe.throw(_("email is required"))
 
+	from crm.api.user import CRM_ROLE_PROFILES
+
 	first_name = frappe.form_dict.get("first_name", "") or email.split("@")[0].title()
 	last_name = frappe.form_dict.get("last_name", "") or ""
-	role = frappe.form_dict.get("role", "Sales User")
+	role = frappe.form_dict.get("role", "Sales Executive")
 
-	valid_roles = ("Sales User", "Sales Manager", "System Manager")
+	valid_roles = set(CRM_ROLE_PROFILES) | {"System Manager"}
 	if role not in valid_roles:
-		role = "Sales User"
+		role = "Sales Executive"
 
 	if not frappe.db.exists("User", email):
 		user = frappe.get_doc(
@@ -130,11 +132,10 @@ def create_crm_user():
 		if not user.enabled:
 			user.enabled = 1
 
-	user.append_roles(role)
 	if role == "System Manager":
-		user.append_roles("Sales Manager", "Sales User")
-	elif role == "Sales Manager":
-		user.append_roles("Sales User")
+		user.append_roles("System Manager")
+	else:
+		user.role_profile_name = role
 
 	user.save(ignore_permissions=True)
 

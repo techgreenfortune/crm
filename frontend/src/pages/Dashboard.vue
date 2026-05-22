@@ -92,7 +92,7 @@
           name: ['in', users.data.crmUsers?.map((u) => u.name)],
           ignore_user_type: 1,
         }"
-        :placeholder="__('Sales User')"
+        :placeholder="__('Select user')"
         :hideMe="true"
         @change="(v) => updateFilter('user', v)"
       >

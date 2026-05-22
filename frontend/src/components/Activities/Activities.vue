@@ -566,24 +566,9 @@ const all_activities = createResource({
 })
 
 const quoteRequests = createResource({
-  url: 'frappe.client.get_list',
+  url: 'crm.api.quotes.list_lead_quote_requests',
   cache: ['quote_requests', props.docname],
-  params: {
-    doctype: 'CRM Quote Request',
-    filters: { lead: props.docname },
-    fields: [
-      'name',
-      'status',
-      'quote_value',
-      'quote_margin',
-      'requested_on',
-      'requested_by',
-      'quote_file',
-      'modified',
-    ],
-    order_by: 'modified desc',
-    limit: 50,
-  },
+  params: { lead: props.docname },
   auto: props.doctype === 'CRM Lead',
   onSuccess: () => nextTick(() => scroll()),
 })
@@ -815,7 +800,7 @@ const emptyTextDescription = computed(() => {
       'Nothing to do at the moment. Start organizing by adding one here.'
   } else if (title.value == 'Quotes') {
     description =
-      'No quote requests yet. They will appear here when the lead reaches C2-Q.'
+      'No quote requests yet. They will appear here when the lead reaches C2 (Active Engagement).'
   } else if (title.value == 'Attachments') {
     description =
       'No files have been attached yet. Upload files to see them here.'
