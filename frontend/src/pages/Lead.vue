@@ -57,7 +57,9 @@
         :text="
           projectFieldsReady
             ? __('Create project and archive this lead')
-            : __('Fill all project fields (category, configuration, site address, site pincode) before handing off.')
+            : __(
+                'Fill all project fields (category, configuration, site address, site pincode) before handing off.',
+              )
         "
       >
         <Button
@@ -615,9 +617,7 @@ const isLocked = computed(
 
 function bailIfLocked() {
   if (!isLocked.value) return false
-  toast.error(
-    __('Lead is Won (C4 + Won). Contact a System Manager to unlock.'),
-  )
+  toast.error(__('Lead is Won (C4 + Won). Contact a System Manager to unlock.'))
   return true
 }
 

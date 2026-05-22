@@ -58,7 +58,12 @@ def add_default_lead_statuses():
 		"C0": {"color": "gray", "type": "Open", "position": 1, "stage_label": "C0 — New Lead"},
 		"C1": {"color": "blue", "type": "Open", "position": 2, "stage_label": "C1 — Future Requirement"},
 		"C2": {"color": "orange", "type": "Ongoing", "position": 3, "stage_label": "C2 — Active Engagement"},
-		"C4": {"color": "green", "type": "Won", "position": 4, "stage_label": "C4 — Won (Advance Payment Made)"},
+		"C4": {
+			"color": "green",
+			"type": "Won",
+			"position": 4,
+			"stage_label": "C4 — Won (Advance Payment Made)",
+		},
 		"C6": {"color": "red", "type": "Lost", "position": 5, "stage_label": "C6 — Lost"},
 		"C7": {
 			"color": "violet",

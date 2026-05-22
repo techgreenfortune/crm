@@ -98,16 +98,18 @@ const description = computed(() => {
       'Full access across all areas, regions, and retail + projects pipelines. Can invite and manage users.',
     'Sales Coordinator':
       'Edit access across all leads (all types, all stages). Operational support.',
-    'RSM': 'Full access to Project leads in their assigned region and downstream team.',
-    'ASM': 'Full access to retail leads in their assigned area and downstream team.',
+    RSM: 'Full access to Project leads in their assigned region and downstream team.',
+    ASM: 'Full access to retail leads in their assigned area and downstream team.',
     'Sales Executive': 'Full access to retail leads assigned to them.',
     'Project Sales Executive': 'Full access to Project leads assigned to them.',
-    'Marketing': 'Read access to all leads; write access to source/campaign fields.',
+    Marketing:
+      'Read access to all leads; write access to source/campaign fields.',
     'Calling Team': 'Create/edit leads up to C2; log calls; set dispositions.',
     'Jr. Sales Executive': 'Create/edit leads up to C2; view-only after C2.',
-    'B2F Team': 'Access only to leads at C7. Updates status, partner fabricator tag.',
+    'B2F Team':
+      'Access only to leads at C7. Updates status, partner fabricator tag.',
     'Estimation Team': 'Access only to C2 leads. Uploads quote files.',
-    'Management': 'Read-only access across all pipelines and dashboards.',
+    Management: 'Read-only access across all pipelines and dashboards.',
   }
   return descriptions[role.value] || ''
 })

@@ -318,9 +318,7 @@ class CRMLead(Document):
 					continue
 				if self.has_value_changed(field.fieldname):
 					frappe.throw(
-						_("Your role does not allow editing '{0}'.").format(
-							field.label or field.fieldname
-						),
+						_("Your role does not allow editing '{0}'.").format(field.label or field.fieldname),
 						frappe.PermissionError,
 						title=_("Not Permitted"),
 					)
@@ -446,11 +444,7 @@ class CRMLead(Document):
 		old = self.get_doc_before_save()
 		if not old:
 			return
-		old_type = (
-			frappe.get_cached_value("CRM Lead Status", old.status, "type")
-			if old.status
-			else None
-		)
+		old_type = frappe.get_cached_value("CRM Lead Status", old.status, "type") if old.status else None
 		if old_type != "Won":
 			return  # only enforce once the lead is ALREADY at Won
 		for field in _QUOTE_LEAD_FIELDS:

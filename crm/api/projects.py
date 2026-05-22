@@ -47,13 +47,14 @@ def create_project_for_lead(lead: str) -> str:
 	# --- Permission ---
 	user = frappe.session.user
 	user_roles = set(frappe.get_roles(user))
-	is_privileged = (
-		user == "Administrator"
-		or bool(user_roles & {"System Manager", "Sales Head", "Sales Coordinator"})
+	is_privileged = user == "Administrator" or bool(
+		user_roles & {"System Manager", "Sales Head", "Sales Coordinator"}
 	)
 	if not is_privileged and lead_doc.lead_owner != user:
 		frappe.throw(
-			_("Only the lead owner (or Sales Head / Sales Coordinator / System Manager) can create the project for this lead."),
+			_(
+				"Only the lead owner (or Sales Head / Sales Coordinator / System Manager) can create the project for this lead."
+			),
 			frappe.PermissionError,
 		)
 
@@ -64,7 +65,9 @@ def create_project_for_lead(lead: str) -> str:
 	# --- Stage gate ---
 	if lead_doc.status != "C4":
 		frappe.throw(
-			_("Project can only be created for leads at C4 (Won). Current stage: {0}.").format(lead_doc.status),
+			_("Project can only be created for leads at C4 (Won). Current stage: {0}.").format(
+				lead_doc.status
+			),
 			frappe.ValidationError,
 		)
 

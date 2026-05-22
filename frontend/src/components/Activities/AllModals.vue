@@ -33,7 +33,9 @@ async function requestQuote(leadName) {
     return
   }
   try {
-    const qrName = await call('crm.api.quotes.request_quote', { lead: leadName })
+    const qrName = await call('crm.api.quotes.request_quote', {
+      lead: leadName,
+    })
     activities.value.reload()
     reloadAfterChildModal?.()
     toast.success(__('Quote Request {0} ready', [qrName]))

@@ -68,7 +68,9 @@ export const usersStore = defineStore('crm-users', () => {
   // crm.overrides.crm_lead_permissions.TIER1_FULL_RW set.
   function isManager(email) {
     const role = getUser(email).role
-    return role === 'Sales Head' || role === 'Sales Coordinator' || isAdmin(email)
+    return (
+      role === 'Sales Head' || role === 'Sales Coordinator' || isAdmin(email)
+    )
   }
 
   function isWebsiteUser(email) {

@@ -132,7 +132,9 @@ def update_user_role(user: str, new_role: str):
 			has_reports = frappe.db.exists("CRM Sales Hierarchy", {"reports_to": node.name})
 			if has_reports or not node.reports_to:
 				frappe.throw(
-					_("Remove this user from the sales hierarchy before changing their role to a non-managerial profile.")
+					_(
+						"Remove this user from the sales hierarchy before changing their role to a non-managerial profile."
+					)
 				)
 
 	if new_role == "System Manager":

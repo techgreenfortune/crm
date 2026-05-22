@@ -458,9 +458,7 @@ const isLocked = computed(
 
 function bailIfLocked() {
   if (!isLocked.value) return false
-  toast.error(
-    __('Lead is Won (C4 + Won). Contact a System Manager to unlock.'),
-  )
+  toast.error(__('Lead is Won (C4 + Won). Contact a System Manager to unlock.'))
   return true
 }
 
