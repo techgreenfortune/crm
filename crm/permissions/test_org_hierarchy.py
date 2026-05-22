@@ -54,7 +54,6 @@ class TestOrgHierarchy(IntegrationTestCase):
 				frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
 			except Exception:
 				pass
-		frappe.db.commit()
 		frappe.local._test_docs = []
 
 	# ------------------------------------------------------------------
