@@ -79,8 +79,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	# pools, not just the first match — fix for the old elif chain).
 	pool_task_types = sorted(tt for tt, role in POOL_TASK_ROLES.items() if role in roles)
 	pool_clauses = [
-		f"((`tabCRM Task`.assigned_to IS NULL OR `tabCRM Task`.assigned_to = '') "
-		f"AND `tabCRM Task`.task_type = '{tt}')"
+		f"((`tabCRM Task`.assigned_to IS NULL OR `tabCRM Task`.assigned_to = '') AND `tabCRM Task`.task_type = '{tt}')"
 		for tt in pool_task_types
 	]
 
