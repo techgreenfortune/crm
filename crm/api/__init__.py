@@ -84,6 +84,7 @@ def check_app_permission():
 		"RSM",
 		"Marketing",
 		"Management",
+		"Estimation Team",
 	}
 	if any(role in allowed_roles for role in roles):
 		return True
@@ -111,17 +112,17 @@ def accept_invitation(key: str | None = None):
 
 @frappe.whitelist()
 def invite_by_email(emails: str, role: str):
-	frappe.only_for(["Sales Manager", "System Manager"], True)
+	from crm.api.user import CRM_ROLE_PROFILES
+
+	frappe.only_for(["System Manager", "Sales Manager"], True)
 
 	user_roles = frappe.get_roles(frappe.session.user)
 
 	if role == "System Manager" and "System Manager" not in user_roles:
 		frappe.throw(_("You are not allowed to invite System Managers"), frappe.PermissionError)
 
-	if role == "Sales Manager" and "System Manager" not in user_roles:
-		frappe.throw(_("You are not allowed to invite Sales Managers"), frappe.PermissionError)
-
-	if role not in ["System Manager", "Sales Manager", "Sales User"]:
+	valid_roles = set(CRM_ROLE_PROFILES) | {"System Manager"}
+	if role not in valid_roles:
 		frappe.throw(_("Cannot invite for this role"), frappe.PermissionError)
 
 	if not emails:
@@ -135,7 +136,7 @@ def invite_by_email(emails: str, role: str):
 		"CRM Invitation",
 		filters={
 			"email": ["in", email_list],
-			"role": ["in", ["System Manager", "Sales Manager", "Sales User"]],
+			"role": ["in", list(valid_roles)],
 		},
 		pluck="email",
 	)

@@ -58,18 +58,19 @@ def add_default_lead_statuses():
 		"C0": {"color": "gray", "type": "Open", "position": 1, "stage_label": "C0 — New Lead"},
 		"C1": {"color": "blue", "type": "Open", "position": 2, "stage_label": "C1 — Future Requirement"},
 		"C2": {"color": "orange", "type": "Ongoing", "position": 3, "stage_label": "C2 — Active Engagement"},
-		"C2-Q": {"color": "amber", "type": "Ongoing", "position": 4, "stage_label": "C2-Q — Quote Sent"},
-		"C3": {"color": "yellow", "type": "Ongoing", "position": 5, "stage_label": "C3 — Almost Ready"},
-		"C4": {"color": "teal", "type": "Won", "position": 6, "stage_label": "C4 — Advance Payment Made"},
-		"C5": {"color": "green", "type": "Won", "position": 7, "stage_label": "C5 — Invoicing Completed"},
-		"C6": {"color": "red", "type": "Lost", "position": 8, "stage_label": "C6 — Lost"},
+		"C4": {
+			"color": "green",
+			"type": "Won",
+			"position": 4,
+			"stage_label": "C4 — Won (Advance Payment Made)",
+		},
+		"C6": {"color": "red", "type": "Lost", "position": 5, "stage_label": "C6 — Lost"},
 		"C7": {
 			"color": "violet",
 			"type": "On Hold",
-			"position": 9,
+			"position": 6,
 			"stage_label": "C7 — Forwarded to Fabricator",
 		},
-		"C8": {"color": "green", "type": "Won", "position": 10, "stage_label": "C8 — Won"},
 	}
 
 	for status in statuses:
@@ -91,6 +92,10 @@ def add_default_lead_engagement_statuses():
 		"Cold-Unresponsive": {"color": "gray", "position": 2},
 		"Reactivated": {"color": "cyan", "position": 3},
 		"Archived": {"color": "black", "position": 4},
+		# Terminal: set by `crm.api.projects.create_project_for_lead` after the
+		# external project handoff succeeds. Pairs with the C4 + Won lock in
+		# `crm.fcrm.doctype.crm_lead.crm_lead.CRMLead._enforce_c4_won_lock`.
+		"Won": {"color": "green", "position": 5},
 	}
 
 	for status in statuses:
@@ -179,7 +184,7 @@ def add_default_fields_layout(force=False):
 	quick_entry_layouts = {
 		"CRM Lead-Quick Entry": {
 			"doctype": "CRM Lead",
-			"layout": '[{"name": "person_section", "columns": [{"name": "column_5jrk", "fields": ["salutation", "email"]}, {"name": "column_5CPV", "fields": ["first_name", "mobile_no"]}, {"name": "column_gXOy", "fields": ["last_name", "gender"]}]}, {"name": "organization_section", "columns": [{"name": "column_GHfX", "fields": ["organization", "territory"]}, {"name": "column_hXjS", "fields": ["website", "annual_revenue"]}, {"name": "column_RDNA", "fields": ["no_of_employees", "industry"]}]}, {"name": "lead_section", "columns": [{"name": "column_EO1H", "fields": ["status"]}, {"name": "column_RWBe", "fields": ["lead_owner"]}]}]',
+			"layout": '[{"name": "person_section", "label": "Person", "columns": [{"name": "column_qe_p1", "fields": ["salutation", "first_name"]}, {"name": "column_qe_p2", "fields": ["last_name", "email"]}, {"name": "column_qe_p3", "fields": ["mobile_no", "phone"]}, {"name": "column_qe_p4", "fields": ["gender", "job_title"]}]}, {"name": "organization_section", "label": "Organization", "columns": [{"name": "column_qe_o1", "fields": ["organization", "custom_gst_number"]}, {"name": "column_qe_o2", "fields": ["website", "industry"]}, {"name": "column_qe_o3", "fields": ["territory", "annual_revenue"]}, {"name": "column_qe_o4", "fields": ["no_of_employees"]}]}, {"name": "property_section", "label": "Property / Site", "columns": [{"name": "column_qe_pr1", "fields": ["custom_pincode", "custom_city"]}, {"name": "column_qe_pr2", "fields": ["custom_state", "custom_area"]}, {"name": "column_qe_pr3", "fields": ["custom_latitude", "custom_longitude"]}, {"name": "column_qe_pr4", "fields": ["custom_tentative_area_sqft", "custom_tentative_value"]}, {"name": "column_qe_pr5", "fields": ["custom_site_photos"]}]}, {"name": "classification_section", "label": "Lead Classification", "columns": [{"name": "column_qe_c1", "fields": ["custom_lead_type", "custom_customer_type"]}, {"name": "column_qe_c2", "fields": ["custom_account"]}, {"name": "column_qe_c3", "fields": ["source", "custom_sub_source"]}]}, {"name": "utm_section", "label": "Marketing Attribution", "columns": [{"name": "column_qe_u1", "fields": ["custom_utm_source", "custom_utm_medium"]}, {"name": "column_qe_u2", "fields": ["custom_utm_campaign", "custom_utm_content"]}, {"name": "column_qe_u3", "fields": ["custom_competitors"]}]}, {"name": "lead_section", "label": "Lead Owner & Stage", "columns": [{"name": "column_qe_l1", "fields": ["status", "lead_status"]}, {"name": "column_qe_l2", "fields": ["lead_owner"]}]}]',
 		},
 		"CRM Deal-Quick Entry": {
 			"doctype": "CRM Deal",
@@ -214,7 +219,7 @@ def add_default_fields_layout(force=False):
 	sidebar_fields_layouts = {
 		"CRM Lead-Side Panel": {
 			"doctype": "CRM Lead",
-			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Details", "name": "details_section", "opened": true, "columns": [{"name": "column_lead_sp_1", "fields": ["organization", "website", "territory", "industry", "job_title", "source", "lead_owner"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_lead_sp_2", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no"]}]}]',
+			"layout": '[{"label": "Contacts", "name": "contacts_section", "opened": true, "editable": false, "contacts": []}, {"label": "Lead Status", "name": "lead_status_section", "opened": true, "columns": [{"name": "column_sp_ls1", "fields": ["status", "lead_status", "lead_owner", "custom_reactivated_at"]}]}, {"label": "Person", "name": "person_section", "opened": true, "columns": [{"name": "column_sp_p1", "fields": ["salutation", "first_name", "last_name", "email", "mobile_no", "phone", "gender", "job_title"]}]}, {"label": "Organization", "name": "organization_section", "opened": true, "columns": [{"name": "column_sp_o1", "fields": ["organization", "custom_gst_number", "website", "territory", "industry", "annual_revenue", "no_of_employees"]}]}, {"label": "Source & Classification", "name": "source_section", "opened": true, "columns": [{"name": "column_sp_s1", "fields": ["source", "custom_sub_source", "custom_lead_type", "custom_customer_type", "custom_account"]}]}, {"label": "Property", "name": "property_section", "opened": false, "columns": [{"name": "column_sp_pr1", "fields": ["custom_pincode", "custom_city", "custom_state", "custom_area", "custom_site_address_full", "custom_site_pincode", "custom_latitude", "custom_longitude", "custom_tentative_area_sqft", "custom_tentative_value", "custom_site_photos"]}]}, {"label": "Project Details", "name": "project_section", "opened": false, "columns": [{"name": "column_sp_pj1", "fields": ["custom_project_category", "custom_project_configuration", "custom_external_project_id"]}]}, {"label": "Fabricator Routing", "name": "routing_section", "opened": false, "columns": [{"name": "column_sp_r1", "fields": ["custom_fabricator_routing_reason", "custom_partner_fabricator_name", "custom_fabricator_routing_notes"]}]}, {"label": "Latest Quote", "name": "quote_section", "opened": false, "columns": [{"name": "column_sp_q1", "fields": ["custom_final_quote", "custom_final_price", "custom_final_margin"]}]}, {"label": "Marketing (UTM)", "name": "utm_section", "opened": false, "columns": [{"name": "column_sp_u1", "fields": ["custom_utm_source", "custom_utm_medium", "custom_utm_campaign", "custom_utm_content", "custom_competitors"]}]}]',
 		},
 		"CRM Deal-Side Panel": {
 			"doctype": "CRM Deal",
@@ -350,7 +355,7 @@ def add_crm_lead_property_setters():
 			"field_name": "status",
 			"property": "read_only_depends_on",
 			"property_type": "Code",
-			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C4","C6"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-lead_status-read_only_depends_on",
@@ -360,7 +365,7 @@ def add_crm_lead_property_setters():
 			"property_type": "Code",
 			# Read-only on new docs (server default is "Active") and on terminal C-stages
 			# (Script 1 also forces it to "Active" there). Mirrors the `status` property setter.
-			"value": 'eval:!doc.name || ["C6","C8"].includes(doc.status)',
+			"value": 'eval:!doc.name || ["C4","C6"].includes(doc.status)',
 		},
 		{
 			"name": "CRM Lead-custom_sub_source-mandatory_depends_on",
@@ -370,6 +375,11 @@ def add_crm_lead_property_setters():
 			"property_type": "Code",
 			"value": 'eval:["Referral","Channel Partner","Event","Chat","Lead Spotting"].includes(doc.source)',
 		},
+		# NOTE: no read-only property setters for the 5 quote-derived fields
+		# at C4. UI lock lives in the role-aware Form Script
+		# "Won Quote Fields Lock (Role-Aware)" (crm_form_script.json) —
+		# locks for non-tier-1, unlocks for Admin/SysMgr/Sales Head.
+		# Server hard lock: CRMLead._freeze_quote_fields_at_won.
 	]
 
 	for setter in setters:

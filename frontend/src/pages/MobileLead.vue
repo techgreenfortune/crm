@@ -50,9 +50,28 @@
             </Button>
           </template>
         </Dropdown>
+        <Button
+          v-if="canShowCreateProject"
+          variant="solid"
+          :label="__('Create Project')"
+          iconLeft="briefcase"
+          :loading="createProjectResource.loading"
+          :disabled="!projectFieldsReady"
+          @click="triggerCreateProject"
+        />
       </div>
     </header>
   </LayoutHeader>
+  <div
+    v-if="isLocked"
+    class="border-b border-outline-amber-2 bg-surface-amber-1 px-3 py-2 text-xs text-ink-amber-9"
+  >
+    {{
+      __(
+        'This lead is Won (C4 + Won) and is locked for edits. Contact a System Manager to unlock.',
+      )
+    }}
+  </div>
   <div
     v-if="doc.name"
     class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
@@ -160,6 +179,7 @@ import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
@@ -175,6 +195,7 @@ import { setupCustomizations, isTranslatable } from '@/utils'
 import { getView } from '@/utils/view'
 import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
+import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
@@ -343,6 +364,11 @@ const tabs = computed(() => {
       icon: TaskIcon,
     },
     {
+      name: 'Quotes',
+      label: __('Quotes'),
+      icon: DocumentIcon,
+    },
+    {
       name: 'Notes',
       label: __('Notes'),
       icon: NoteIcon,
@@ -371,7 +397,73 @@ const sections = createResource({
   auto: true,
 })
 
+// --- Manual Create Project handoff (mobile parity) ---
+const { isManager } = usersStore()
+const sessionUser = window.frappe?.session?.user || ''
+
+const canShowCreateProject = computed(() => {
+  if (!doc.value) return false
+  if (doc.value.status !== 'C4') return false
+  if (doc.value.lead_status === 'Won') return false
+  if (doc.value.custom_external_project_id) return false
+  // Visible for ALL lead types — lead_type just selects retail vs project
+  // order on the downstream API.
+  return doc.value.lead_owner === sessionUser || isManager()
+})
+
+const projectFieldsReady = computed(() => {
+  if (!doc.value) return false
+  // Retail leads need no extra project-specific fields.
+  if (doc.value.custom_lead_type !== 'Projects') return true
+  return !!(
+    doc.value.custom_project_category &&
+    doc.value.custom_project_configuration &&
+    doc.value.custom_site_address_full &&
+    doc.value.custom_site_pincode
+  )
+})
+
+const createProjectResource = createResource({
+  url: 'crm.api.projects.create_project_for_lead',
+  onSuccess: (projectId) => {
+    toast.success(__('Project created: {0}', [projectId || __('(pending id)')]))
+    reload.value = true
+  },
+  onError: (err) => {
+    toast.error(
+      err?.messages?.[0] || err?.message || __('Could not create project.'),
+    )
+  },
+})
+
+function triggerCreateProject() {
+  if (
+    !window.confirm(
+      __(
+        'Create the project for this lead? The lead will be marked Won once creation succeeds.',
+      ),
+    )
+  ) {
+    return
+  }
+  createProjectResource.submit({ lead: props.leadId })
+}
+
+// Lock when lead is at C4 (Won) AND lead_status == Won.
+// Server-side guards in crm_lead.py + the CRM Task write-permission script
+// enforce the same rule; this drives UI affordances.
+const isLocked = computed(
+  () => doc.value?.status === 'C4' && doc.value?.lead_status === 'Won',
+)
+
+function bailIfLocked() {
+  if (!isLocked.value) return false
+  toast.error(__('Lead is Won (C4 + Won). Contact a System Manager to unlock.'))
+  return true
+}
+
 function updateField(name, value) {
+  if (bailIfLocked()) return
   value = Array.isArray(name) ? '' : value
   let oldValues = Array.isArray(name) ? {} : doc.value[name]
 
@@ -407,6 +499,7 @@ function statusLabel(status) {
 }
 
 async function triggerStatusChange(value) {
+  if (bailIfLocked()) return
   await triggerOnChange('status', value)
   if (value === 'C7') {
     showFabricatorRoutingReasonModal.value = true
@@ -416,6 +509,7 @@ async function triggerStatusChange(value) {
 }
 
 async function triggerLeadStatusChange(value) {
+  if (bailIfLocked()) return
   if (
     value === 'Archived' &&
     !window.confirm(
