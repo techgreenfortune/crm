@@ -112,8 +112,25 @@ const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { users, isAdmin } = usersStore()
 const { capture } = useTelemetry()
 
+// CRM role profiles (must match crm/fixtures/role_profile.json) + System Manager.
+const CRM_ROLES = [
+  'Sales Head',
+  'RSM',
+  'ASM',
+  'Sales Executive',
+  'Project Sales Executive',
+  'Sales Coordinator',
+  'Marketing',
+  'Calling Team',
+  'Jr. Sales Executive',
+  'B2F Team',
+  'Estimation Team',
+  'Management',
+]
+const DEFAULT_ROLE = 'Sales Executive'
+
 const invitees = ref([])
-const role = ref('Sales User')
+const role = ref(DEFAULT_ROLE)
 const error = ref(null)
 
 const userExistMessage = computed(() => {
@@ -149,28 +166,37 @@ const inviteeExistMessage = computed(() => {
 })
 
 const description = computed(() => {
-  return {
+  const descriptions = {
     'System Manager':
       'Can manage all aspects of the CRM, including user management, customizations and settings.',
-    'Sales Manager':
-      'Can manage and invite new users, and create public & private views (reports).',
-    'Sales User':
-      'Can work with leads and deals and create private views (reports).',
-  }[role.value]
+    'Sales Head':
+      'Full access across all areas, regions, and retail + projects pipelines. Can invite and manage users.',
+    'Sales Coordinator':
+      'Edit access across all leads (all types, all stages). Operational support.',
+    'RSM': 'Full access to Project leads in their assigned region and downstream team.',
+    'ASM': 'Full access to retail leads in their assigned area and downstream team.',
+    'Sales Executive': 'Full access to retail leads assigned to them.',
+    'Project Sales Executive': 'Full access to Project leads assigned to them.',
+    'Marketing': 'Read access to all leads; write access to source/campaign fields.',
+    'Calling Team': 'Create/edit leads up to C2; log calls; set dispositions.',
+    'Jr. Sales Executive': 'Create/edit leads up to C2; view-only after C2.',
+    'B2F Team': 'Access only to leads at C7. Updates status, partner fabricator tag.',
+    'Estimation Team': 'Access only to C2 leads. Uploads quote files.',
+    'Management': 'Read-only access across all pipelines and dashboards.',
+  }
+  return descriptions[role.value] || ''
 })
 
 const roleOptions = computed(() => {
   return [
-    { value: 'Sales User', label: __('Sales User') },
-    ...(isAdmin() ? [{ value: 'Sales Manager', label: __('Manager') }] : []),
+    ...CRM_ROLES.map((r) => ({ value: r, label: __(r) })),
     ...(isAdmin() ? [{ value: 'System Manager', label: __('Admin') }] : []),
   ]
 })
 
 const roleMap = {
-  'Sales User': __('Sales User'),
-  'Sales Manager': __('Manager'),
   'System Manager': __('Admin'),
+  ...Object.fromEntries(CRM_ROLES.map((r) => [r, __(r)])),
 }
 
 const inviteByEmail = createResource({
@@ -182,7 +208,7 @@ const inviteByEmail = createResource({
     }
   },
   onSuccess() {
-    role.value = 'Sales User'
+    role.value = DEFAULT_ROLE
     error.value = null
     invitees.value = []
     pendingInvitations.reload()

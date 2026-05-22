@@ -40,6 +40,13 @@
       @click="modalRef.showTask()"
     />
     <Button
+      v-else-if="title == 'Quotes' && doc?.status !== 'C4'"
+      variant="solid"
+      :label="__('Request Quote')"
+      iconLeft="plus"
+      @click="modalRef.requestQuote(doc?.name)"
+    />
+    <Button
       v-else-if="title == 'Attachments'"
       variant="solid"
       :label="__('Upload Attachment')"

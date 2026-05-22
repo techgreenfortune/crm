@@ -27,7 +27,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Role",
-   "options": "\nSales User\nSales Manager\nSystem Manager",
+   "options": "\nSales Head\nRSM\nASM\nSales Executive\nProject Sales Executive\nSales Coordinator\nMarketing\nCalling Team\nJr. Sales Executive\nB2F Team\nEstimation Team\nManagement\nSystem Manager",
    "reqd": 1
   },
   {

@@ -64,16 +64,34 @@ export const usersStore = defineStore('crm-users', () => {
     return getUser(email).role === 'System Manager'
   }
 
+  // Tier-1 full-RW roles per the access matrix. Mirrors the backend's
+  // crm.overrides.crm_lead_permissions.TIER1_FULL_RW set.
   function isManager(email) {
-    return getUser(email).role === 'Sales Manager' || isAdmin(email)
+    const role = getUser(email).role
+    return role === 'Sales Head' || role === 'Sales Coordinator' || isAdmin(email)
   }
 
   function isWebsiteUser(email) {
     return getUser(email).user_type === 'Website User'
   }
 
+  // Any non-managerial CRM role. Kept as a Set for fast lookup.
+  const _SALES_USER_ROLES = new Set([
+    'CRM User',
+    'Sales Executive',
+    'Project Sales Executive',
+    'ASM',
+    'RSM',
+    'Marketing',
+    'Calling Team',
+    'Jr. Sales Executive',
+    'B2F Team',
+    'Estimation Team',
+    'Management',
+  ])
+
   function isSalesUser(email) {
-    return getUser(email).role === 'Sales User'
+    return _SALES_USER_ROLES.has(getUser(email).role)
   }
 
   function isTelephonyAgent(email) {

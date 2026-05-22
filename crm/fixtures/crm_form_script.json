@@ -2,12 +2,23 @@
  {
   "docstatus": 0,
   "doctype": "CRM Form Script",
+  "dt": "CRM Lead",
+  "enabled": 0,
+  "is_standard": 1,
+  "modified": "2026-05-21 12:00:00",
+  "name": "Product Details Script for CRM Lead",
+  "script": "class CRMLead {\n  update_total() {\n    let total = 0\n    let total_qty = 0\n    let net_total = 0\n    let discount_applied = false\n\n    this.doc.products.forEach((d) => {\n      total += d.amount\n      net_total += d.net_amount\n      if (d.discount_percentage > 0) {\n        discount_applied = true\n      }\n    })\n\n    this.doc.total = total\n    this.doc.net_total = net_total || total\n\n    if (!net_total && discount_applied) {\n      this.doc.net_total = net_total\n    }\n  }\n}\n\nclass CRMProducts {\n  products_add() {\n    let row = this.doc.getRow('products')\n    row.trigger('qty')\n    this.doc.trigger('update_total')\n  }\n\n  products_remove() {\n    this.doc.trigger('update_total')\n  }\n\n  async product_code(idx) {\n    let row = this.doc.getRow('products', idx)\n\n    let a = await call(\"frappe.client.get_value\", {\n        doctype: \"CRM Product\",\n        filters: { name: row.product_code },\n        fieldname: [\"product_name\", \"standard_rate\"],\n    })\n\n    row.product_name = a.product_name\n    if (a.standard_rate && !row.rate) {\n        row.rate = a.standard_rate\n        row.trigger(\"rate\")\n    }\n  }\n\n  qty(idx) {\n    let row = this.doc.getRow('products', idx)\n    row.amount = row.qty * row.rate\n    row.trigger('discount_percentage', idx)\n  }\n\n  rate() {\n    let row = this.doc.getRow('products')\n    row.amount = row.qty * row.rate\n    row.trigger('discount_percentage')\n  }\n\n  discount_percentage(idx) {\n    let row = this.doc.getRow('products', idx)\n    if (!row.discount_percentage) {\n      row.net_amount = row.amount\n      row.discount_amount = 0\n    }\n    if (row.discount_percentage && row.amount) {\n      row.discount_amount = (row.discount_percentage / 100) * row.amount\n      row.net_amount = row.amount - row.discount_amount\n    }\n    this.doc.trigger('update_total')\n  }\n}",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Form Script",
   "dt": "CRM Quote Request",
   "enabled": 1,
   "is_standard": 0,
-  "modified": "2026-05-14 13:08:04.820004",
+  "modified": "2026-05-21 12:00:00",
   "name": "CRM Quote Request — Form",
-  "script": "function getCurrentUser() {\n  // frappe/crm Vue app stores the logged-in user in the `user_id` cookie.\n  // window.frappe.session.user is not exposed in this Vue app, so read the\n  // cookie directly (matches frontend/src/stores/session.js).\n  const cookies = new URLSearchParams(document.cookie.split('; ').join('&'))\n  const u = cookies.get('user_id')\n  return u === 'Guest' ? null : u\n}\n\nfunction getUserRoles() {\n  // Frappe's boot object exposes the logged-in user's roles. The frappe-ui Vue\n  // app inherits from Frappe's session/boot. Fall back to an empty set if the\n  // boot payload isn't there yet (defensive — should always be populated by\n  // the time a doctype modal renders).\n  const roles = window.frappe?.boot?.user?.roles\n  return new Set(Array.isArray(roles) ? roles : [])\n}\n\nclass CRMQuoteRequest {\n  onRender() {\n    const currentUser = getCurrentUser()\n    const userRoles = getUserRoles()\n    const isLeadOwner = this.doc.lead_owner === currentUser\n    // Privileged-user bypass mirrors Script 1's is_privileged check on the\n    // server. Lets Admin / Sales Manager review / accept / request-revision\n    // even when the lead has no Lead Owner assigned yet (common during\n    // testing or when a lead is mid-handoff).\n    const isPrivileged =\n      currentUser === 'Administrator' ||\n      userRoles.has('Administrator') ||\n      userRoles.has('Sales Manager') ||\n      userRoles.has('System Manager')\n    const canReview = isLeadOwner || isPrivileged\n\n    if (canReview) {\n      // Lead Owner / privileged workflow:\n      //   - Reviews the quote (file/value/margin etc., already read-only via\n      //     permlevel + the explicit lock on quote_file below).\n      //   - Picks Accepted or Revision Requested from the Status dropdown.\n      //   - Clicks Update. Server-side scripts handle the rest.\n      this.setFieldProperty('quote_file', 'read_only', true)\n      return\n    }\n\n    // Estimation Team and everyone else: status is auto-managed by the Before\n    // Validate server script (Pending -> Quote Received on file attach).\n    // Hiding the dropdown prevents accidental manual changes.\n    this.setFieldProperty('status', 'hidden', true)\n  }\n}",
+  "script": "function getCurrentUser() {\n  // frappe/crm Vue app stores the logged-in user in the `user_id` cookie.\n  // window.frappe.session.user is not exposed in this Vue app, so read the\n  // cookie directly (matches frontend/src/stores/session.js).\n  const cookies = new URLSearchParams(document.cookie.split('; ').join('&'))\n  const u = cookies.get('user_id')\n  return u === 'Guest' ? null : u\n}\n\nfunction getUserRoles() {\n  // Frappe's boot object exposes the logged-in user's roles. The frappe-ui Vue\n  // app inherits from Frappe's session/boot. Fall back to an empty set if the\n  // boot payload isn't there yet (defensive — should always be populated by\n  // the time a doctype modal renders).\n  const roles = window.frappe?.boot?.user?.roles\n  return new Set(Array.isArray(roles) ? roles : [])\n}\n\nclass CRMQuoteRequest {\n  onRender() {\n    const currentUser = getCurrentUser()\n    const userRoles = getUserRoles()\n    const isLeadOwner = this.doc.lead_owner === currentUser\n    // Privileged-user bypass. Lets Admin / System Manager / Sales Head\n    // review / accept / request-revision even when the lead has no Lead Owner\n    // assigned yet (common during testing or when a lead is mid-handoff).\n    // Sales Manager was retired in the role-hierarchy rewrite; Sales Head\n    // is the labelled top-of-org role that matches the operational intent.\n    const isPrivileged =\n      currentUser === 'Administrator' ||\n      userRoles.has('Administrator') ||\n      userRoles.has('Sales Head') ||\n      userRoles.has('System Manager')\n    const canReview = isLeadOwner || isPrivileged\n\n    if (canReview) {\n      // Lead Owner / privileged workflow:\n      //   - Reviews the quote (file/value/margin etc., already read-only via\n      //     permlevel + the explicit lock on quote_file below).\n      //   - Picks Accepted or Revision Requested from the Status dropdown.\n      //   - Clicks Update. Server-side scripts handle the rest.\n      this.setFieldProperty('quote_file', 'read_only', true)\n      return\n    }\n\n    // Estimation Team and everyone else: status is auto-managed by the Before\n    // Validate server script (Pending -> Quote Received on file attach).\n    // Hiding the dropdown prevents accidental manual changes.\n    this.setFieldProperty('status', 'hidden', true)\n  }\n}",
   "view": "Form"
  },
  {
@@ -16,9 +27,31 @@
   "dt": "CRM Lead",
   "enabled": 1,
   "is_standard": 0,
-  "modified": "2026-05-15 00:00:00.000000",
+  "modified": "2026-05-15 00:00:00",
   "name": "Filter Sub Source by Source",
   "script": "class CRMLead {\n  onLoad() {\n    // Seed the filter from whatever Source the lead already has when\n    // the form opens (covers existing leads, not just new ones).\n    this.setFieldProperty(\n      'custom_sub_source',\n      'link_filters',\n      JSON.stringify({ source: this.doc.source || '' })\n    )\n  }\n\n  source() {\n    // Fires whenever the Source field changes. this.value is the new\n    // value; setFieldProperty mutates the reactive fieldPropertyOverrides\n    // map, which Field.vue's computed reads — Link.vue then reloads its\n    // search_link dropdown with the new filter.\n    this.setFieldProperty(\n      'custom_sub_source',\n      'link_filters',\n      JSON.stringify({ source: this.value || '' })\n    )\n  }\n}",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Form Script",
+  "dt": "CRM Lead",
+  "enabled": 1,
+  "is_standard": 0,
+  "modified": "2026-05-21 12:00:00",
+  "name": "Won Quote Fields Lock (Role-Aware)",
+  "script": "class CRMLead {\n  onLoad() {\n    this._applyQuoteFieldLock()\n  }\n\n  status() {\n    // Re-apply on stage transitions so the lock flips on / off as the\n    // Lead enters or leaves C4.\n    this._applyQuoteFieldLock()\n  }\n\n  _applyQuoteFieldLock() {\n    // Outside C4: leave fields editable (server validate is the only gate).\n    if (this.doc.status !== 'C4') return\n    const roles = new Set(window.frappe?.boot?.user?.roles || [])\n    const privileged =\n      roles.has('Administrator') ||\n      roles.has('System Manager') ||\n      roles.has('Sales Head')\n    // At C4, lock for everyone EXCEPT privileged users. Mirrors the server\n    // bypass in CRMLead._freeze_quote_fields_at_won so privileged users\n    // (Admin / SysMgr / Sales Head) can edit the Won quote fields in the\n    // UI; everyone else sees disabled inputs and never gets to save-time\n    // throw.\n    const FIELDS = [\n      'custom_final_price',\n      'custom_tentative_value',\n      'custom_final_margin',\n      'custom_final_quote',\n      'custom_tentative_area_sqft',\n    ]\n    for (const f of FIELDS) {\n      this.setFieldProperty(f, 'read_only', !privileged)\n    }\n  }\n}",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Form Script",
+  "dt": "CRM Lead",
+  "enabled": 1,
+  "is_standard": 0,
+  "modified": "2026-05-21 12:00:00",
+  "name": "C4 Missing Fields Warning",
+  "script": "class CRMLead {\n  status() {\n    // Fires when the user picks a new status. If they're moving the lead\n    // to C4 (Won), list any handoff fields that are still blank — saves a\n    // save-throw-fix-resave cycle since the server validator would reject\n    // the save anyway. Server-side check in the\n    // \"CRM Lead \\u2014 Before Save \\u2014 Stage Field Requirements\" script\n    // remains the source of truth; this is purely a UX nudge.\n    if (this.value !== 'C4') return\n    const required = [\n      ['email', 'Email'],\n      ['custom_lead_type', 'Lead Type'],\n      ['custom_customer_type', 'Customer Type'],\n      ['custom_city', 'City'],\n      ['custom_state', 'State'],\n      ['custom_pincode', 'Pincode'],\n    ]\n    if (this.doc.custom_lead_type === 'Projects') {\n      required.push(\n        ['custom_project_category', 'Project Category'],\n        ['custom_project_configuration', 'Project Configuration'],\n        ['custom_site_address_full', 'Site Address'],\n        ['custom_site_pincode', 'Site Pincode'],\n      )\n    }\n    const missing = required\n      .filter(([f]) => !this.doc[f])\n      .map(([, label]) => label)\n    if (missing.length) {\n      toast.warning(\n        `Fill these before saving as Won: ${missing.join(', ')}`,\n        { duration: 6000 }\n      )\n    }\n  }\n}",
   "view": "Form"
  }
 ]

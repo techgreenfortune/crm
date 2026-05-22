@@ -9,7 +9,7 @@ DEMO_USERS = [
 		"first_name": "Sarah",
 		"last_name": "Connor",
 		"mobile_no": "+1 555 100 0002",
-		"roles": ["Sales Manager", "Sales User"],
+		"role_profile": "Sales Head",
 		"avatar": "/assets/crm/images/demo/sarah-connor.png",
 	},
 	{
@@ -17,7 +17,7 @@ DEMO_USERS = [
 		"first_name": "John",
 		"last_name": "Parker",
 		"mobile_no": "+1 555 100 0003",
-		"roles": ["Sales User"],
+		"role_profile": "Sales Executive",
 		"avatar": "/assets/crm/images/demo/john-parker.png",
 	},
 	{
@@ -25,7 +25,7 @@ DEMO_USERS = [
 		"first_name": "Emily",
 		"last_name": "Chen",
 		"mobile_no": "+1 555 100 0004",
-		"roles": ["Sales User"],
+		"role_profile": "Sales Executive",
 		"avatar": "/assets/crm/images/demo/emily-chen.png",
 	},
 ]
@@ -46,7 +46,7 @@ def create_demo_users():
 					"user_type": "System User",
 					"mobile_no": user_data["mobile_no"],
 					"user_image": user_data["avatar"],
-					"roles": [{"role": r} for r in user_data["roles"]],
+					"role_profile_name": user_data["role_profile"],
 				}
 			).insert(ignore_permissions=True)
 

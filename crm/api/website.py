@@ -94,7 +94,7 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 	Returns ``(open_match_name, closed_match_status)``. Exactly one of the
 	two is non-None on a match; both are None on a fresh number.
 
-	Closed leads (status type != "Open" — i.e. C6, C8, Archived) deliberately
+	Closed leads (status type != "Open" — i.e. C4 Won, C6 Lost, Archived) deliberately
 	do NOT count as a dedup hit: the Phone Dedup server script's own message
 	directs callers to the Reactivation flow rather than silent re-attribution.
 	"""

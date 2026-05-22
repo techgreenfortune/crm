@@ -29,9 +29,9 @@
    "depends_on": "enabled",
    "fieldname": "api_key",
    "fieldtype": "Password",
-   "label": "API Key",
+   "label": "API Secret",
    "mandatory_depends_on": "eval: doc.enabled",
-   "description": "Sent as the X-API-Key header. Must match FRAPPE_API_KEY on the receiving service."
+   "description": "Sent as the X-Api-Secret header. Must match FRAPPE_CRM_SECRET on the receiving OpsGate service (verifyFrappeSecret middleware). Fieldname is `api_key` for historical reasons; the value is a shared secret, not an API key."
   },
   {
    "default": "10",
