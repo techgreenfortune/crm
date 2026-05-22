@@ -268,17 +268,20 @@ import { computed, ref } from 'vue'
 
 const DOCTYPE = 'CRM Sales Hierarchy'
 
-const ROLE_RANK = {
-  'Sales Manager': 0,
-  'Sales User': 1,
-}
-const ROLE_LABEL = {
-  'Sales Manager': __('Sales Manager'),
-  'Sales User': __('Sales User'),
-}
-
-const { users: usersResource, getUserRole, isAdmin } = usersStore()
+// Role metadata comes from usersStore (which fetches crm/permissions/role_config.py).
+const {
+  users: usersResource,
+  getUserRole,
+  isAdmin,
+  roleRank,
+  roleConfig,
+} = usersStore()
 const canEdit = computed(() => isAdmin())
+
+const ROLE_LABEL = computed(() =>
+  Object.fromEntries(Object.keys(roleRank.value).map((r) => [r, __(r)])),
+)
+const ALLOWED_ROLES = computed(() => new Set(Object.keys(roleRank.value)))
 const { $dialog } = globalStore()
 
 const fcrmSettings = createDocumentResource({
@@ -351,9 +354,8 @@ const treeOptions = {
 function enrich(node) {
   const user =
     usersResource.data?.crmUsers?.find((x) => x.name === node.user) || {}
-  const role = getUserRole(node.user) || 'Sales User'
-  const role_rank = ROLE_RANK[role]
-  if (role_rank == undefined) return
+  const role = getUserRole(node.user) || 'CRM User'
+  const role_rank = roleRank.value[role] ?? 99
 
   return {
     ...node,
@@ -362,7 +364,7 @@ function enrich(node) {
     user_image: user.user_image,
     enabled: user.enabled !== 0,
     role,
-    role_label: ROLE_LABEL[role] || role,
+    role_label: ROLE_LABEL.value[role] || role,
     role_rank,
   }
 }
@@ -426,8 +428,6 @@ const placedUserIds = computed(
   () => new Set(enrichedNodes.value.map((n) => n.user)),
 )
 
-const ALLOWED_ROLES = new Set(['Sales Manager', 'Sales User'])
-
 function getCandidates(parent) {
   const all = usersResource.data?.crmUsers || []
   const parentRank = parent?.role_rank ?? -1
@@ -436,8 +436,8 @@ function getCandidates(parent) {
       if (placedUserIds.value.has(u.name)) return false
       if (u.name === 'Administrator') return false
       const role = getUserRole(u.name)
-      if (!ALLOWED_ROLES.has(role)) return false
-      return (ROLE_RANK[role] ?? 99) >= parentRank
+      if (!ALLOWED_ROLES.value.has(role)) return false
+      return (roleRank.value[role] ?? 99) >= parentRank
     })
     .map((u) => {
       const role = getUserRole(u.name)
@@ -446,13 +446,13 @@ function getCandidates(parent) {
         full_name: u.full_name || u.name,
         email: u.email || u.name,
         user_image: u.user_image,
-        role_label: ROLE_LABEL[role] || role,
+        role_label: ROLE_LABEL.value[role] || role,
       }
     })
 }
 
 const candidatesLoading = computed(
-  () => !!(usersResource.loading || nodes.loading),
+  () => !!(usersResource.loading || nodes.loading || roleConfig.loading),
 )
 
 async function reparent(name, newParent) {
