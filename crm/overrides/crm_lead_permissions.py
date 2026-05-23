@@ -9,12 +9,13 @@ Implements:
 
 Access matrix:
 
-- Admin / System Manager / Sales Head / Sales Coordinator: full RW
-- Management: read-only across all leads
-- Marketing: read all + write (field-level lock in CRMLead.validate())
-- B2F Team: C7 only + field-locked writes
-- Estimation Team: C2 only
-- Calling Team / Jr. Sales Executive: all non-C7 leads
+- Admin / System Manager / Sales Head / Sales Coordinator: full RW, incl. unassigned
+- Calling Team: all non-C7 leads, incl. unassigned; can create leads
+- Management: read-only across assigned leads
+- Marketing: read all assigned + write (field-level lock in CRMLead.validate())
+- B2F Team: C7 assigned only + field-locked writes
+- Estimation Team: C2 assigned only
+- Jr. Sales Executive: all non-C7 assigned leads (no unassigned pool access)
 - Sales Executive: own leads, ``custom_lead_type == 'Retail'`` only
 - Project Sales Executive: own leads, ``custom_lead_type == 'Projects'`` only
 - ASM / RSM: own + downstream-chain leads, any lead type
@@ -24,6 +25,11 @@ Project Sales Executive roles. Managers (ASM / RSM) see every lead owned by
 anyone in their downstream chain regardless of lead type — so a lead assigned
 to a Sales Executive (Retail) and an Engineer-PSE under the same ASM are both
 visible to that ASM and to the RSM above them.
+
+Unassigned leads (``lead_owner`` is NULL/empty) are visible only to
+``UNASSIGNED_VISIBLE_ROLES`` — Tier-1 full-RW plus Calling Team. Every other
+role sees only leads with an owner. This makes the Calling Team the explicit
+inbox for new leads: they create + first-touch, then assign downstream.
 
 Multi-role users get the union of allow-clauses. The list-level query and the
 single-doc gate must stay consistent — both call the same role-tier helpers.
@@ -38,15 +44,25 @@ from frappe import _
 
 from crm.permissions.role_config import (
 	FIELD_GATED_RW,
-	NO_C7_ROLES,
 	OWNER_SCOPE_ROLES,
 	STAGE_LOCKED,
 	TIER1_FULL_RW,
 	TIER1_READ_ONLY,
 )
 
-# Roles that cannot create a CRM Lead (pool / stage-locked / owner-scoped).
-_NO_CREATE_ROLES = set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | NO_C7_ROLES | {"Marketing"}
+# Roles that cannot create a CRM Lead. Calling Team is intentionally NOT in
+# this set — they own the unassigned inbox and create new leads. JSE is still
+# blocked from creating (despite sharing the non-C7 visibility bucket with
+# Calling Team) because they're a leaf-level sales role, not the lead-intake
+# team. Management is included (read-only role) because there's no longer an
+# early-return that would block it before the create gate.
+_NO_CREATE_ROLES = (
+	set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | set(TIER1_READ_ONLY) | {"Jr. Sales Executive", "Marketing"}
+)
+
+# SQL fragment for "the lead has an owner" — used to gate non-tier-1,
+# non-Calling-Team roles out of the unassigned pool.
+_ASSIGNED_ONLY_SQL = "(`tabCRM Lead`.lead_owner IS NOT NULL AND `tabCRM Lead`.lead_owner != '')"
 
 
 def has_permission(doc, ptype, user):
@@ -68,21 +84,13 @@ def has_permission(doc, ptype, user):
 	if "System Manager" in roles:
 		return True
 
-	# Management is read-only — unless the user ALSO carries a writable role
-	# (Sales Head / Marketing / B2F / an owner-scoped role / a stage pool /
-	# Calling Team / JSE). In that case the writable role wins via the union
-	# below.
-	if roles & TIER1_READ_ONLY and not (
-		roles & (TIER1_FULL_RW | FIELD_GATED_RW | set(OWNER_SCOPE_ROLES) | set(STAGE_LOCKED) | NO_C7_ROLES)
-	):
-		return ptype == "read"
-
+	# Tier-1 full-RW (Sales Head / Sales Coordinator) — see every lead.
 	if roles & TIER1_FULL_RW:
 		return True
 
-	# Create gate: pool / stage-locked / owner-scoped / Marketing roles
-	# cannot create leads. Only Tier1 full-RW roles (already returned above)
-	# or users with none of the denying roles get through.
+	# Create gate: pool / stage-locked / owner-scoped / Marketing / JSE
+	# roles cannot create leads. Calling Team CAN create (handled by its
+	# absence from _NO_CREATE_ROLES). Tier-1 full-RW already returned above.
 	if ptype == "create":
 		if roles & _NO_CREATE_ROLES:
 			frappe.throw(
@@ -100,26 +108,43 @@ def has_permission(doc, ptype, user):
 	status = getattr(doc, "status", None)
 	owner = getattr(doc, "lead_owner", None)
 	lead_type = getattr(doc, "custom_lead_type", None)
+	is_unassigned = not owner
 
-	# Marketing: read-all + writes pass here (field-level locks in
-	# CRMLead._check_write_permission).
-	if "Marketing" in roles:
+	# Calling Team — read+write non-C7 leads, INCLUDING unassigned. Owns the
+	# new-lead inbox.
+	if "Calling Team" in roles and status != "C7":
 		return True
 
-	# Stage-locked pool roles.
+	# Management is read-only on assigned leads — unless the user ALSO carries
+	# a writable role (Marketing / B2F / an owner-scoped role / a stage pool /
+	# JSE). In that case the writable role wins via the union below. Unassigned
+	# leads are gated out regardless.
+	if roles & TIER1_READ_ONLY and not (
+		roles & (FIELD_GATED_RW | set(OWNER_SCOPE_ROLES) | set(STAGE_LOCKED) | {"Jr. Sales Executive"})
+	):
+		return ptype == "read" and not is_unassigned
+
+	# Marketing: read-all assigned + writes pass here (field-level locks in
+	# CRMLead._check_write_permission).
+	if "Marketing" in roles and not is_unassigned:
+		return True
+
+	# Stage-locked pool roles — assigned leads only.
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
 		if role in roles:
 			pool_stages |= stages
-	if status in pool_stages:
+	if status in pool_stages and not is_unassigned:
 		return True
 
-	# Calling Team / Jr. Sales Executive — read+write everything except C7.
-	if roles & NO_C7_ROLES and status != "C7":
+	# Jr. Sales Executive — non-C7 assigned leads. (Calling Team is handled
+	# above with broader access incl. unassigned.)
+	if "Jr. Sales Executive" in roles and status != "C7" and not is_unassigned:
 		return True
 
 	# Owner-scoped roles. SE/PSE are also lead-type-scoped (Retail / Projects);
-	# ASM/RSM see any lead type within their downstream chain.
+	# ASM/RSM see any lead type within their downstream chain. Unassigned leads
+	# are naturally excluded because owner != user / not in downstream set.
 	for role, rule in OWNER_SCOPE_ROLES.items():
 		if role not in roles:
 			continue
@@ -150,22 +175,34 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 
 	roles = set(frappe.get_roles(user))
 
-	# Tier-1 full-RW + Marketing + Management see every lead.
-	if roles & (TIER1_FULL_RW | TIER1_READ_ONLY | {"Marketing"}):
+	# Tier-1 full-RW — see every lead including unassigned.
+	if roles & TIER1_FULL_RW:
 		return ""
 
-	# Stage-locked pools (B2F = C7, Estimation = C2) — Stage union.
+	# Calling Team — non-C7 leads, INCLUDING unassigned (the new-lead inbox).
+	if "Calling Team" in roles:
+		return "(`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL)"
+
+	# Every other role below sees only ASSIGNED leads (lead_owner present).
+	# Unassigned-pool visibility is restricted to UNASSIGNED_VISIBLE_ROLES,
+	# which is Tier-1 full-RW + Calling Team (both handled above).
+
+	# Read-all roles (Management read-only, Marketing) — assigned only.
+	if roles & (TIER1_READ_ONLY | {"Marketing"}):
+		return _ASSIGNED_ONLY_SQL
+
+	# Stage-locked pools (B2F = C7, Estimation = C2) — assigned only.
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
 		if role in roles:
 			pool_stages |= stages
 	if pool_stages:
 		stages_sql = ",".join(f"'{s}'" for s in sorted(pool_stages))
-		return f"(`tabCRM Lead`.status IN ({stages_sql}))"
+		return f"(`tabCRM Lead`.status IN ({stages_sql}) AND {_ASSIGNED_ONLY_SQL})"
 
-	# Calling Team / Jr. Sales Executive — everything except C7.
-	if roles & NO_C7_ROLES:
-		return "(`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL)"
+	# Jr. Sales Executive — non-C7 assigned only.
+	if "Jr. Sales Executive" in roles:
+		return f"((`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL) AND {_ASSIGNED_ONLY_SQL})"
 
 	# Owner-scoped roles. Build one clause per role the user holds; OR them.
 	esc = frappe.db.escape

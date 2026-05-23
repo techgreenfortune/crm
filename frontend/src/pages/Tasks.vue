@@ -196,6 +196,7 @@ import TasksListView from '@/components/ListViews/TasksListView.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import KanbanView from '@/components/Kanban/KanbanView.vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
+import { useQuoteRequestModal } from '@/composables/quoteRequestModal'
 import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import { formatDate, timeAgo } from '@/utils'
@@ -319,6 +320,8 @@ function parseRows(rows, columns = []) {
 }
 
 const { showModal } = useDoctypeModal()
+const { openQuoteRequest, isQuoteTaskType, quoteTaskTitle } =
+  useQuoteRequestModal()
 
 const taskCallbacks = {
   afterInsert: () => {
@@ -333,6 +336,15 @@ const taskCallbacks = {
 }
 
 function showTask(name) {
+  const task = rows.value?.find?.((r) => r.name == name)
+  if (task && isQuoteTaskType(task.task_type)) {
+    openQuoteRequest(
+      task.reference_docname,
+      quoteTaskTitle(task.task_type),
+      taskCallbacks,
+    )
+    return
+  }
   showModal({
     name,
     doctype: 'CRM Task',

@@ -110,16 +110,17 @@ class FilesUploadHandler {
         formData.append('file_url', options.fileUrl)
       }
 
-      if (options.doctype) {
+      // Only link the upload to a doctype/docname pair when both are present.
+      // Sending doctype without docname triggers Frappe's
+      // "Attached To Name must be a string or an integer" validation
+      // (e.g. uploading on a not-yet-saved Lead via Quick Entry).
+      if (options.doctype && options.docname) {
         formData.append('doctype', options.doctype)
-      }
-
-      if (options.docname) {
         formData.append('docname', options.docname)
-      }
 
-      if (options.fieldname) {
-        formData.append('fieldname', options.fieldname)
+        if (options.fieldname) {
+          formData.append('fieldname', options.fieldname)
+        }
       }
 
       if (options.type) {
