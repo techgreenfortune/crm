@@ -90,10 +90,7 @@
         </TextInput>
       </div>
       <div class="flex-1 min-h-0 overflow-y-auto">
-        <div
-          v-if="nodes.loading"
-          class="flex items-center justify-center py-12"
-        >
+        <div v-if="!dataReady" class="flex items-center justify-center py-12">
           <LoadingIndicator class="size-6" />
         </div>
         <EmptyState
@@ -249,6 +246,7 @@ import { useRemoveNode } from './useRemoveNode'
 import { useDragDrop } from './useDragDrop'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
+import { storeToRefs } from 'pinia'
 import LucideNetwork from '~icons/lucide/network'
 import LucideCircleQuestionMark from '~icons/lucide/circle-question-mark'
 import {
@@ -269,13 +267,10 @@ import { computed, ref } from 'vue'
 const DOCTYPE = 'CRM Sales Hierarchy'
 
 // Role metadata comes from usersStore (which fetches crm/permissions/role_config.py).
-const {
-  users: usersResource,
-  getUserRole,
-  isAdmin,
-  roleRank,
-  roleConfig,
-} = usersStore()
+// roleRank is a computed — plain destructure unwraps it and loses reactivity, so use storeToRefs.
+const _usersStore = usersStore()
+const { users: usersResource, getUserRole, isAdmin, roleConfig } = _usersStore
+const { roleRank } = storeToRefs(_usersStore)
 const canEdit = computed(() => isAdmin())
 
 const ROLE_LABEL = computed(() =>
@@ -303,9 +298,16 @@ const nodes = createListResource({
   doctype: DOCTYPE,
   fields: ['name', 'user', 'full_name', 'reports_to', 'is_group'],
   orderBy: 'lft asc',
-  pageLength: 0,
+  pageLength: 9999,
   auto: true,
 })
+
+// Gate on data presence, not `loading` — preserves the tree during drag-drop refetches.
+const dataReady = computed(() =>
+  Boolean(
+    nodes.data && usersResource.data?.crmUsers && roleConfig.data?.role_rank,
+  ),
+)
 
 function toggleEnable(currentlyEnabled) {
   if (currentlyEnabled) {
