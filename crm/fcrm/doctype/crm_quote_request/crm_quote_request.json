@@ -135,19 +135,23 @@
    "fieldname": "revision_notes",
    "fieldtype": "Small Text",
    "label": "Revision Notes",
-   "mandatory_depends_on": "eval:doc.status == 'Revision Requested'"
+   "depends_on": "eval:doc.status != 'Pending'",
+   "mandatory_depends_on": "eval:doc.status == 'Revision Requested'",
+   "permlevel": 2
   },
   {
    "fieldname": "revision_images",
    "fieldtype": "Table",
    "label": "Revision Images",
    "options": "CRM Quote Revision Image",
-   "description": "Photos or markups attached when requesting a revision."
+   "depends_on": "eval:doc.status != 'Pending'",
+   "description": "Photos or markups attached when requesting a revision.",
+   "permlevel": 2
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-05-21 12:00:00.000000",
+ "modified": "2026-05-23 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quote Request",
@@ -286,6 +290,64 @@
   },
   {
    "permlevel": 1,
+   "read": 1,
+   "role": "Sales User"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "Sales Head"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "Sales Manager"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "Sales Coordinator"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "Sales Executive"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "Project Sales Executive"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "ASM"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "write": 1,
+   "role": "RSM"
+  },
+  {
+   "permlevel": 2,
+   "read": 1,
+   "role": "Estimation Team"
+  },
+  {
+   "permlevel": 2,
    "read": 1,
    "role": "Sales User"
   }

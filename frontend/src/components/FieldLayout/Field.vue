@@ -35,6 +35,8 @@
           'HTML',
           'Geolocation',
           'Text Editor',
+          'Table',
+          'Table MultiSelect',
         ].includes(field.fieldtype)
       "
       v-model="data[field.fieldname]"
