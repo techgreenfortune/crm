@@ -311,6 +311,7 @@ class CRMTask(Document):
 
 		rows = [
 			"name",
+			"task_type",
 			"title",
 			"description",
 			"assigned_to",

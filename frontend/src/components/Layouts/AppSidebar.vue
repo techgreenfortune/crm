@@ -242,11 +242,13 @@ const links = [
     icon: ContactsIcon,
     to: 'Contacts',
   },
+  /* disabled: Organizations hidden from sidebar
   {
     label: 'Organizations',
     icon: OrganizationsIcon,
     to: 'Organizations',
   },
+  */
   {
     label: 'Notes',
     icon: NoteIcon,
