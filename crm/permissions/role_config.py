@@ -6,8 +6,11 @@ Every role-aware piece of the system reads from this module:
   to display when a user has multiple roles.
 - ``crm/overrides/crm_lead_permissions.py`` imports the access-matrix sets
   (``TIER1_FULL_RW``, ``TIER1_READ_ONLY``, ``FIELD_GATED_RW``, ``STAGE_LOCKED``,
-  ``NO_C7_ROLES``, ``OWNER_SCOPE_ROLES``) to gate ``has_permission`` and
-  ``get_permission_query_conditions`` for CRM Lead.
+  ``OWNER_SCOPE_ROLES``) to gate ``has_permission`` and
+  ``get_permission_query_conditions`` for CRM Lead. ``NO_C7_ROLES`` and
+  ``UNASSIGNED_VISIBLE_ROLES`` are conceptual groupings whose members are
+  matched by name in the gates (Calling Team gets special unassigned-pool
+  visibility; JSE doesn't).
 - The frontend (``frontend/src/stores/users.js``) fetches a JSON-serializable
   subset via :func:`get_hierarchy_role_config` to power ``isManager`` /
   ``isSalesUser`` and the Sales Hierarchy tree's ``canDrop`` rule.
@@ -75,6 +78,14 @@ STAGE_LOCKED: dict[str, frozenset[str]] = {
 	"Estimation Team": frozenset({"C2"}),
 }
 NO_C7_ROLES: frozenset[str] = frozenset({"Calling Team", "Jr. Sales Executive"})
+
+# Roles permitted to view leads with no ``lead_owner`` (the unassigned pool).
+# Tier-1 full-RW already see every lead; Calling Team owns the unassigned
+# inbox because they create + first-touch new leads. Every other role
+# (Management, Marketing, B2F, Estimation, JSE, SE/PSE/ASM/RSM) sees only
+# assigned leads. Owner-scoped roles are unaffected — their query already
+# filters by ``lead_owner``, which naturally excludes unassigned rows.
+UNASSIGNED_VISIBLE_ROLES: frozenset[str] = TIER1_FULL_RW | frozenset({"Calling Team"})
 
 # Owner-scoped roles. ``scope`` is ``"self"`` (owner = user) or ``"downstream"``
 # (owner in the user's CRM Sales Hierarchy subtree). ``lead_type`` restricts the
