@@ -320,6 +320,7 @@ class CRMTask(Document):
 			"priority",
 			"reference_doctype",
 			"reference_docname",
+			"quote_request",
 			"modified",
 		]
 		return {"columns": columns, "rows": rows}

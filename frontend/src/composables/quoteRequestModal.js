@@ -1,4 +1,4 @@
-import { call, toast } from 'frappe-ui'
+import { toast } from 'frappe-ui'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 
 export function isQuoteTaskType(t) {
@@ -12,36 +12,21 @@ export function quoteTaskTitle(t) {
 export function useQuoteRequestModal() {
   const { showModal } = useDoctypeModal()
 
-  async function openQuoteRequest(
-    leadName,
+  function openQuoteRequest(
+    quoteRequestName,
     title = __('Quote Request'),
     callbacks = {},
   ) {
-    if (!leadName) {
-      toast.error(__('Task is not linked to a lead.'))
+    if (!quoteRequestName) {
+      toast.error(__('Task is not linked to a Quote Request.'))
       return
     }
-    try {
-      const rows = await call('frappe.client.get_list', {
-        doctype: 'CRM Quote Request',
-        filters: { lead: leadName },
-        fields: ['name'],
-        order_by: 'creation desc',
-        limit: 1,
-      })
-      if (!rows?.length) {
-        toast.error(__('No Quote Request found for this lead.'))
-        return
-      }
-      showModal({
-        name: rows[0].name,
-        doctype: 'CRM Quote Request',
-        customTitle: title,
-        callbacks,
-      })
-    } catch (err) {
-      toast.error(err?.message || __('Could not open Quote Request.'))
-    }
+    showModal({
+      name: quoteRequestName,
+      doctype: 'CRM Quote Request',
+      customTitle: title,
+      callbacks,
+    })
   }
 
   return { openQuoteRequest, isQuoteTaskType, quoteTaskTitle }
