@@ -23,6 +23,27 @@ const { showModal } = useDoctypeModal()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
 
+async function requestQuote(leadName) {
+  if (!leadName) return
+  if (
+    !window.confirm(
+      __('Create a new Quote Request and Upload Quote task for this lead?'),
+    )
+  ) {
+    return
+  }
+  try {
+    const qrName = await call('crm.api.quotes.request_quote', {
+      lead: leadName,
+    })
+    activities.value.reload()
+    reloadAfterChildModal?.()
+    toast.success(__('Quote Request {0} ready', [qrName]))
+  } catch (err) {
+    toast.error(err?.message || __('Could not request a quote.'))
+  }
+}
+
 async function showQuoteRequest(leadName, title = 'Quote Request') {
   const rows = await call('frappe.client.get_list', {
     doctype: 'CRM Quote Request',
@@ -180,5 +201,6 @@ defineExpose({
   showNote,
   createCallLog,
   showQuoteRequest,
+  requestQuote,
 })
 </script>

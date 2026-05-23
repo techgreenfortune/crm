@@ -34,5 +34,14 @@
   "modified": "2026-05-14 00:00:00",
   "name": "Archived",
   "position": 4
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Won",
+  "modified": "2026-05-21 12:00:00",
+  "name": "Won",
+  "position": 5
  }
 ]

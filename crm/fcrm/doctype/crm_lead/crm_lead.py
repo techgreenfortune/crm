@@ -48,6 +48,66 @@ _LAYOUT_FIELD_TYPES = frozenset(
 	}
 )
 
+# Fields Marketing users may edit (source + UTM + sub-source). Everything else
+# is read-only for them, even though list visibility is unrestricted.
+_MARKETING_WRITABLE = frozenset(
+	{
+		"source",
+		"custom_sub_source",
+		"custom_utm_source",
+		"custom_utm_medium",
+		"custom_utm_campaign",
+		"custom_utm_content",
+	}
+)
+
+# Fields B2F Team users may edit while a lead sits at C7. Comments are a
+# separate doctype (out of scope here).
+_B2F_WRITABLE = frozenset(
+	{
+		"status",
+		"custom_partner_fabricator_name",
+		"custom_fabricator_routing_reason",
+		"custom_fabricator_routing_notes",
+	}
+)
+
+# Quote-derived fields populated by the C2→C4 sync and frozen afterwards.
+_QUOTE_LEAD_FIELDS = frozenset(
+	{
+		"custom_final_price",
+		"custom_tentative_value",
+		"custom_final_margin",
+		"custom_final_quote",
+		"custom_tentative_area_sqft",
+	}
+)
+
+
+def _is_unassigned(snapshot) -> bool:
+	"""Return True when a CRM Lead snapshot has neither ``lead_owner`` nor any
+	Frappe assignment (``_assign`` is null / "[]" / empty list).
+
+	Used by ``CRMLead._check_write_permission`` to grant Calling Team / JSE
+	full write on truly unassigned leads (claim + edit + route). The moment
+	the lead picks up an owner or an assignment, the caller's scope shrinks
+	to the non-owner fallback (status / lost flow only).
+	"""
+	if not snapshot:
+		return False
+	if snapshot.get("lead_owner"):
+		return False
+	raw = snapshot.get("_assign") or ""
+	if not raw or raw == "[]":
+		return True
+	try:
+		import json
+
+		return not json.loads(raw)
+	except (ValueError, TypeError):
+		# Malformed _assign — treat as unassigned defensively.
+		return True
+
 
 class CRMLead(Document):
 	# begin: auto-generated types
@@ -108,6 +168,11 @@ class CRMLead(Document):
 	# end: auto-generated types
 
 	def before_validate(self):
+		# Lock fires first — before Frappe's link/mandatory validation — so an
+		# archived lead with a now-invalid Link field (deleted area, etc.) still
+		# rejects writes with the correct "lead archived" message instead of a
+		# misleading "could not find X" link error.
+		self._enforce_c4_won_lock()
 		self.set_sla()
 
 	def validate(self):
@@ -117,10 +182,17 @@ class CRMLead(Document):
 		self.set_title()
 		self.validate_email()
 		self.validate_lost_reason()
-		self.validate_c7_routing_reason()
-		self.validate_partner_fabricator_name()
-		self.validate_won_fields()
-		self.validate_sub_source()
+		# Re-pull accepted quote fields BEFORE the Stage Field Requirements
+		# server script runs (it checks `custom_final_*` for Won-type stages,
+		# which this sync populates).
+		self._sync_accepted_quote_on_won()
+		# Per-stage mandatory-field requirements (Won-type fields, C4 handoff,
+		# C7 routing, sub_source) live in the "CRM Lead — Before Save — Stage
+		# Field Requirements" server script. Admin can tune the field map
+		# without a code deploy.
+		# Freeze runs LAST — once a lead is already at Won, quote fields can't
+		# be edited (sync above is the only way to set them).
+		self._freeze_quote_fields_at_won()
 		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
 			self.share_with_agent(self.lead_owner)
 			self.assign_agent(self.lead_owner)
@@ -184,59 +256,33 @@ class CRMLead(Document):
 		if self.has_value_changed("status"):
 			add_or_remove_lost_reason_section_in_sidepanel(self)
 
-	def validate_c7_routing_reason(self):
-		# PRD §9: routing reason is mandatory on C7. The custom field carries
-		# mandatory_depends_on for the UI, but Frappe doesn't enforce that
-		# server-side (base_document.py only checks reqd=1).
-		if self.status == "C7" and not self.get("custom_fabricator_routing_reason"):
-			frappe.throw(
-				_("Fabricator Routing Reason is required for leads at C7."),
-				frappe.ValidationError,
-			)
-
-	def validate_partner_fabricator_name(self):
-		# PRD §9: B2F team must record the partner fabricator's name on C7.
-		if self.status == "C7" and not self.get("custom_partner_fabricator_name"):
-			frappe.throw(
-				_("Partner Fabricator Name is required for leads at C7."),
-				frappe.ValidationError,
-			)
-
-	def validate_sub_source(self):
-		# PRD §7: Sub Source is mandatory for these 5 sources via mandatory_depends_on
-		# on the custom field, but Frappe enforces that only client-side
-		# (base_document.py only checks reqd=1). Same UI-vs-server gap as
-		# validate_c7_routing_reason.
-		if frappe.flags.in_test:
-			# Skip for stock Frappe test fixtures (test_records.json) which were
-			# written against vanilla Frappe CRM and don't set custom_sub_source.
-			# IndiFrame tests in crm/tests/ exercise this validator explicitly.
+	def validate_project_specific_fields(self):
+		# Project-type leads (custom_lead_type='Projects') must carry full project
+		# metadata before the manual Create Project button can fire.
+		#
+		# This validator is NO LONGER called from validate() (deliberate — see plan).
+		# Instead it is invoked by `crm.api.projects.create_project_for_lead` right
+		# before triggering the project-creation handoff. The lead can sit at C4
+		# without project metadata; the button just won't work until it's filled.
+		if self.status != "C4":
 			return
-		sources_requiring_sub_source = {"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"}
-		if self.source in sources_requiring_sub_source and not self.get("custom_sub_source"):
+		if self.get("custom_lead_type") != "Projects":
+			return
+		missing = [
+			label
+			for field, label in (
+				("custom_project_category", "Project Category"),
+				("custom_project_configuration", "Project Configuration"),
+				("custom_site_address_full", "Site Address (Full)"),
+				("custom_site_pincode", "Site Pincode"),
+			)
+			if not self.get(field)
+		]
+		if missing:
 			frappe.throw(
-				_("Sub Source is required when Source is {0}.").format(self.source),
+				_("Required for Project leads at C4: {0}.").format(", ".join(missing)),
 				frappe.ValidationError,
 			)
-
-	def validate_won_fields(self):
-		# PRD §4.3: Final Quote / Price / Margin mandatory on Won stages.
-		# Same UI-vs-server gap as validate_c7_routing_reason.
-		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Won":
-			missing = [
-				label
-				for field, label in (
-					("custom_final_quote", "Final Quote"),
-					("custom_final_price", "Final Price"),
-					("custom_final_margin", "Final Margin"),
-				)
-				if not self.get(field)
-			]
-			if missing:
-				frappe.throw(
-					_("Required for Won stages: {0}.").format(", ".join(missing)),
-					frappe.ValidationError,
-				)
 
 	def _check_write_permission(self):
 		if self.is_new():
@@ -245,12 +291,84 @@ class CRMLead(Document):
 		if user == "Administrator" or self.flags.get("ignore_permissions"):
 			return
 		user_roles = set(frappe.get_roles(user))
-		if "System Manager" in user_roles or "Sales Manager" in user_roles:
+		# Tier-1 full RW bypass — Sales Head / Sales Coordinator / System Manager
+		# may edit anything.
+		if user_roles & {"System Manager", "Sales Head", "Sales Coordinator"}:
 			return
+
+		# Marketing / B2F Team — read-all (or stage-locked for B2F) but writes
+		# are confined to a narrow field allowlist regardless of ownership.
+		writable: set[str] | None = None
+		if "Marketing" in user_roles:
+			writable = set(_MARKETING_WRITABLE) | (writable or set())
+		if "B2F Team" in user_roles:
+			writable = set(_B2F_WRITABLE) | (writable or set())
+
+		old = self.get_doc_before_save()
+		if not old:
+			return
+
+		if writable is not None:
+			# Field-locked roles: only allow changes to fields in the writable
+			# allowlist. Layout fields are skipped.
+			for field in self.meta.fields:
+				if field.fieldtype in _LAYOUT_FIELD_TYPES:
+					continue
+				if field.fieldname in writable:
+					continue
+				if self.has_value_changed(field.fieldname):
+					frappe.throw(
+						_("Your role does not allow editing '{0}'.").format(field.label or field.fieldname),
+						frappe.PermissionError,
+						title=_("Not Permitted"),
+					)
+			return
+
+		# Calling Team / Jr. Sales Executive — full write on a lead while it is
+		# unassigned (no lead_owner AND no Frappe `_assign`). This lets the
+		# caller claim, edit, set lead_owner, hand off in one save. Once `old`
+		# already carries an owner or assignment, the caller falls through to
+		# the non-owner fallback below: only fields in `_NON_OWNER_EDITABLE`
+		# (status + lost-flow + fabricator-routing) can change. That's by
+		# design — the caller can still manually move C0 → C1 (or whatever the
+		# Stage Transition server script allows for Cold/Reactivated leads),
+		# and disposition automation can drive further moves via server
+		# scripts (which bypass validate entirely). All other fields on the
+		# Lead doc are read-only post-assignment.
+		if user_roles & {"Calling Team", "Jr. Sales Executive"} and _is_unassigned(old):
+			return
+
+		# Owner-side editors: SE/PSE see only their own lead; ASM/RSM also
+		# treat downstream-chain users' leads as theirs.
 		if self.lead_owner == user:
 			return
-		if not self.get_doc_before_save():
-			return
+		if user_roles & {"ASM", "RSM"}:
+			from crm.overrides.crm_lead_permissions import _downstream_users
+
+			downstream = _downstream_users(user)
+			if old.lead_owner in downstream:
+				# Cross-team transfer guard: if the manager is changing
+				# `lead_owner`, the NEW owner must also be inside their own
+				# downstream chain. Prevents an ASM from handing a lead to a
+				# peer ASM's team (only Sales Head / Coordinator can move
+				# leads across teams). Unassigning (new_owner = None/"") is
+				# still allowed — the lead just goes back to the pool.
+				if (
+					self.lead_owner != old.lead_owner
+					and self.lead_owner
+					and self.lead_owner not in downstream
+				):
+					frappe.throw(
+						_(
+							"You can only reassign leads to users within your own team. "
+							"{0} is outside your downstream chain — escalate to Sales Head."
+						).format(self.lead_owner),
+						frappe.PermissionError,
+						title=_("Cross-team Transfer Blocked"),
+					)
+				return
+
+		# Non-owner fallback: only stage/lost-flow fields are editable.
 		for field in self.meta.fields:
 			if field.fieldtype in _LAYOUT_FIELD_TYPES:
 				continue
@@ -261,6 +379,121 @@ class CRMLead(Document):
 					_("You can only edit leads that are assigned to you."),
 					frappe.PermissionError,
 					title=_("Not Permitted"),
+				)
+
+	def _sync_accepted_quote_on_won(self):
+		"""When the lead transitions into a Won-type status (C4), re-pull the
+		accepted quote's sq.ft / value / margin / file into the lead's custom
+		fields. Guarantees the closed order matches the accepted quote even if
+		someone manually edited the lead between Quote Received and C4.
+
+		The C2→C4 stage gate (Before-Save server script) already requires the
+		latest QR to be Accepted, so an Accepted QR is guaranteed to exist by
+		the time this runs.
+		"""
+		if self.is_new() or not self.status:
+			return
+		new_type = frappe.get_cached_value("CRM Lead Status", self.status, "type")
+		if new_type != "Won":
+			return
+		old = self.get_doc_before_save()
+		if old and old.get("status") == self.status:
+			return  # not a transition INTO Won — don't churn on no-op saves
+
+		accepted = frappe.db.get_value(
+			"CRM Quote Request",
+			{"lead": self.name, "status": "Accepted"},
+			["quote_sq_ft", "quote_value", "quote_margin", "quote_file"],
+			as_dict=True,
+			order_by="modified desc",
+		)
+		if not accepted:
+			# No Accepted QR — the "CRM Lead — Before Save — Stage Field
+			# Requirements" server script will throw next on the empty
+			# custom_final_* fields.
+			return
+
+		if accepted.quote_value:
+			self.custom_final_price = accepted.quote_value
+			self.custom_tentative_value = accepted.quote_value
+		if accepted.quote_margin:
+			self.custom_final_margin = accepted.quote_margin
+		if accepted.quote_file:
+			self.custom_final_quote = accepted.quote_file
+		if accepted.quote_sq_ft:
+			self.custom_tentative_area_sqft = accepted.quote_sq_ft
+
+	def _freeze_quote_fields_at_won(self):
+		"""Once a lead is ALREADY at a Won-type status, quote-derived fields
+		cannot be edited (except by Administrator / System Manager / Sales Head).
+		The C2→C4 transition itself still gets to set them via
+		_sync_accepted_quote_on_won because that runs while old.status is still C2.
+
+		Bypass tier is broader than _enforce_c4_won_lock by design: a Sales
+		Head fixing a price typo on a closed lead is normal ops; unarchiving a
+		fully-handed-off lead is not.
+		"""
+		if self.is_new() or self.flags.get("ignore_permissions"):
+			return
+		user = frappe.session.user
+		if user == "Administrator":
+			return
+		roles = set(frappe.get_roles(user))
+		if "System Manager" in roles or "Sales Head" in roles:
+			return
+		old = self.get_doc_before_save()
+		if not old:
+			return
+		old_type = frappe.get_cached_value("CRM Lead Status", old.status, "type") if old.status else None
+		if old_type != "Won":
+			return  # only enforce once the lead is ALREADY at Won
+		for field in _QUOTE_LEAD_FIELDS:
+			if self.has_value_changed(field):
+				label = self.meta.get_label(field) or field
+				frappe.throw(
+					_("'{0}' cannot be edited once the lead is at Won.").format(label),
+					frappe.PermissionError,
+					title=_("Field Locked"),
+				)
+
+	def _enforce_c4_won_lock(self):
+		"""Once a lead is at C4 (Won) AND lead_status == 'Won', the doc is
+		frozen — no status moves, no engagement flips, no field edits, no task
+		spawns. The lock fires after Create Project flips lead_status to Won.
+
+		Bypass: Administrator + System Manager only. Every other role (including
+		Sales Head) is locked — unlock requires explicit admin intervention
+		(raise lead_status back to Active via Desk / bench console).
+		"""
+		if self.is_new():
+			return
+		if self.flags.get("ignore_permissions") and self.flags.get("ignore_c4_lock"):
+			# Allow internal flows (e.g. an admin's re-open script) to bypass
+			# with an explicit opt-in flag.
+			return
+		old = self.get_doc_before_save()
+		if not old:
+			return
+		if not (old.get("status") == "C4" and old.get("lead_status") == "Won"):
+			return
+		user = frappe.session.user
+		if user == "Administrator":
+			return
+		user_roles = set(frappe.get_roles(user))
+		if "System Manager" in user_roles:
+			return
+		# Detect ANY field change against the snapshot. If nothing changed,
+		# allow the save (read-only refresh / no-op).
+		for field in self.meta.fields:
+			if field.fieldtype in _LAYOUT_FIELD_TYPES:
+				continue
+			if self.has_value_changed(field.fieldname):
+				frappe.throw(
+					_(
+						"This lead is Won (C4 + Won) and is locked for edits. "
+						"Contact a System Manager to unlock."
+					),
+					title=_("Lead Won"),
 				)
 
 	def assign_agent(self, agent):

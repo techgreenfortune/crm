@@ -42,6 +42,21 @@ export const usersStore = defineStore('crm-users', () => {
     },
   })
 
+  // Role metadata is authoritative at crm/permissions/role_config.py. We fetch
+  // it once per app session and derive isManager / isSalesUser / hierarchy
+  // rank from it. Until this resolves, isManager() returns false — same as
+  // before (which gated on getUser(email).role, also fetch-bound).
+  const roleConfig = createResource({
+    url: 'crm.permissions.role_config.get_hierarchy_role_config',
+    cache: 'hierarchy-role-config',
+    auto: true,
+  })
+
+  const tier1FullRw = computed(
+    () => new Set(roleConfig.data?.tier1_full_rw || []),
+  )
+  const roleRank = computed(() => roleConfig.data?.role_rank || {})
+
   function getUser(email) {
     if (!email || email === 'sessionUser') {
       email = session.user
@@ -64,16 +79,24 @@ export const usersStore = defineStore('crm-users', () => {
     return getUser(email).role === 'System Manager'
   }
 
+  // Tier-1 full-RW per the access matrix. Sourced from
+  // crm/permissions/role_config.py:TIER1_FULL_RW via roleConfig fetch.
   function isManager(email) {
-    return getUser(email).role === 'Sales Manager' || isAdmin(email)
+    const role = getUser(email).role
+    return !!role && tier1FullRw.value.has(role)
   }
 
   function isWebsiteUser(email) {
     return getUser(email).user_type === 'Website User'
   }
 
+  // Any non-tier-1 role that is in the CRM role matrix. The `role in
+  // roleRank.value` membership check prevents stray Frappe defaults
+  // (e.g. raw "Sales Manager" / "Sales User") from being classified as
+  // sales users — only the 13 matrix roles minus tier-1 qualify.
   function isSalesUser(email) {
-    return getUser(email).role === 'Sales User'
+    const role = getUser(email).role
+    return !!role && role in roleRank.value && !tier1FullRw.value.has(role)
   }
 
   function isTelephonyAgent(email) {
@@ -105,5 +128,8 @@ export const usersStore = defineStore('crm-users', () => {
     getUserRole,
     isWebsiteUser,
     isCrmUser,
+    roleConfig,
+    roleRank,
+    tier1FullRw,
   }
 })

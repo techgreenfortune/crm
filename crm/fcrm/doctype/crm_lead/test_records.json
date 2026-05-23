@@ -20,6 +20,7 @@
 		"organization": "Global Solutions Ltd",
 		"job_title": "VP Sales",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead",
 		"lead_owner": "Administrator"
 	},
@@ -80,6 +81,7 @@
 		"organization": "Startup Ventures",
 		"job_title": "Founder",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead",
 		"lead_owner": "crm.user1@example.com"
 	},
@@ -138,6 +140,7 @@
 		"organization": "Software Systems",
 		"job_title": "Engineering Lead",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead",
 		"lead_owner": "Administrator"
 	},
@@ -196,6 +199,7 @@
 		"organization": "Mobile Apps Inc",
 		"job_title": "Mobile Lead",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead"
 	},
 	{
@@ -253,6 +257,7 @@
 		"organization": "IoT Solutions",
 		"job_title": "IoT Specialist",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead",
 		"lead_owner": "Administrator"
 	},
@@ -311,6 +316,7 @@
 		"organization": "Web Services",
 		"job_title": "Web Developer",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead"
 	},
 	{
@@ -368,6 +374,7 @@
 		"organization": "Backend Solutions",
 		"job_title": "Backend Engineer",
 		"source": "Referral",
+		"custom_sub_source": "Customer",
 		"status": "New Lead",
 		"lead_owner": "Administrator"
 	},

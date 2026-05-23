@@ -48,8 +48,12 @@ echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-passwo
 bench --site crm.localhost install-app crm
 bench --site crm.localhost set-config developer_mode 1
 bench --site crm.localhost set-config server_script_enabled 1
+bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
+bench --site crm.localhost set-config host_name 'http://localhost:8000'
 bench use crm.localhost
 ```
+
+> `crm_sso_secret` is required by `crm.api.settings.create_crm_user`, `disable_crm_user`, `get_crm_login_url`. Without it: `AuthenticationError: CRM SSO secret is not configured`. Value must match OpsGate backend `.env` `CRM_SSO_SECRET`.
 
 ### Daily Workflow
 
@@ -121,6 +125,8 @@ echo "" | bench new-site crm.localhost --mariadb-root-password '' --admin-passwo
 bench --site crm.localhost install-app crm
 bench --site crm.localhost set-config developer_mode 1
 bench --site crm.localhost set-config server_script_enabled 1
+bench --site crm.localhost set-config crm_sso_secret "crm-to-opsgate-sso-secret-2025"
+bench --site crm.localhost set-config host_name 'http://localhost:8000'
 bench use crm.localhost
 ```
 

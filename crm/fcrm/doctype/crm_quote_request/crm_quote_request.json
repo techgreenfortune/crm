@@ -16,9 +16,12 @@
   "quote_value",
   "quote_margin",
   "quote_validity",
+  "quote_sq_ft",
+  "quote_number",
   "section_break_1",
   "estimation_remarks",
-  "revision_notes"
+  "revision_notes",
+  "revision_images"
  ],
  "fields": [
   {
@@ -102,6 +105,21 @@
    "permlevel": 1
   },
   {
+   "fieldname": "quote_sq_ft",
+   "fieldtype": "Float",
+   "label": "Quote Area (sqft)",
+   "mandatory_depends_on": "eval:doc.status != 'Pending'",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "quote_number",
+   "fieldtype": "Data",
+   "label": "External Quote No.",
+   "description": "Vendor/factory reference (e.g. PDF number).",
+   "mandatory_depends_on": "eval:doc.status != 'Pending'",
+   "permlevel": 1
+  },
+  {
    "fieldname": "section_break_1",
    "fieldtype": "Section Break",
    "label": "Notes"
@@ -118,11 +136,18 @@
    "fieldtype": "Small Text",
    "label": "Revision Notes",
    "mandatory_depends_on": "eval:doc.status == 'Revision Requested'"
+  },
+  {
+   "fieldname": "revision_images",
+   "fieldtype": "Table",
+   "label": "Revision Images",
+   "options": "CRM Quote Revision Image",
+   "description": "Photos or markups attached when requesting a revision."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-05-04 00:00:00.000000",
+ "modified": "2026-05-21 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Quote Request",
@@ -143,7 +168,7 @@
    "delete": 0,
    "read": 1,
    "report": 1,
-   "role": "Sales Head",
+   "role": "Sales Manager",
    "write": 1
   },
   {
@@ -232,7 +257,7 @@
   {
    "permlevel": 1,
    "read": 1,
-   "role": "Sales Head"
+   "role": "Sales Manager"
   },
   {
    "permlevel": 1,

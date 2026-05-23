@@ -20,7 +20,22 @@ class CRMInvitation(Document):
 		email_sent_at: DF.Datetime | None
 		invited_by: DF.Link | None
 		key: DF.Data | None
-		role: DF.Literal["", "Sales User", "Sales Manager", "System Manager"]
+		role: DF.Literal[
+			"",
+			"Sales Head",
+			"RSM",
+			"ASM",
+			"Sales Executive",
+			"Project Sales Executive",
+			"Sales Coordinator",
+			"Marketing",
+			"Calling Team",
+			"Jr. Sales Executive",
+			"B2F Team",
+			"Estimation Team",
+			"Management",
+			"System Manager",
+		]
 		status: DF.Literal["", "Pending", "Accepted", "Expired"]
 	# end: auto-generated types
 
@@ -51,7 +66,7 @@ class CRMInvitation(Document):
 
 	@frappe.whitelist()
 	def accept_invitation(self):
-		frappe.only_for(["System Manager", "Sales Manager"], True)
+		frappe.only_for(["System Manager", "Sales Head"], True)
 		self.accept()
 
 	def accept(self):
@@ -59,12 +74,12 @@ class CRMInvitation(Document):
 			frappe.throw(_("Invalid or expired key"))
 
 		user = self.create_user_if_not_exists()
-		user.append_roles(self.role)
 		if self.role == "System Manager":
-			user.append_roles("Sales Manager", "Sales User")
-		elif self.role == "Sales Manager":
-			user.append_roles("Sales User")
-		if self.role == "Sales User":
+			user.append_roles("System Manager")
+		else:
+			# Every other CRM role is provisioned via Role Profile, which
+			# bundles CRM User + the custom role per crm/fixtures/role_profile.json.
+			user.role_profile_name = self.role
 			self.update_module_in_user(user, "FCRM")
 		user.save(ignore_permissions=True)
 

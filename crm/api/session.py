@@ -1,6 +1,8 @@
 import frappe
 from frappe import _
 
+from crm.permissions.role_config import ROLE_PRIORITY
+
 CRM_ALLOWED_ROLES = ["System Manager", "Sales Manager", "Sales User"]
 
 
@@ -51,15 +53,13 @@ def get_users():
 		user.roles = frappe.get_roles(user.name)
 
 		user.role = ""
-
-		if "System Manager" in user.roles:
-			user.role = "System Manager"
-		elif "Sales Manager" in user.roles:
-			user.role = "Sales Manager"
-		elif "Sales User" in user.roles:
-			user.role = "Sales User"
-		elif "Guest" in user.roles:
-			user.role = "Guest"
+		for role in ROLE_PRIORITY:
+			if role in user.roles:
+				user.role = role
+				break
+		else:
+			if "Guest" in user.roles:
+				user.role = "Guest"
 
 		if frappe.session.user == user.name:
 			user.session_user = True
@@ -67,7 +67,7 @@ def get_users():
 		user.is_telephony_agent = frappe.db.exists("CRM Telephony Agent", {"user": user.name})
 		user.language = user.language or system_language
 
-		if user.role in ("System Manager", "Sales Manager", "Sales User"):
+		if user.role and user.role != "Guest":
 			crm_users.append(user)
 
 	if not session_roles["is_system_manager"]:
