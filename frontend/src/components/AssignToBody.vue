@@ -9,7 +9,7 @@
       doctype="User"
       :placeholder="__('John Doe')"
       :filters="{
-        name: ['in', users.data.crmUsers?.map((user) => user.name)],
+        name: ['in', assignableUserNames],
         ignore_user_type: 1,
       }"
       :hideMe="true"
@@ -74,7 +74,7 @@ import Link from '@/components/Controls/Link.vue'
 import { usersStore } from '@/stores/users'
 import { Tooltip, Switch, createResource } from 'frappe-ui'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -92,6 +92,23 @@ const assignToMe = ref(false)
 const error = ref('')
 
 const { users, getUser } = usersStore()
+
+// CRM Lead: ASM/RSM see only their tree (downstream + direct upline). Backend
+// blocks out-of-tree assignment regardless; this just prunes the picker so
+// users can't pick an option that would then throw. Other doctypes use the
+// full crmUsers list as before.
+const assignableUsers = createResource({
+  url: 'crm.api.session.get_assignable_users',
+  cache: 'crm-assignable-users',
+  auto: props.doctype === 'CRM Lead',
+})
+
+const assignableUserNames = computed(() => {
+  if (props.doctype === 'CRM Lead' && assignableUsers.data) {
+    return assignableUsers.data.map((user) => user.name)
+  }
+  return users.data?.crmUsers?.map((user) => user.name) || []
+})
 
 const removeValue = (value) => {
   if (value === getUser('').name) {

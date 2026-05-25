@@ -135,6 +135,7 @@ permission_query_conditions = {
 	"CRM Lead": "crm.overrides.crm_lead_permissions.get_permission_query_conditions",
 	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 	"CRM Task": "crm.fcrm.doctype.crm_task.crm_task.get_permission_query_conditions",
+	"CRM Quote Request": "crm.fcrm.doctype.crm_quote_request.crm_quote_request.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -160,6 +161,7 @@ doc_events = {
 		"validate": ["crm.api.contact.validate"],
 	},
 	"ToDo": {
+		"before_insert": ["crm.overrides.crm_lead_permissions.guard_lead_assignment"],
 		"after_insert": ["crm.api.todo.after_insert"],
 		"on_update": ["crm.api.todo.on_update"],
 	},

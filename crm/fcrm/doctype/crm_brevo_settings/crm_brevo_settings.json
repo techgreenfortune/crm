@@ -44,7 +44,7 @@
    "fieldname": "nurture_list_id",
    "fieldtype": "Data",
    "label": "C1 Nurture List ID",
-   "description": "Brevo list ID for the C1 nurture sequence. Find this in Brevo → Contacts → Lists."
+   "description": "Brevo list ID for the C1 nurture sequence. Find this in Brevo \u2192 Contacts \u2192 Lists."
   }
  ],
  "index_web_pages_for_search": 1,
@@ -72,9 +72,45 @@
    "email": 1,
    "print": 1,
    "read": 1,
-   "role": "Sales Manager",
    "share": 1,
-   "write": 1
+   "write": 1,
+   "role": "Sales Head"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "share": 1,
+   "write": 1,
+   "role": "Sales Coordinator"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "share": 1,
+   "write": 1,
+   "role": "RSM"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "share": 1,
+   "write": 1,
+   "role": "ASM"
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Management"
   }
  ],
  "row_format": "Dynamic",

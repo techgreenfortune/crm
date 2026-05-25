@@ -75,14 +75,36 @@
   {
    "create": 1,
    "read": 1,
-   "role": "Sales Manager",
+   "role": "Sales User",
    "write": 1
   },
   {
    "create": 1,
    "read": 1,
-   "role": "Sales User",
-   "write": 1
+   "write": 1,
+   "role": "Sales Head"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "Sales Coordinator"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "RSM"
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "write": 1,
+   "role": "ASM"
+  },
+  {
+   "read": 1,
+   "role": "Management"
   }
  ],
  "row_format": "Dynamic",

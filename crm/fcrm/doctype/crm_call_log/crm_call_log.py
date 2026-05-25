@@ -183,6 +183,12 @@ def parse_call_log(call):
 			"image": contact.get("image"),
 		}
 
+	if call.get("disposition"):
+		color = frappe.db.get_value("CRM Call Disposition", call["disposition"], "color") or "gray"
+		call["_disposition"] = {"label": call["disposition"], "color": color}
+	else:
+		call["_disposition"] = None
+
 	return call
 
 

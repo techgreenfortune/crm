@@ -21,15 +21,19 @@ def _permission_query_conditions(user: str | None, doctype: str):
 	if user == "Administrator":
 		return ""
 
-	roles = frappe.get_roles(user)
+	roles = set(frappe.get_roles(user))
 	if "System Manager" in roles:
 		return ""
 
-	in_tree = hierarchy_enabled() and _in_hierarchy(user)
-
-	# Sales Manager outside the tree retains the default ie sees everything
-	if "Sales Manager" in roles and not in_tree:
+	# Tier-1 (Sales Head / Sales Coordinator) and Management see every Deal
+	# regardless of CRM Sales Hierarchy position. Replaces the legacy
+	# "Sales Manager outside the tree" bypass (Sales Manager Frappe role was
+	# retired on 2026-05-25; these custom roles were previously bundled with
+	# it via role_profile.json).
+	if roles & {"Sales Head", "Sales Coordinator", "Management"}:
 		return ""
+
+	in_tree = hierarchy_enabled() and _in_hierarchy(user)
 
 	owner_field = _OWNER_FIELD[doctype]
 	DT = frappe.qb.DocType(doctype)
@@ -77,12 +81,12 @@ def _has_permission(doc, ptype, user, doctype: str) -> bool | None:
 	if user == "Administrator":
 		return True
 
-	roles = frappe.get_roles(user)
+	roles = set(frappe.get_roles(user))
 	if "System Manager" in roles:
 		return True
 
-	in_tree = hierarchy_enabled() and _in_hierarchy(user)
-	if "Sales Manager" in roles and not in_tree:
+	# Tier-1 + Management bypass — see comment in _permission_query_conditions.
+	if roles & {"Sales Head", "Sales Coordinator", "Management"}:
 		return True
 
 	conditions = _permission_query_conditions(user, doctype)

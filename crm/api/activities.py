@@ -9,6 +9,7 @@ from frappe.translate import get_translated_doctypes
 
 from crm.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 from crm.fcrm.doctype.crm_task.crm_task import POOL_TASK_ROLES
+from crm.permissions.role_config import TIER1_FULL_RW
 
 
 @frappe.whitelist()
@@ -38,6 +39,7 @@ def get_deal_activities(name: str):
 		"sla",
 		"first_response_time",
 		"first_responded_on",
+		"deal_owner",
 	]
 
 	doc = frappe.db.get_values("CRM Deal", name, ["creation", "owner", "lead"])[0]
@@ -164,6 +166,17 @@ def get_deal_activities(name: str):
 		}
 		activities.append(activity)
 
+	for assignment_log in docinfo.assignment_logs:
+		activity = {
+			"name": assignment_log.name,
+			"activity_type": "assignment_log",
+			"creation": assignment_log.creation,
+			"owner": assignment_log.owner,
+			"data": parse_assignment_log(assignment_log.content, assignment_log.comment_type),
+			"is_lead": False,
+		}
+		activities.append(activity)
+
 	calls = calls + get_linked_calls(name).get("calls", [])
 	notes = notes + get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = tasks + get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
@@ -192,6 +205,7 @@ def get_lead_activities(name: str):
 		"sla",
 		"first_response_time",
 		"first_responded_on",
+		"deal_owner",
 	]
 
 	doc = frappe.db.get_values("CRM Lead", name, ["creation", "owner"])[0]
@@ -305,6 +319,17 @@ def get_lead_activities(name: str):
 		}
 		activities.append(activity)
 
+	for assignment_log in docinfo.assignment_logs:
+		activity = {
+			"name": assignment_log.name,
+			"activity_type": "assignment_log",
+			"creation": assignment_log.creation,
+			"owner": assignment_log.owner,
+			"data": parse_assignment_log(assignment_log.content, assignment_log.comment_type),
+			"is_lead": True,
+		}
+		activities.append(activity)
+
 	calls = get_linked_calls(name).get("calls", [])
 	notes = get_linked_notes(name) + get_linked_calls(name).get("notes", [])
 	tasks = get_linked_tasks(name) + get_linked_calls(name).get("tasks", [])
@@ -392,6 +417,7 @@ def get_linked_calls(name: str):
 			"recording_url",
 			"creation",
 			"note",
+			"disposition",
 		],
 	)
 
@@ -421,6 +447,7 @@ def get_linked_calls(name: str):
 				CallLog.recording_url,
 				CallLog.creation,
 				CallLog.note,
+				CallLog.disposition,
 				Link.link_doctype,
 				Link.link_name,
 			)
@@ -485,7 +512,7 @@ def get_linked_notes(name: str):
 
 
 def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
-	if "Administrator" in user_roles or "Sales Manager" in user_roles or "System Manager" in user_roles:
+	if "Administrator" in user_roles or user_roles & TIER1_FULL_RW:
 		return True
 	if (task.get("assigned_to") or "") == user:
 		return True
@@ -496,7 +523,7 @@ def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | No
 
 
 def _task_can_delete(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
-	if "Administrator" in user_roles or "Sales Manager" in user_roles or "System Manager" in user_roles:
+	if "Administrator" in user_roles or user_roles & TIER1_FULL_RW:
 		return True
 	if (task.get("task_type") or "") in POOL_TASK_ROLES:
 		return False
@@ -560,6 +587,27 @@ def parse_attachment_log(html: str, type: str):
 	}
 
 
+def parse_assignment_log(content: str, comment_type: str):
+	"""Render the assignment Comment that Frappe's ToDo controller writes.
+
+	Frappe stores plain-text messages like:
+	  - "Ankit assigned Ravi: Assignment for CRM Lead CRM-LEAD-…"
+	  - "Ankit self assigned this task: …"
+	  - "Assignment of Ravi removed by Ankit"
+	  - "Ankit removed their assignment."
+	The description suffix (everything after the first ': ') is just the
+	ToDo description — noise in the timeline — so we strip it off.
+	"""
+	text = BeautifulSoup(content or "", "html.parser").get_text(strip=True)
+	# Drop the trailing ": <description>" that Frappe appends on assignment.
+	if comment_type == "Assigned" and ": " in text:
+		text = text.split(": ", 1)[0]
+	return {
+		"type": "assigned" if comment_type == "Assigned" else "removed",
+		"text": text,
+	}
+
+
 def is_translatable(doctype: str) -> bool:
 	return doctype in get_translated_doctypes()
 
@@ -571,8 +619,9 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	The Quote Request flow uses one QR per lead (status flips through Pending →
 	Quote Received → Revision Requested → Quote Received → Accepted). Each
 	`→ Quote Received` transition writes an `[AUTOMATION] Quote uploaded — …`
-	Comment on the parent CRM Lead with the file URL inline. We parse those
-	Comments to reconstruct the revision history without a schema change.
+	Comment and each `→ Revision Requested` transition writes an
+	`[AUTOMATION] Quote revision requested: …` Comment on the parent CRM Lead.
+	We parse both to reconstruct the full revision history.
 
 	Returned shape (one entry per round, oldest first):
 	    [
@@ -583,6 +632,7 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	        "margin": 18.0,
 	        "file_url": "/files/q1.txt",
 	        "timestamp": "2026-05-15 12:34:56.789",
+	        "revision_after": "Reduce by 10%",  # None if no revision followed
 	      },
 	      ...
 	    ]
@@ -599,19 +649,31 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	if not qrs:
 		return []
 
-	comments = frappe.get_all(
+	all_comments = frappe.get_all(
 		"Comment",
 		filters={
 			"reference_doctype": "CRM Lead",
 			"reference_name": lead,
-			"content": ["like", "[AUTOMATION] Quote uploaded —%"],
+			"content": ["like", "[AUTOMATION] Quote %"],
 		},
 		fields=["name", "content", "creation"],
 		order_by="creation asc",
 	)
 
+	upload_comments = [c for c in all_comments if "[AUTOMATION] Quote uploaded" in c["content"]]
+	revision_comments = [c for c in all_comments if "[AUTOMATION] Quote revision requested" in c["content"]]
+
 	revisions: list[dict] = []
-	for round_idx, c in enumerate(comments, start=1):
+	for round_idx, c in enumerate(upload_comments, start=1):
+		next_upload_time = (
+			upload_comments[round_idx]["creation"] if round_idx < len(upload_comments) else None
+		)
+		revision_after = None
+		for rc in revision_comments:
+			if rc["creation"] > c["creation"]:
+				if next_upload_time is None or rc["creation"] < next_upload_time:
+					revision_after = _extract_revision_notes(rc["content"])
+					break
 		revisions.append(
 			{
 				"round": round_idx,
@@ -620,6 +682,7 @@ def get_quote_revisions(lead: str) -> list[dict]:
 				"margin": _extract_currency(c["content"], "Margin: ", trailing="%"),
 				"file_url": _extract_file_url(c["content"]),
 				"timestamp": str(c["creation"]),
+				"revision_after": revision_after,
 			}
 		)
 	return revisions
@@ -652,3 +715,16 @@ def _extract_file_url(content: str) -> str | None:
 	if a and a.get("href"):
 		return a["href"]
 	return None
+
+
+def _extract_revision_notes(content: str) -> str | None:
+	"""Extract the revision reason from a '[AUTOMATION] Quote revision requested: …' Comment."""
+	import re
+
+	prefix = "[AUTOMATION] Quote revision requested: "
+	idx = content.find(prefix)
+	if idx == -1:
+		return None
+	text = content[idx + len(prefix) :]
+	text = re.sub(r"\s*\(\d+ image\(s\) attached\)\s*$", "", text).strip()
+	return text or None

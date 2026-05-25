@@ -79,6 +79,11 @@
           :label="statusLabelMap[call.status]"
           :theme="statusColorMap[call.status]"
         />
+        <Badge
+          v-if="call._disposition"
+          :label="call._disposition.label"
+          :theme="call._disposition.color"
+        />
       </div>
       <div
         v-if="

@@ -246,13 +246,23 @@ def is_admin(user: str | None = None) -> bool:
 
 def is_sales_user(user: str | None = None) -> bool:
 	"""
-	Check whether `user` is an agent
+	Check whether `user` is a CRM agent — i.e. holds any custom CRM role
+	from ``role_config.ROLE_RANK`` (the 13-role matrix). Administrator always
+	qualifies.
+
+	Replaces the legacy ``"Sales Manager" in roles or "Sales User" in roles``
+	check (Sales Manager Frappe role retired 2026-05-25; tier-1 managers no
+	longer carry the Sales User role either after role_profile.json strip).
 
 	:param user: User to check against, defaults to current user
-	:return: Whether `user` is an agent
+	:return: Whether `user` is a CRM agent
 	"""
+	from crm.permissions.role_config import ROLE_RANK
+
 	user = user or frappe.session.user
-	return is_admin() or "Sales Manager" in frappe.get_roles(user) or "Sales User" in frappe.get_roles(user)
+	if is_admin():
+		return True
+	return bool(set(frappe.get_roles(user)) & set(ROLE_RANK))
 
 
 def sales_user_only(fn):

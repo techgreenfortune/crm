@@ -4,6 +4,8 @@ from frappe.auth import LoginAttemptTracker
 from frappe.rate_limiter import rate_limit
 from frappe.utils.password import check_password, update_password
 
+from crm.permissions.role_config import MANAGERIAL_ROLES
+
 # Custom CRM role profile names (must exist in `crm/fixtures/role_profile.json`).
 # System Manager is handled out-of-band — it isn't a Role Profile, it's the
 # Frappe built-in admin role granted directly.
@@ -22,8 +24,9 @@ CRM_ROLE_PROFILES = (
 	"Management",
 )
 
-# Roles that can invite/promote/demote CRM users.
-_ADMIN_ROLES = ("System Manager", "Sales Head")
+# Roles that can invite/promote/demote CRM users. Matches tier-1 full-RW in
+# role_config.TIER1_FULL_RW (System Manager / Sales Head / Sales Coordinator).
+_ADMIN_ROLES = ("System Manager", "Sales Head", "Sales Coordinator")
 
 
 @frappe.whitelist()
@@ -111,20 +114,11 @@ def update_user_role(user: str, new_role: str):
 	if target_is_system_manager and not is_system_manager:
 		frappe.throw(_("Only System Managers can modify other System Managers"), frappe.PermissionError)
 
-	# Hierarchy data integrity: profiles that don't bundle Sales Manager
-	# (i.e. non-managerial) cannot be assigned to a user who is a root or has
-	# direct reports in the CRM Sales Hierarchy tree — that would orphan their
-	# reports. Admin must remove them from the hierarchy first.
-	_NON_MANAGERIAL_PROFILES = {
-		"Sales Executive",
-		"Project Sales Executive",
-		"Marketing",
-		"Calling Team",
-		"Jr. Sales Executive",
-		"B2F Team",
-		"Estimation Team",
-	}
-	if new_role in _NON_MANAGERIAL_PROFILES:
+	# Hierarchy data integrity: non-managerial profiles (anything outside
+	# role_config.MANAGERIAL_ROLES) cannot be assigned to a user who is a root
+	# or has direct reports in the CRM Sales Hierarchy tree — that would
+	# orphan their reports. Admin must remove them from the hierarchy first.
+	if new_role not in MANAGERIAL_ROLES:
 		node = frappe.db.get_value(
 			"CRM Sales Hierarchy", {"user": user}, ["name", "reports_to"], as_dict=True
 		)
@@ -142,9 +136,10 @@ def update_user_role(user: str, new_role: str):
 		user_doc.append_roles("System Manager")
 		user_doc.set("block_modules", [])
 	else:
-		# CRM role profiles handle their own role bundling via fixtures
-		# (CRM User + the custom role). Setting role_profile_name propagates
-		# the bundled roles on save.
+		# CRM role profiles handle their own role bundling via fixtures —
+		# lower-tier profiles bundle Sales User + the custom role; upper-tier
+		# profiles bundle only the custom role. Setting role_profile_name
+		# propagates the bundled roles on save.
 		user_doc.role_profile_name = new_role
 		update_module_in_user(user_doc, "FCRM")
 
@@ -171,9 +166,11 @@ def remove_crm_roles_from_user(user: str):
 		user_doc.role_profile_name = None
 		user_doc.set("role_profiles", [])
 
-	# Strip any CRM-specific roles + the base "CRM User" / "Sales User" that
-	# might still be attached from legacy seeding.
-	cleanup = set(CRM_ROLE_PROFILES) | {"CRM User", "Sales User", "Sales Manager"}
+	# Strip any CRM-specific roles + the base "Sales User" role bundled into
+	# lower-tier role profiles. Sales Manager (Frappe stock) was retired on
+	# 2026-05-25 and its Role doctype entry is deleted at deploy time, so it
+	# no longer needs to be listed here.
+	cleanup = set(CRM_ROLE_PROFILES) | {"Sales User"}
 	remove_roles(user_doc, *(r for r in cleanup if r in roles))
 
 	user_doc.save(ignore_permissions=True)

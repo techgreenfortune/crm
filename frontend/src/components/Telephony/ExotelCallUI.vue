@@ -195,6 +195,18 @@
             />
           </Dropdown>
         </div>
+        <div v-if="dispositionRequired && callbackRequired" class="mt-3">
+          <div class="text-sm text-ink-gray-5 mb-1">
+            {{ __('Scheduled Callback At') }}
+            <span class="text-red-500">*</span>
+          </div>
+          <input
+            v-model="scheduledCallbackAt"
+            type="datetime-local"
+            :min="callbackMin"
+            class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base focus:outline-none [color-scheme:dark]"
+          />
+        </div>
       </div>
       <div class="footer flex justify-between gap-2">
         <div class="flex gap-2">
@@ -399,6 +411,7 @@ watch([note, task], () => (dirty.value = true), { deep: true })
 
 const dispositions = ref([])
 const disposition = ref(null)
+const scheduledCallbackAt = ref(null)
 const isSavingDisposition = ref(false)
 
 const dispositionsResource = createResource({
@@ -406,7 +419,14 @@ const dispositionsResource = createResource({
   params: {
     doctype: 'CRM Call Disposition',
     filters: { enabled: 1 },
-    fields: ['name', 'label', 'color', 'position', 'next_status'],
+    fields: [
+      'name',
+      'label',
+      'color',
+      'position',
+      'next_status',
+      'requires_callback_datetime',
+    ],
     order_by: 'position asc',
     limit_page_length: 50,
   },
@@ -414,6 +434,27 @@ const dispositionsResource = createResource({
   onSuccess(data) {
     dispositions.value = data || []
   },
+})
+
+const callbackRequired = computed(() => {
+  if (!disposition.value) return false
+  const d = dispositions.value.find((x) => x.name === disposition.value)
+  return !!d?.requires_callback_datetime
+})
+
+function pad(n) {
+  return String(n).padStart(2, '0')
+}
+
+const callbackMin = computed(() => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+})
+
+watch(disposition, () => {
+  if (!callbackRequired.value) {
+    scheduledCallbackAt.value = null
+  }
 })
 
 const dispositionLocked = computed(() => callStatus.value === 'No answer')
@@ -466,6 +507,7 @@ function persistPopupState() {
         showCallPopup: showCallPopup.value,
         showSmallCallPopup: showSmallCallPopup.value,
         disposition: disposition.value,
+        scheduledCallbackAt: scheduledCallbackAt.value,
       }),
     )
   } catch {
@@ -485,6 +527,7 @@ function restorePopupState() {
     showCallPopup.value = !!s.showCallPopup
     showSmallCallPopup.value = !!s.showSmallCallPopup
     disposition.value = s.disposition || null
+    scheduledCallbackAt.value = s.scheduledCallbackAt || null
   } catch {
     /* parse error — ignore */
   }
@@ -506,6 +549,7 @@ watch(
     showCallPopup,
     showSmallCallPopup,
     disposition,
+    scheduledCallbackAt,
   ],
   persistPopupState,
   { deep: true },
@@ -516,7 +560,11 @@ const dispositionRequired = callTerminated
 const canClose = computed(() => {
   if (isSavingDisposition.value) return false
   if (callActive.value) return false
-  if (callTerminated.value) return !!disposition.value
+  if (callTerminated.value) {
+    if (!disposition.value) return false
+    if (callbackRequired.value && !scheduledCallbackAt.value) return false
+    return true
+  }
   return true
 })
 
@@ -525,6 +573,12 @@ const closeTooltip = computed(() => {
   if (callActive.value) return __('Wait for the call to end')
   if (callTerminated.value && !disposition.value)
     return __('Select a disposition to close')
+  if (
+    callTerminated.value &&
+    callbackRequired.value &&
+    !scheduledCallbackAt.value
+  )
+    return __('Set the scheduled callback datetime to close')
   return __('Close')
 })
 
@@ -646,6 +700,7 @@ function closeCallPopup() {
     priority: 'Low',
   }
   disposition.value = null
+  scheduledCallbackAt.value = null
   callData.value = null
   callStatus.value = ''
   clearPopupState()
@@ -658,6 +713,7 @@ async function attemptCloseCallPopup() {
     return
   }
   if (!disposition.value) return
+  if (callbackRequired.value && !scheduledCallbackAt.value) return
   if (!callData.value?.CallSid) {
     closeCallPopup()
     return
@@ -667,6 +723,7 @@ async function attemptCloseCallPopup() {
     await call('crm.integrations.api.add_disposition_to_call_log', {
       call_sid: callData.value.CallSid,
       disposition: disposition.value,
+      scheduled_callback_at: scheduledCallbackAt.value || null,
     })
     closeCallPopup()
   } catch (err) {

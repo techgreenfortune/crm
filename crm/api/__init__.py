@@ -69,10 +69,11 @@ def check_app_permission():
 		return False
 
 	roles = frappe.get_roles()
+	# Sales User still bundled in lower-tier role profiles; the custom roles
+	# cover the full CRM matrix after Sales Manager retirement (2026-05-25).
 	allowed_roles = {
 		"System Manager",
 		"Sales User",
-		"Sales Manager",
 		"B2F Team",
 		"Calling Team",
 		"Jr. Sales Executive",
@@ -114,7 +115,7 @@ def accept_invitation(key: str | None = None):
 def invite_by_email(emails: str, role: str):
 	from crm.api.user import CRM_ROLE_PROFILES
 
-	frappe.only_for(["System Manager", "Sales Manager"], True)
+	frappe.only_for(["System Manager", "Sales Head", "Sales Coordinator"], True)
 
 	user_roles = frappe.get_roles(frappe.session.user)
 
