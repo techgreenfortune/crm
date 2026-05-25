@@ -282,7 +282,7 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 
 # Request Events
 # ----------------
-# before_request = ["crm.utils.before_request"]
+before_request = ["crm.api.settings.redirect_login_to_opsgate"]
 # after_request = ["crm.utils.after_request"]
 
 # Job Events

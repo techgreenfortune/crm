@@ -12,6 +12,7 @@
   "enable_sales_hierarchy",
   "opsgate_enabled",
   "opsgate_url",
+  "opsgate_login_redirect",
   "auto_update_expected_deal_value",
   "update_timestamp_on_new_communication",
   "auto_mark_replied_on_response",
@@ -46,6 +47,14 @@
    "fieldtype": "Data",
    "label": "OpsGate URL",
    "description": "URL of the OpsGate instance for this environment (e.g. https://staging-opsgate.thegreenfortune.com)"
+  },
+  {
+   "default": "0",
+   "depends_on": "opsgate_enabled",
+   "fieldname": "opsgate_login_redirect",
+   "fieldtype": "Check",
+   "label": "Redirect Login Page to OpsGate",
+   "description": "When enabled, guests hitting the CRM login page are redirected to the OpsGate URL"
   },
   {
    "fieldname": "dropdown_items",
