@@ -55,7 +55,7 @@ import { showQuickEntryModal, quickEntryProps } from '@/composables/modals'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { createResource } from 'frappe-ui'
 import { useDocument } from '@/data/document'
-import { computed, onMounted, ref, nextTick } from 'vue'
+import { computed, onMounted, ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -82,6 +82,8 @@ const { document: lead, triggerOnBeforeCreate } = useDocument('CRM Lead')
 const { capture } = useTelemetry()
 
 const leadStatuses = computed(() => statusOptions('lead'))
+
+let accountField = null
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
@@ -110,12 +112,37 @@ const tabs = createResource({
             if (field.fieldtype === 'Table') {
               lead.doc[field.fieldname] = []
             }
+
+            if (
+              field.fieldname === 'custom_lead_type' &&
+              props.defaults?.custom_account
+            ) {
+              field.read_only = 1
+            }
+
+            if (field.fieldname === 'custom_account') {
+              accountField = field
+              if (lead.doc.custom_customer_type) {
+                field.filters = { account_type: lead.doc.custom_customer_type }
+              }
+            }
           })
         })
       })
     })
   },
 })
+
+watch(
+  () => lead.doc.custom_customer_type,
+  (customerType) => {
+    if (accountField) {
+      accountField.filters = customerType ? { account_type: customerType } : {}
+      // Clear stale account selection when customer type changes
+      lead.doc.custom_account = null
+    }
+  },
+)
 
 const createLead = createResource({
   url: 'frappe.client.insert',
