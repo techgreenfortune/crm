@@ -224,7 +224,9 @@ def create_demo_leads(demo_users):
 	for data, days in zip(leads_data, _LEAD_DAYS, strict=False):
 		ts = now - timedelta(days=days)
 		owner = data["lead_owner"]
-		lead = frappe.get_doc({"doctype": "CRM Lead", **data}).insert(ignore_permissions=True)
+		lead = frappe.get_doc(
+			{"doctype": "CRM Lead", "custom_pincode": "000000", **data}
+		).insert(ignore_permissions=True)
 		backdate("CRM Lead", lead.name, owner, ts)
 		fix_auto_records("CRM Lead", lead.name, owner, ts)
 		created.append(lead.name)

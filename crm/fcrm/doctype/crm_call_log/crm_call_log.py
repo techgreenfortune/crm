@@ -293,6 +293,9 @@ def create_lead_from_call_log(call_log: str | dict, lead_details: str | dict | N
 		reference_label = sanitized_details.get("mobile_no") or call_doc.name
 		sanitized_details["first_name"] = _("Lead from call {0}").format(reference_label)
 
+	if "custom_pincode" in valid_fieldnames and not sanitized_details.get("custom_pincode"):
+		sanitized_details["custom_pincode"] = "000000"
+
 	lead.update(sanitized_details)
 	lead.insert()
 

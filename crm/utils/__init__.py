@@ -369,6 +369,7 @@ def create_lead_from_incoming_email(doc: Communication, method: str | None = Non
 	if frappe.db.exists("CRM Lead Source", "Email"):
 		lead.source = "Email"
 
+	lead.custom_pincode = "000000"
 	lead.insert(ignore_permissions=True)
 
 	doc.reference_doctype = "CRM Lead"

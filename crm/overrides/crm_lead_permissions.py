@@ -233,7 +233,7 @@ def downstream_users(user: str) -> set[str]:
 
 	Uses NestedSet ``lft / rgt`` for an O(1) range scan on the hierarchy table.
 	Cached at a version key; invalidated on every CRM Sales Hierarchy save by
-	:func:`bustdownstream_users_cache`. One DB read per cache miss.
+	:func:`bust_downstream_users_cache`. One DB read per cache miss.
 
 	If ``user`` is not in the hierarchy, returns ``{user}`` — single-node
 	"hierarchy" so SE/PSE/etc. callers still see their own leads correctly.
@@ -262,7 +262,7 @@ def downstream_users(user: str) -> set[str]:
 	return result
 
 
-def bustdownstream_users_cache(doc=None, method=None):
+def bust_downstream_users_cache(doc=None, method=None):
 	"""Hooked to ``CRM Sales Hierarchy.on_update`` / ``on_trash`` — bumps a
 	shared version counter, invalidating every cached subtree set at once."""
 	cache = frappe.cache()
