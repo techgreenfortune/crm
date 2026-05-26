@@ -8,7 +8,9 @@ _DEFAULT_TIMEOUT_SECONDS = 10
 # OpsGate's public Frappe-handoff endpoint (renamed from the legacy
 # /api/external/frappe/projects on 2026-05-22). Mounted before verifyToken
 # in src/routes/v2.routes.ts; auth is via X-Api-Secret + FRAPPE_CRM_SECRET.
-_CREATE_PROJECT_PATH = "/api/v2/projects/public"
+# Path is relative to `opsgate_api_url` (site_config.json), which already
+# includes the `/api` prefix — same base the SSO flow uses.
+_CREATE_PROJECT_PATH = "/v2/projects/public"
 
 
 def _get_settings():
@@ -137,10 +139,13 @@ def create_project_on_won(lead_name: str) -> None:
 		return
 
 	api_key = settings.get_password("api_key")
-	base_url = (settings.api_base_url or "").rstrip("/")
+	# Base URL comes from site_config.json (same key the SSO flow uses) so the
+	# two integrations cannot drift onto different OpsGate hosts.
+	base_url = (frappe.conf.get("opsgate_api_url") or "").rstrip("/")
 	if not (api_key and base_url):
 		frappe.log_error(
-			f"Lead {lead_name}: CRM Project API Settings incomplete (api_base_url or api_key missing).",
+			f"Lead {lead_name}: project handoff misconfigured "
+			f"(opsgate_api_url in site_config.json or api_key in CRM Project API Settings missing).",
 			"Project API: misconfigured",
 		)
 		return
