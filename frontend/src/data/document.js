@@ -62,7 +62,7 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
         setValue: {
           onSuccess: () => {
             triggerOnSave()
-            toast.success(__('Document updated successfully'))
+            toast.success(__('Changes saved'))
             processPendingDeletions()
           },
           onError: (err) => {

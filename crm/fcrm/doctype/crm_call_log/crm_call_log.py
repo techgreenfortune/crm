@@ -183,6 +183,12 @@ def parse_call_log(call):
 			"image": contact.get("image"),
 		}
 
+	if call.get("disposition"):
+		color = frappe.db.get_value("CRM Call Disposition", call["disposition"], "color") or "gray"
+		call["_disposition"] = {"label": call["disposition"], "color": color}
+	else:
+		call["_disposition"] = None
+
 	return call
 
 
@@ -286,6 +292,9 @@ def create_lead_from_call_log(call_log: str | dict, lead_details: str | dict | N
 	if "first_name" in valid_fieldnames and not sanitized_details.get("first_name"):
 		reference_label = sanitized_details.get("mobile_no") or call_doc.name
 		sanitized_details["first_name"] = _("Lead from call {0}").format(reference_label)
+
+	if "custom_pincode" in valid_fieldnames and not sanitized_details.get("custom_pincode"):
+		sanitized_details["custom_pincode"] = "000000"
 
 	lead.update(sanitized_details)
 	lead.insert()

@@ -39,6 +39,7 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 			"requested_on",
 			"requested_by",
 			"modified",
+			"revision_notes",
 		],
 		order_by="modified desc",
 		limit=50,
@@ -48,20 +49,23 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 
 	# Child rows: safe to read with get_all since visibility is already gated
 	# by their parent QR being in the filtered set above.
-	rows = frappe.get_all(
+	image_rows = frappe.get_all(
 		"CRM Quote Revision Image",
 		filters={
 			"parenttype": "CRM Quote Request",
 			"parent": ["in", [q["name"] for q in qrs]],
 		},
-		fields=["parent"],
-		pluck="parent",
+		fields=["parent", "image"],
+		order_by="idx asc",
 	)
 	counts: dict[str, int] = {}
-	for parent in rows:
-		counts[parent] = counts.get(parent, 0) + 1
+	image_map: dict[str, list[str]] = {}
+	for row in image_rows:
+		counts[row["parent"]] = counts.get(row["parent"], 0) + 1
+		image_map.setdefault(row["parent"], []).append(row["image"])
 	for q in qrs:
 		q["images_count"] = counts.get(q["name"], 0)
+		q["revision_images"] = image_map.get(q["name"], [])
 	return qrs
 
 

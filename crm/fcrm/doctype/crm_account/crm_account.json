@@ -72,14 +72,6 @@
    "delete": 0,
    "read": 1,
    "report": 1,
-   "role": "Sales Manager",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
    "role": "Sales Executive",
    "write": 1
   },
@@ -118,6 +110,27 @@
    "read": 1,
    "report": 1,
    "role": "B2F Team"
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "read": 1,
+   "report": 1,
+   "write": 1,
+   "role": "Sales Head"
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "read": 1,
+   "report": 1,
+   "write": 1,
+   "role": "RSM"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Management"
   }
  ],
  "quick_entry": 1,

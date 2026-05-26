@@ -12,6 +12,7 @@ def get_aisensy_settings():
 	return frappe.get_single("CRM AISensy Settings")
 
 
+@frappe.whitelist()
 def send_template_message(
 	to: str,
 	template_name: str,
