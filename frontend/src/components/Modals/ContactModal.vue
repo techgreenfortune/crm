@@ -204,6 +204,12 @@ const tabs = createResource({
             if (field.fieldname === 'first_name') {
               field.reqd = 1
             }
+
+            if (field.fieldname === 'company_name') {
+              field.fieldtype = 'Link'
+              field.options = 'CRM Account'
+              field.label = 'Account'
+            }
           })
         })
       })

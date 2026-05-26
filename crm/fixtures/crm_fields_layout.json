@@ -34,5 +34,23 @@
   "modified": "2026-05-26 11:01:43.380624",
   "name": "CRM Lead-Side Panel",
   "type": "Side Panel"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
+  "dt": "CRM Account",
+  "layout": "[{\"name\":\"account_section\",\"label\":\"Account\",\"columns\":[{\"name\":\"column_qe_a1\",\"fields\":[\"account_name\",\"account_type\"]},{\"name\":\"column_qe_a2\",\"fields\":[\"mobile_no\",\"email\"]}]}]",
+  "modified": "2026-05-26 00:00:00.000000",
+  "name": "CRM Account-Quick Entry",
+  "type": "Quick Entry"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "CRM Fields Layout",
+  "dt": "CRM Account",
+  "layout": "[{\"label\":\"Account Details\",\"name\":\"account_details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_sp_a1\",\"fields\":[\"account_type\",\"mobile_no\",\"email\",\"website\",\"industry\",\"territory\",\"address\"]}]}]",
+  "modified": "2026-05-26 00:00:00.000000",
+  "name": "CRM Account-Side Panel",
+  "type": "Side Panel"
  }
 ]

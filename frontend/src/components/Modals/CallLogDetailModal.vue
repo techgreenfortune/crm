@@ -173,7 +173,7 @@ import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import CheckCircleIcon from '@/components/Icons/CheckCircleIcon.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import { getCallLogDetail } from '@/utils/callLog'
-import { sanitizeHTML } from '@/utils'
+import { sanitizeHTML, formatDate } from '@/utils'
 import { isMobileView } from '@/composables/settings'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useDocument } from '@/data/document'
@@ -316,6 +316,16 @@ const detailFields = computed(() => {
       }),
       name: 'disposition',
       value: data.disposition,
+    },
+    {
+      icon: h(FeatherIcon, {
+        name: 'clock',
+        class: 'h-4 w-4',
+      }),
+      name: 'scheduled_callback_at',
+      value: data.scheduled_callback_at
+        ? formatDate(data.scheduled_callback_at, '', true, true)
+        : null,
     },
     {
       icon: h(FeatherIcon, {

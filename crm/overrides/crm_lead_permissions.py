@@ -14,7 +14,7 @@ Access matrix:
 - Management: read-only across assigned leads
 - Marketing: read all assigned + write (field-level lock in CRMLead.validate())
 - B2F Team: C7 assigned only + field-locked writes
-- Estimation Team: C2 assigned only
+- Estimation Team: assigned leads with an active (Pending / Quote Received / Revision Requested) Quote Request
 - Jr. Sales Executive: all non-C7 assigned leads (no unassigned pool access)
 - Sales Executive: own leads, ``custom_lead_type == 'Retail'`` only
 - Project Sales Executive: own leads, ``custom_lead_type == 'Projects'`` only
@@ -46,6 +46,7 @@ from crm.permissions.role_config import (
 	DOWNSTREAM_SCOPE_ROLES,
 	FIELD_GATED_RW,
 	OWNER_SCOPE_ROLES,
+	QUOTE_SCOPE_ROLES,
 	STAGE_LOCKED,
 	TIER1_FULL_RW,
 	TIER1_READ_ONLY,
@@ -58,12 +59,19 @@ from crm.permissions.role_config import (
 # team. Management is included (read-only role) because there's no longer an
 # early-return that would block it before the create gate.
 _NO_CREATE_ROLES = (
-	set(STAGE_LOCKED) | set(OWNER_SCOPE_ROLES) | set(TIER1_READ_ONLY) | {"Jr. Sales Executive", "Marketing"}
+	set(STAGE_LOCKED)
+	| set(QUOTE_SCOPE_ROLES)
+	| set(OWNER_SCOPE_ROLES)
+	| set(TIER1_READ_ONLY)
+	| {"Jr. Sales Executive", "Marketing"}
 )
 
 # SQL fragment for "the lead has an owner" — used to gate non-tier-1,
 # non-Calling-Team roles out of the unassigned pool.
 _ASSIGNED_ONLY_SQL = "(`tabCRM Lead`.lead_owner IS NOT NULL AND `tabCRM Lead`.lead_owner != '')"
+
+# Quote Request statuses that mean Estimation Team still has work to do on the lead.
+_ACTIVE_QR_STATUSES = ("Pending", "Quote Received", "Revision Requested")
 
 
 def has_permission(doc, ptype, user):
@@ -130,6 +138,15 @@ def has_permission(doc, ptype, user):
 	if "Marketing" in roles and not is_unassigned:
 		return True
 
+	# Quote-scoped roles (Estimation Team) — assigned leads with an active QR.
+	if roles & QUOTE_SCOPE_ROLES and not is_unassigned:
+		active_qr = frappe.db.exists(
+			"CRM Quote Request",
+			{"lead": doc.name, "status": ["in", list(_ACTIVE_QR_STATUSES)]},
+		)
+		if active_qr:
+			return True
+
 	# Stage-locked pool roles — assigned leads only.
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
@@ -192,7 +209,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	if roles & (TIER1_READ_ONLY | {"Marketing"}):
 		return _ASSIGNED_ONLY_SQL
 
-	# Stage-locked pools (B2F = C7, Estimation = C2) — assigned only.
+	# Stage-locked pools (B2F = C7) — assigned only.
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
 		if role in roles:
@@ -200,6 +217,16 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	if pool_stages:
 		stages_sql = ",".join(f"'{s}'" for s in sorted(pool_stages))
 		return f"(`tabCRM Lead`.status IN ({stages_sql}) AND {_ASSIGNED_ONLY_SQL})"
+
+	# Quote-scoped roles (Estimation Team) — assigned leads with an active QR.
+	if roles & QUOTE_SCOPE_ROLES:
+		_qr_statuses_sql = ",".join(f"'{s}'" for s in _ACTIVE_QR_STATUSES)
+		active_qr_sql = (
+			"EXISTS (SELECT 1 FROM `tabCRM Quote Request` "
+			"WHERE `tabCRM Quote Request`.lead = `tabCRM Lead`.name "
+			f"AND `tabCRM Quote Request`.status IN ({_qr_statuses_sql}))"
+		)
+		return f"({active_qr_sql} AND {_ASSIGNED_ONLY_SQL})"
 
 	# Jr. Sales Executive — non-C7 assigned only.
 	if "Jr. Sales Executive" in roles:

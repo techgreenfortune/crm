@@ -376,8 +376,10 @@ class CRMLead(Document):
 			return
 
 		# Owner-side editors: SE/PSE see only their own lead; ASM/RSM also
-		# treat downstream-chain users' leads as theirs.
-		if self.lead_owner == user:
+		# treat downstream-chain users' leads as theirs. Checking both the
+		# new and old owner lets the current owner reassign without losing
+		# write access mid-save.
+		if self.lead_owner == user or old.lead_owner == user:
 			return
 		if user_roles & {"ASM", "RSM"}:
 			from crm.overrides.crm_lead_permissions import downstream_users
