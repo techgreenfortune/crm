@@ -33,6 +33,12 @@ def _permission_query_conditions(user: str | None, doctype: str):
 	if roles & {"Sales Head", "Sales Coordinator", "Management"}:
 		return ""
 
+	# When the hierarchy feature is OFF, fall back to Frappe's role-based
+	# permissions for managers (Sales Manager / equivalent) — they see every
+	# lead because their docperm grants full read.
+	if not hierarchy_enabled() and "Sales Manager" in roles:
+		return ""
+
 	in_tree = hierarchy_enabled() and _in_hierarchy(user)
 
 	owner_field = _OWNER_FIELD[doctype]
@@ -87,6 +93,10 @@ def _has_permission(doc, ptype, user, doctype: str) -> bool | None:
 
 	# Tier-1 + Management bypass — see comment in _permission_query_conditions.
 	if roles & {"Sales Head", "Sales Coordinator", "Management"}:
+		return True
+
+	# Hierarchy disabled: defer to Frappe's role-level grant for Sales Manager.
+	if not hierarchy_enabled() and "Sales Manager" in roles:
 		return True
 
 	conditions = _permission_query_conditions(user, doctype)
