@@ -3,7 +3,7 @@
 Implements:
 - ``has_permission`` hook (single-doc gate).
 - ``get_permission_query_conditions`` (list-level filter; wired in hooks.py).
-- ``_downstream_users`` helper for ASM/RSM scoping. Reads from the
+- ``downstream_users`` helper for ASM/RSM scoping. Reads from the
   ``CRM Sales Hierarchy`` NestedSet doctype (adopted from upstream PR #2120
   while keeping our 13-role matrix as the policy layer).
 
@@ -43,6 +43,7 @@ import frappe
 from frappe import _
 
 from crm.permissions.role_config import (
+	DOWNSTREAM_SCOPE_ROLES,
 	FIELD_GATED_RW,
 	OWNER_SCOPE_ROLES,
 	STAGE_LOCKED,
@@ -152,7 +153,7 @@ def has_permission(doc, ptype, user):
 			continue
 		if rule["scope"] == "self" and owner == user:
 			return True
-		if rule["scope"] == "downstream" and owner in _downstream_users(user):
+		if rule["scope"] == "downstream" and owner in downstream_users(user):
 			return True
 
 	return False
@@ -213,7 +214,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		if rule["scope"] == "self":
 			owner_clause = f"`tabCRM Lead`.lead_owner = {esc(user)}"
 		else:  # downstream
-			downstream = _downstream_users(user)
+			downstream = downstream_users(user)
 			in_list = ",".join(esc(u) for u in sorted(downstream)) or esc(user)
 			owner_clause = f"`tabCRM Lead`.lead_owner IN ({in_list})"
 		if rule["lead_type"]:
@@ -227,7 +228,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	return "(" + " OR ".join(clauses) + ")"
 
 
-def _downstream_users(user: str) -> set[str]:
+def downstream_users(user: str) -> set[str]:
 	"""Return ``{user}`` plus all users at or below ``user`` in CRM Sales Hierarchy.
 
 	Uses NestedSet ``lft / rgt`` for an O(1) range scan on the hierarchy table.
@@ -267,3 +268,80 @@ def bust_downstream_users_cache(doc=None, method=None):
 	cache = frappe.cache()
 	current = cache.get_value("crm:sales_hierarchy:version") or 0
 	cache.set_value("crm:sales_hierarchy:version", int(current) + 1)
+
+
+# ----------------------------------------------------------------------------
+# Tree-scoped lead assignment guard (ASM / RSM)
+# ----------------------------------------------------------------------------
+#
+# Restricts who an ASM/RSM placed in CRM Sales Hierarchy may hand a lead to:
+# their downstream subtree plus their direct manager (1 step up). Orphan or
+# freshly-invited users (no hierarchy row) bypass the check so onboarding
+# isn't blocked. Tier-1 (System Manager / Sales Head / Sales Coordinator)
+# bypass too — they keep cross-team transfer rights.
+#
+# Enforced in two places that must stay in sync:
+#   - CRMLead._check_write_permission (lead_owner field change)
+#   - guard_lead_assignment (ToDo before_insert; covers _assign + bulk paths)
+# ----------------------------------------------------------------------------
+
+# Roles subject to the tree-scoped assignment rule come from role_config's
+# OWNER_SCOPE_ROLES (`scope == "downstream"`). Tier-1 (TIER1_FULL_RW) bypass
+# the guard — they keep cross-team transfer rights. SE/PSE are self-scope
+# leaves; JSE / Calling Team are pool-based — none of them have a meaningful
+# "tree" to restrict to, so they're excluded by virtue of not being in
+# DOWNSTREAM_SCOPE_ROLES.
+
+
+def allowed_assignees(user: str) -> set[str] | None:
+	"""Return users ``user`` may assign CRM Leads to: downstream subtree
+	plus direct upline (1 step). Returns ``None`` if ``user`` has no node
+	in ``CRM Sales Hierarchy`` — caller skips the check (orphan / newly
+	onboarded)."""
+	node = frappe.db.get_value(
+		"CRM Sales Hierarchy",
+		{"user": user},
+		["name", "reports_to"],
+		as_dict=True,
+	)
+	if not node:
+		return None
+	allowed = set(downstream_users(user))
+	if node.reports_to:
+		parent_user = frappe.db.get_value("CRM Sales Hierarchy", node.reports_to, "user")
+		if parent_user:
+			allowed.add(parent_user)
+	return allowed
+
+
+def guard_lead_assignment(doc, method=None):
+	"""ToDo ``before_insert`` hook — blocks an ASM/RSM from creating an
+	``_assign`` ToDo against a CRM Lead for a user outside their tree.
+	Covers both the single (``assign_to.add``) and bulk
+	(``assign_to.add_multiple``) flows since both create ToDo rows under
+	the hood. Mirrors the ``lead_owner``-change guard in CRMLead."""
+	if getattr(doc, "reference_type", None) != "CRM Lead":
+		return
+	user = frappe.session.user
+	if user == "Administrator" or frappe.flags.get("ignore_permissions"):
+		return
+	roles = set(frappe.get_roles(user))
+	if roles & TIER1_FULL_RW:
+		return
+	if not (roles & DOWNSTREAM_SCOPE_ROLES):
+		return
+	allowed = allowed_assignees(user)
+	if allowed is None:
+		# Orphan / newly-onboarded — skip the check.
+		return
+	allocated_to = getattr(doc, "allocated_to", None)
+	if allocated_to and allocated_to not in allowed:
+		frappe.throw(
+			_(
+				"You can only assign leads to users in your team (your reports "
+				"or your manager). {0} is outside your tree — escalate to Sales "
+				"Head for cross-team transfers."
+			).format(allocated_to),
+			frappe.PermissionError,
+			title=_("Out-of-tree Assignment Blocked"),
+		)

@@ -26,6 +26,13 @@
         </div>
         <div>
           <div class="mb-2 text-sm text-ink-gray-5">
+            {{ __('Partner Fabricator Name') }}
+            <span class="text-ink-red-2">*</span>
+          </div>
+          <FormControl v-model="partnerFabricatorName" type="text" />
+        </div>
+        <div>
+          <div class="mb-2 text-sm text-ink-gray-5">
             {{ __('Routing Notes') }}
             <span v-if="routingReason === 'Other'" class="text-ink-red-2"
               >*</span
@@ -64,6 +71,7 @@ const show = defineModel({ type: Boolean })
 
 const doc = props.document.doc
 const routingReason = ref(doc.custom_fabricator_routing_reason || '')
+const partnerFabricatorName = ref(doc.custom_partner_fabricator_name || '')
 const routingNotes = ref(doc.custom_fabricator_routing_notes || '')
 const error = ref('')
 
@@ -79,6 +87,7 @@ function cancel() {
   show.value = false
   error.value = ''
   routingReason.value = ''
+  partnerFabricatorName.value = ''
   routingNotes.value = ''
   doc.status = props.document.originalDoc.status
 }
@@ -86,6 +95,10 @@ function cancel() {
 function save() {
   if (!routingReason.value) {
     error.value = __('Fabricator Routing Reason is required')
+    return
+  }
+  if (!partnerFabricatorName.value) {
+    error.value = __('Partner Fabricator Name is required')
     return
   }
   if (routingReason.value === 'Other' && !routingNotes.value) {
@@ -97,6 +110,7 @@ function save() {
   show.value = false
 
   doc.custom_fabricator_routing_reason = routingReason.value
+  doc.custom_partner_fabricator_name = partnerFabricatorName.value
   doc.custom_fabricator_routing_notes = routingNotes.value
   props.document.save.submit()
 }

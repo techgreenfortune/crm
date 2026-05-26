@@ -9,6 +9,14 @@ from pypika.functions import Function
 from crm.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
 from crm.utils import sales_user_only
 
+# CRM roles that get the team-wide ("Manager Dashboard") view. Mirrors the
+# Sales Manager role_profile bundling that existed before the role retirement
+# on 2026-05-25 — Sales Head / Sales Coordinator / RSM / ASM / Management were
+# the five profiles bundled with Sales Manager, plus System Manager for admins.
+# Anyone else with Sales User in their roles is treated as an individual
+# contributor (self-only filter).
+_MANAGER_ROLES = frozenset({"System Manager", "Sales Head", "Sales Coordinator", "RSM", "ASM", "Management"})
+
 
 # Custom function for TIMESTAMPDIFF (MySQL/MariaDB)
 class TimestampDiff(Function):
@@ -33,11 +41,14 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = frappe.get_roles(frappe.session.user)
-	is_sales_manager = "Sales Manager" in roles or "System Manager" in roles
-	is_sales_user = "Sales User" in roles and not is_sales_manager
+	roles = set(frappe.get_roles(frappe.session.user))
+	# Roles that previously got Sales Manager via role_profile.json bundling
+	# (Sales Head, Sales Coordinator, RSM, ASM, Management). Preserves the
+	# old "manager dashboard" behaviour after Sales Manager retirement.
+	is_manager = bool(roles & _MANAGER_ROLES)
+	is_individual_contributor = ("Sales User" in roles) and not is_manager
 
-	if is_sales_user:
+	if is_individual_contributor:
 		user = frappe.session.user
 
 	dashboard = frappe.db.exists("CRM Dashboard", "Manager Dashboard")
@@ -73,11 +84,11 @@ def get_chart(
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = frappe.get_roles(frappe.session.user)
-	is_sales_manager = "Sales Manager" in roles or "System Manager" in roles
-	is_sales_user = "Sales User" in roles and not is_sales_manager
+	roles = set(frappe.get_roles(frappe.session.user))
+	is_manager = bool(roles & _MANAGER_ROLES)
+	is_individual_contributor = ("Sales User" in roles) and not is_manager
 
-	if is_sales_user:
+	if is_individual_contributor:
 		user = frappe.session.user
 
 	method_name = f"get_{name}"

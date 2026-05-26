@@ -10,12 +10,6 @@
     "parent": "B2F Team",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "B2F Team",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "Sales User"
    },
    {
@@ -33,12 +27,6 @@
   "name": "Calling Team",
   "role_profile": "Calling Team",
   "roles": [
-   {
-    "parent": "Calling Team",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
    {
     "parent": "Calling Team",
     "parentfield": "roles",
@@ -64,12 +52,6 @@
     "parent": "Jr. Sales Executive",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "Jr. Sales Executive",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "Sales User"
    },
    {
@@ -91,18 +73,6 @@
     "parent": "Sales Coordinator",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "Sales Coordinator",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales Manager"
-   },
-   {
-    "parent": "Sales Coordinator",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "Sales Coordinator"
    }
   ]
@@ -114,12 +84,6 @@
   "name": "Sales Executive",
   "role_profile": "Sales Executive",
   "roles": [
-   {
-    "parent": "Sales Executive",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
    {
     "parent": "Sales Executive",
     "parentfield": "roles",
@@ -145,18 +109,6 @@
     "parent": "ASM",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "ASM",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales Manager"
-   },
-   {
-    "parent": "ASM",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "ASM"
    }
   ]
@@ -168,12 +120,6 @@
   "name": "Project Sales Executive",
   "role_profile": "Project Sales Executive",
   "roles": [
-   {
-    "parent": "Project Sales Executive",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
    {
     "parent": "Project Sales Executive",
     "parentfield": "roles",
@@ -199,18 +145,6 @@
     "parent": "RSM",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "RSM",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales Manager"
-   },
-   {
-    "parent": "RSM",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "RSM"
    }
   ]
@@ -222,12 +156,6 @@
   "name": "Marketing",
   "role_profile": "Marketing",
   "roles": [
-   {
-    "parent": "Marketing",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
    {
     "parent": "Marketing",
     "parentfield": "roles",
@@ -253,18 +181,6 @@
     "parent": "Management",
     "parentfield": "roles",
     "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "Management",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales Manager"
-   },
-   {
-    "parent": "Management",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
     "role": "Management"
    }
   ]
@@ -276,12 +192,6 @@
   "name": "Estimation Team",
   "role_profile": "Estimation Team",
   "roles": [
-   {
-    "parent": "Estimation Team",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
    {
     "parent": "Estimation Team",
     "parentfield": "roles",
@@ -303,18 +213,6 @@
   "name": "Sales Head",
   "role_profile": "Sales Head",
   "roles": [
-   {
-    "parent": "Sales Head",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "CRM User"
-   },
-   {
-    "parent": "Sales Head",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales Manager"
-   },
    {
     "parent": "Sales Head",
     "parentfield": "roles",

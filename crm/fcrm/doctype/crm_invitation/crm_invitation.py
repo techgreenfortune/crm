@@ -77,8 +77,10 @@ class CRMInvitation(Document):
 		if self.role == "System Manager":
 			user.append_roles("System Manager")
 		else:
-			# Every other CRM role is provisioned via Role Profile, which
-			# bundles CRM User + the custom role per crm/fixtures/role_profile.json.
+			# Every other CRM role is provisioned via Role Profile per
+			# crm/fixtures/role_profile.json — lower-tier profiles bundle the
+			# Frappe Sales User role + the custom role; upper-tier profiles
+			# bundle only the custom role.
 			user.role_profile_name = self.role
 			self.update_module_in_user(user, "FCRM")
 		user.save(ignore_permissions=True)

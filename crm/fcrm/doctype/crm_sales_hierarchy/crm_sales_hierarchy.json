@@ -108,17 +108,52 @@
    "write": 1
   },
   {
+   "read": 1,
+   "role": "Sales User"
+  },
+  {
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Sales Manager",
-   "share": 1
+   "share": 1,
+   "role": "Sales Head"
   },
   {
+   "email": 1,
+   "export": 1,
+   "print": 1,
    "read": 1,
-   "role": "Sales User"
+   "report": 1,
+   "share": 1,
+   "role": "Sales Coordinator"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "role": "RSM"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "role": "ASM"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Management"
   }
  ],
  "row_format": "Dynamic",

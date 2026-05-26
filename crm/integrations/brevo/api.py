@@ -138,7 +138,7 @@ def enroll_in_sequence(email: str, lead_name: str) -> None:
 
 @frappe.whitelist()
 def send_test_email(to_email: str):
-	frappe.only_for(["System Manager", "Sales Manager"])
+	frappe.only_for(["System Manager", "Sales Head", "Sales Coordinator"])
 	settings = get_brevo_settings()
 	if not settings.enabled:
 		frappe.throw(frappe._("Brevo integration is not enabled."))

@@ -82,14 +82,24 @@ def add_note_to_call_log(call_sid: str, note: dict):
 
 
 @frappe.whitelist()
-def add_disposition_to_call_log(call_sid: str, disposition: str):
+def add_disposition_to_call_log(
+	call_sid: str,
+	disposition: str,
+	scheduled_callback_at: str | None = None,
+):
 	"""Persist a disposition on a call log. Ownership and No-Answer validation
 	live in the `CRM Call Log — Before Save — Disposition Validation` server
 	script (see fixture)."""
 	call_log = frappe.get_doc("CRM Call Log", call_sid)
 	call_log.disposition = disposition
+	if scheduled_callback_at:
+		call_log.scheduled_callback_at = scheduled_callback_at
 	call_log.save(ignore_permissions=True)
-	return {"name": call_sid, "disposition": disposition}
+	return {
+		"name": call_sid,
+		"disposition": disposition,
+		"scheduled_callback_at": call_log.scheduled_callback_at,
+	}
 
 
 @frappe.whitelist()

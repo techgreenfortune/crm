@@ -9,7 +9,8 @@
 		"job_title": "CTO",
 		"source": "Website",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -22,7 +23,8 @@
 		"source": "Referral",
 		"custom_sub_source": "Customer",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -34,7 +36,8 @@
 		"job_title": "Marketing Director",
 		"source": "Cold Call",
 		"status": "New Lead",
-		"lead_owner": "crm.user1@example.com"
+		"lead_owner": "crm.user1@example.com",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -46,7 +49,8 @@
 		"job_title": "IT Manager",
 		"source": "Email Campaign",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -58,7 +62,8 @@
 		"job_title": "CEO",
 		"source": "Social Media",
 		"status": "New Lead",
-		"lead_owner": "crm.user1@example.com"
+		"lead_owner": "crm.user1@example.com",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -70,7 +75,8 @@
 		"job_title": "Data Scientist",
 		"source": "Website",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -83,7 +89,8 @@
 		"source": "Referral",
 		"custom_sub_source": "Customer",
 		"status": "New Lead",
-		"lead_owner": "crm.user1@example.com"
+		"lead_owner": "crm.user1@example.com",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -95,7 +102,8 @@
 		"job_title": "Senior Consultant",
 		"source": "Cold Call",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -106,7 +114,8 @@
 		"organization": "Innovation Labs",
 		"job_title": "Research Lead",
 		"source": "Email Campaign",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -118,7 +127,8 @@
 		"job_title": "Operations Manager",
 		"source": "Social Media",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -129,7 +139,8 @@
 		"organization": "Tech Corp",
 		"job_title": "Product Manager",
 		"source": "Website",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -142,7 +153,8 @@
 		"source": "Referral",
 		"custom_sub_source": "Customer",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -153,7 +165,8 @@
 		"organization": "Digital Solutions",
 		"job_title": "Business Analyst",
 		"source": "Cold Call",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -165,7 +178,8 @@
 		"job_title": "Project Manager",
 		"source": "Email Campaign",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -176,7 +190,8 @@
 		"organization": "Cloud Innovations",
 		"job_title": "Solutions Architect",
 		"source": "Social Media",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -188,7 +203,8 @@
 		"job_title": "AI Engineer",
 		"source": "Website",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -200,7 +216,8 @@
 		"job_title": "Mobile Lead",
 		"source": "Referral",
 		"custom_sub_source": "Customer",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -212,7 +229,8 @@
 		"job_title": "Security Officer",
 		"source": "Cold Call",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -223,7 +241,8 @@
 		"organization": "Data Services",
 		"job_title": "Data Engineer",
 		"source": "Email Campaign",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -235,7 +254,8 @@
 		"job_title": "Analytics Manager",
 		"source": "Social Media",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -246,7 +266,8 @@
 		"organization": "Platform Tech",
 		"job_title": "Platform Engineer",
 		"source": "Website",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -259,7 +280,8 @@
 		"source": "Referral",
 		"custom_sub_source": "Customer",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -270,7 +292,8 @@
 		"organization": "Blockchain Corp",
 		"job_title": "Blockchain Developer",
 		"source": "Cold Call",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -282,7 +305,8 @@
 		"job_title": "DevOps Lead",
 		"source": "Email Campaign",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -293,7 +317,8 @@
 		"organization": "Network Systems",
 		"job_title": "Network Admin",
 		"source": "Social Media",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -305,7 +330,8 @@
 		"job_title": "DBA",
 		"source": "Website",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -317,7 +343,8 @@
 		"job_title": "Web Developer",
 		"source": "Referral",
 		"custom_sub_source": "Customer",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -329,7 +356,8 @@
 		"job_title": "API Designer",
 		"source": "Cold Call",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -340,7 +368,8 @@
 		"organization": "Testing Labs",
 		"job_title": "QA Manager",
 		"source": "Email Campaign",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -352,7 +381,8 @@
 		"job_title": "UX Designer",
 		"source": "Social Media",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -363,7 +393,8 @@
 		"organization": "Frontend Systems",
 		"job_title": "Frontend Lead",
 		"source": "Website",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -376,7 +407,8 @@
 		"source": "Referral",
 		"custom_sub_source": "Customer",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -387,7 +419,8 @@
 		"organization": "Full Stack Corp",
 		"job_title": "Full Stack Developer",
 		"source": "Cold Call",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -399,7 +432,8 @@
 		"job_title": "Enterprise Architect",
 		"source": "Email Campaign",
 		"status": "New Lead",
-		"lead_owner": "Administrator"
+		"lead_owner": "Administrator",
+		"custom_pincode": "000000"
 	},
 	{
 		"doctype": "CRM Lead",
@@ -410,6 +444,7 @@
 		"organization": "Microservices Inc",
 		"job_title": "Microservices Lead",
 		"source": "Social Media",
-		"status": "New Lead"
+		"status": "New Lead",
+		"custom_pincode": "000000"
 	}
 ]

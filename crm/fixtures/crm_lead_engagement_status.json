@@ -1,14 +1,5 @@
 [
  {
-  "color": "green",
-  "docstatus": 0,
-  "doctype": "CRM Lead Engagement Status",
-  "engagement_status": "Active",
-  "modified": "2026-05-14 00:00:00",
-  "name": "Active",
-  "position": 1
- },
- {
   "color": "gray",
   "docstatus": 0,
   "doctype": "CRM Lead Engagement Status",
@@ -43,5 +34,14 @@
   "modified": "2026-05-21 12:00:00",
   "name": "Won",
   "position": 5
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Engagement Status",
+  "engagement_status": "Active",
+  "modified": "2026-05-14 00:00:00",
+  "name": "Active",
+  "position": 1
  }
 ]

@@ -41,6 +41,7 @@ export const brevoEnabled = ref(Boolean(window.brevo_enabled))
 
 export const opsGateEnabled = ref(Boolean(window.opsgate_enabled))
 export const opsGateUrl = ref(window.opsgate_url || '')
+export const opsGateLoginRedirect = ref(Boolean(window.opsgate_login_redirect))
 
 export const mobileSidebarOpened = ref(false)
 

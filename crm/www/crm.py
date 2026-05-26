@@ -59,6 +59,10 @@ def get_boot():
 			"brevo_enabled": is_brevo_enabled(),
 			"opsgate_enabled": bool(frappe.db.get_single_value("FCRM Settings", "opsgate_enabled")),
 			"opsgate_url": frappe.db.get_single_value("FCRM Settings", "opsgate_url") or "",
+			"user_roles": frappe.get_roles(),
+			"opsgate_login_redirect": bool(
+				frappe.db.get_single_value("FCRM Settings", "opsgate_login_redirect")
+			),
 		}
 	)
 
