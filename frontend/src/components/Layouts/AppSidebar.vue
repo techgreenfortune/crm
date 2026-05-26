@@ -250,11 +250,13 @@ const links = [
     to: 'Organizations',
   },
   */
+  /* disabled: Accounts hidden pending testing
   {
     label: 'Accounts',
     icon: AccountsIcon,
     to: 'Accounts',
   },
+  */
   {
     label: 'Notes',
     icon: NoteIcon,
@@ -351,8 +353,7 @@ function getIcon(routeName, icon) {
       return ContactsIcon
     case 'Organizations':
       return OrganizationsIcon
-    case 'Accounts':
-      return AccountsIcon
+    // case 'Accounts': return AccountsIcon  // disabled: Accounts hidden pending testing
     case 'Notes':
       return NoteIcon
     case 'Call Logs':

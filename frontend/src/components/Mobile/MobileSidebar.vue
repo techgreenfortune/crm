@@ -98,6 +98,7 @@ import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+// import AccountsIcon from '@/components/Icons/AccountsIcon.vue'  // disabled: Accounts hidden pending testing
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -138,6 +139,13 @@ const links = [
     icon: OrganizationsIcon,
     to: 'Organizations',
   },
+  /* disabled: Accounts hidden pending testing
+  {
+    label: 'Accounts',
+    icon: AccountsIcon,
+    to: 'Accounts',
+  },
+  */
   {
     label: 'Notes',
     icon: NoteIcon,
