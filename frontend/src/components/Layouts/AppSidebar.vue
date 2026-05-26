@@ -168,6 +168,7 @@ import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -249,6 +250,11 @@ const links = [
     to: 'Organizations',
   },
   */
+  {
+    label: 'Accounts',
+    icon: AccountsIcon,
+    to: 'Accounts',
+  },
   {
     label: 'Notes',
     icon: NoteIcon,
@@ -345,6 +351,8 @@ function getIcon(routeName, icon) {
       return ContactsIcon
     case 'Organizations':
       return OrganizationsIcon
+    case 'Accounts':
+      return AccountsIcon
     case 'Notes':
       return NoteIcon
     case 'Call Logs':

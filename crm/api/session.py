@@ -125,3 +125,17 @@ def get_organizations():
 	).run(as_dict=1)
 
 	return organizations
+
+
+@frappe.whitelist()
+def get_accounts():
+	get_session_role_flags()
+
+	accounts = frappe.qb.get_query(
+		"CRM Account",
+		fields=["*"],
+		order_by="name asc",
+		distinct=True,
+	).run(as_dict=1)
+
+	return accounts

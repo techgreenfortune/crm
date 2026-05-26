@@ -73,8 +73,11 @@ TIER1_READ_ONLY: frozenset[str] = frozenset({"Management"})
 FIELD_GATED_RW: frozenset[str] = frozenset({"Marketing", "B2F Team"})
 STAGE_LOCKED: dict[str, frozenset[str]] = {
 	"B2F Team": frozenset({"C7"}),
-	"Estimation Team": frozenset({"C2"}),
 }
+
+# Roles whose lead visibility is gated on an active CRM Quote Request rather
+# than a fixed stage. "Active" = Pending / Quote Received / Revision Requested.
+QUOTE_SCOPE_ROLES: frozenset[str] = frozenset({"Estimation Team"})
 NO_C7_ROLES: frozenset[str] = frozenset({"Calling Team", "Jr. Sales Executive"})
 
 # Roles permitted to view leads with no ``lead_owner`` (the unassigned pool).

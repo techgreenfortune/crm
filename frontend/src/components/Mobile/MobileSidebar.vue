@@ -61,6 +61,7 @@
                     :icon="link.icon"
                     :label="__(link.label)"
                     :to="link.to"
+                    :on-click="link.onClick || null"
                     class="mx-2 my-0.5"
                   />
                 </nav>
@@ -101,11 +102,16 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import OpsGateIcon from '@/components/Icons/OpsGateIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
 import { viewsStore } from '@/stores/views'
 import { unreadNotificationsCount } from '@/stores/notifications'
 import { computed, h } from 'vue'
-import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
+import {
+  mobileSidebarOpened as sidebarOpened,
+  opsGateEnabled,
+} from '@/composables/settings'
+import { call, toast } from 'frappe-ui'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
 
@@ -147,7 +153,29 @@ const links = [
     icon: PhoneIcon,
     to: 'Call Logs',
   },
+  {
+    label: 'OpsGate',
+    icon: OpsGateIcon,
+    onClick: openOpsGate,
+    condition: () => opsGateEnabled.value,
+  },
 ]
+
+async function openOpsGate() {
+  sidebarOpened.value = false
+  try {
+    const data = await call('crm.api.settings.get_opsgate_redirect_url')
+    if (data?.redirect_url) {
+      window.open(data.redirect_url, '_blank')
+    } else {
+      toast.error('OpsGate SSO failed: no redirect URL returned')
+    }
+  } catch {
+    toast.error(
+      'Could not sign you into OpsGate. Please contact your administrator.',
+    )
+  }
+}
 
 const allViews = computed(() => {
   let _views = [
@@ -155,7 +183,10 @@ const allViews = computed(() => {
       name: 'All Views',
       hideLabel: true,
       opened: true,
-      views: links,
+      views: links.filter((link) => {
+        if (link.condition) return link.condition()
+        return true
+      }),
     },
   ]
   if (getPublicViews().length) {
