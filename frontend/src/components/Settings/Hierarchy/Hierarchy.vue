@@ -356,7 +356,7 @@ const treeOptions = {
 function enrich(node) {
   const user =
     usersResource.data?.crmUsers?.find((x) => x.name === node.user) || {}
-  const role = getUserRole(node.user) || 'CRM User'
+  const role = getUserRole(node.user) || ''
   const role_rank = roleRank.value[role] ?? 99
 
   return {

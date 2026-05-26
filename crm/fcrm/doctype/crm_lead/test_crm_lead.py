@@ -510,6 +510,6 @@ class TestCRMLead(FrappeTestCase):
 
 def create_lead(**kwargs):
 	"""Helper function to create a CRM Lead for testing"""
-	data = {"doctype": "CRM Lead"}
+	data = {"doctype": "CRM Lead", "custom_pincode": "000000"}
 	data.update(kwargs)
 	return frappe.get_doc(data).insert()

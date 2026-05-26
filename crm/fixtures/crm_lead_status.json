@@ -1,16 +1,5 @@
 [
  {
-  "color": "gray",
-  "docstatus": 0,
-  "doctype": "CRM Lead Status",
-  "lead_status": "C0",
-  "modified": "2026-05-19 00:00:00",
-  "name": "C0",
-  "position": 1,
-  "stage_label": "C0 — New Lead",
-  "type": "Open"
- },
- {
   "color": "blue",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
@@ -64,5 +53,16 @@
   "position": 6,
   "stage_label": "C7 — Forwarded to Fabricator",
   "type": "On Hold"
+ },
+ {
+  "color": "gray",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C0",
+  "modified": "2026-05-19 00:00:00",
+  "name": "C0",
+  "position": 1,
+  "stage_label": "C0 — New Lead",
+  "type": "Open"
  }
 ]

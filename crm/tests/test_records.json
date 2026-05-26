@@ -11,12 +11,7 @@
 			{
 				"doctype": "Has Role",
 				"parentfield": "roles",
-				"role": "Sales Manager"
-			},
-			{
-				"doctype": "Has Role",
-				"parentfield": "roles",
-				"role": "Sales User"
+				"role": "Sales Head"
 			}
 		],
 		"user_type": "System User"
@@ -118,12 +113,7 @@
 			{
 				"doctype": "Has Role",
 				"parentfield": "roles",
-				"role": "Sales Manager"
-			},
-			{
-				"doctype": "Has Role",
-				"parentfield": "roles",
-				"role": "Sales User"
+				"role": "Sales Coordinator"
 			}
 		],
 		"user_type": "System User"
@@ -175,16 +165,6 @@
 				"doctype": "Has Role",
 				"parentfield": "roles",
 				"role": "System Manager"
-			},
-			{
-				"doctype": "Has Role",
-				"parentfield": "roles",
-				"role": "Sales Manager"
-			},
-			{
-				"doctype": "Has Role",
-				"parentfield": "roles",
-				"role": "Sales User"
 			}
 		],
 		"user_type": "System User"

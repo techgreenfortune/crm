@@ -16,18 +16,24 @@ def _get_settings():
 
 
 def _resolve_sales_person_email(lead_name: str) -> str:
-	"""Return the email of the earliest-assigned user that holds Sales Manager.
+	"""Return the email of the senior-most assignee on a lead.
 
 	Frappe stores per-lead assignments in ``ToDo`` (one row per allocation).
 	A lead can have several open assignees; the backend's
 	``getSalesManagerIdByEmailQuery`` resolves a single email → sales_manager_id,
-	so we have to choose one. The contract: walk the open ToDos in
-	``creation ASC`` order (first assigned first) and return the first
-	``allocated_to`` whose user carries the "Sales Manager" role.
+	so we have to choose one. The contract:
 
-	Returns "" when no assignee qualifies — the backend handles that gracefully
-	(leaves ``sales_manager_id`` NULL with a warn-level log).
+	1. Walk open ToDos in ``creation ASC`` order.
+	2. For each assignee, compute their most senior CRM role rank from
+	   ``role_config.ROLE_RANK`` (lower rank = more senior).
+	3. Return the assignee with the lowest rank — ties broken by creation order
+	   (earliest assigned wins).
+	4. If no assignee has a recognized CRM role, fall back to ``lead.lead_owner``.
+	5. Return "" only when both lookups come up empty — the backend handles that
+	   gracefully (leaves ``sales_manager_id`` NULL with a warn-level log).
 	"""
+	from crm.permissions.role_config import ROLE_RANK
+
 	assignees = frappe.get_all(
 		"ToDo",
 		filters={
@@ -39,12 +45,26 @@ def _resolve_sales_person_email(lead_name: str) -> str:
 		order_by="creation asc",
 		pluck="allocated_to",
 	)
+
+	best_rank: int | None = None
+	best_email = ""
 	for email in assignees:
 		if not email:
 			continue
-		if "Sales Manager" in frappe.get_roles(email):
-			return email
-	return ""
+		user_rank = min(
+			(ROLE_RANK[r] for r in frappe.get_roles(email) if r in ROLE_RANK),
+			default=None,
+		)
+		if user_rank is None:
+			continue
+		if best_rank is None or user_rank < best_rank:
+			best_rank = user_rank
+			best_email = email
+
+	if best_email:
+		return best_email
+
+	return frappe.db.get_value("CRM Lead", lead_name, "lead_owner") or ""
 
 
 def _post_with_retry(url: str, json: dict, headers: dict, timeout: float):
@@ -130,13 +150,13 @@ def create_project_on_won(lead_name: str) -> None:
 	# Resolve the salesperson up front. The V2 public endpoint REQUIRES
 	# sales_person_email: it resolves both sales_manager_id and created_by on the
 	# backend (no more req.user fallback). Empty would 400; surface a clearer
-	# error locally so the user sees "no Sales Manager assigned" instead of a
+	# error locally so the user sees "no sales owner assigned" instead of a
 	# vague HTTP error.
 	sales_person_email = _resolve_sales_person_email(lead_name)
 	if not sales_person_email:
 		frappe.log_error(
-			f"Lead {lead_name}: no assignee with the Sales Manager role; cannot "
-			f"resolve sales_person_email for the project handoff.",
+			f"Lead {lead_name}: no assignee with a CRM role and no lead_owner; "
+			f"cannot resolve sales_person_email for the project handoff.",
 			"Project API: missing sales_person_email",
 		)
 		try:
@@ -147,9 +167,9 @@ def create_project_on_won(lead_name: str) -> None:
 					"reference_doctype": "CRM Lead",
 					"reference_name": lead_name,
 					"content": (
-						"[AUTOMATION] Project handoff aborted — no assignee on this "
-						"lead carries the Sales Manager role. Assign a Sales Manager "
-						"and re-fire."
+						"[AUTOMATION] Project handoff aborted — this lead has no "
+						"assignee with a CRM role and no lead_owner. Assign a sales "
+						"owner and re-fire."
 					),
 				}
 			).insert(ignore_permissions=True)
@@ -157,10 +177,10 @@ def create_project_on_won(lead_name: str) -> None:
 			pass
 		frappe.throw(
 			frappe._(
-				"Cannot create project: no assignee on this lead has the Sales Manager "
-				"role. Assign a sales manager before clicking Create Project."
+				"Cannot create project: this lead has no assignee with a CRM role "
+				"and no lead_owner. Assign a sales owner before clicking Create Project."
 			),
-			title=frappe._("Sales Manager Required"),
+			title=frappe._("Sales Owner Required"),
 		)
 
 	# Site location is a "<lat>,<lng>" string. Send it only when both halves

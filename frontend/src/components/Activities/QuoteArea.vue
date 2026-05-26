@@ -30,9 +30,6 @@
             <span v-if="quote.quote_number">
               {{ __('Ref:') }} {{ quote.quote_number }}
             </span>
-            <span v-if="quote.images_count">
-              {{ __('{0} image(s)', [quote.images_count]) }}
-            </span>
             <span v-if="quote.requested_on">
               {{ formatDate(quote.requested_on, 'D MMM YYYY') }}
             </span>
@@ -56,7 +53,7 @@
       </div>
 
       <div
-        v-if="quote.revisions && quote.revisions.length > 1"
+        v-if="quote.revisions && hasRevisionContent(quote)"
         class="ml-2 mt-1"
       >
         <Button
@@ -78,35 +75,53 @@
         </Button>
         <div
           v-if="expanded[quote.name]"
-          class="mt-1.5 ml-3 flex flex-col gap-1.5 border-l border-outline-gray-2 pl-3"
+          class="mt-1.5 ml-3 flex flex-col gap-1 border-l border-outline-gray-2 pl-3"
         >
-          <div
-            v-for="rev in quote.revisions"
-            :key="rev.timestamp"
-            class="flex items-center gap-2 text-sm"
-          >
-            <span class="font-medium text-ink-gray-7 shrink-0">
-              {{ __('Round {0}', [rev.round]) }}
-            </span>
-            <span v-if="rev.value" class="text-ink-gray-6">
-              ₹{{ formatCurrency(rev.value) }}
-            </span>
-            <span v-if="rev.margin" class="text-ink-gray-6">
-              · {{ rev.margin }}%
-            </span>
-            <Button
-              v-if="rev.file_url"
-              :label="__('View')"
-              variant="subtle"
-              size="sm"
-              @click.stop="openFile(rev.file_url)"
-            />
-            <Tooltip :text="formatDate(rev.timestamp)">
-              <span class="ml-auto text-xs text-ink-gray-5">
-                {{ timeAgo(rev.timestamp) }}
+          <template v-for="rev in quote.revisions" :key="rev.timestamp">
+            <div class="flex items-center gap-2 text-sm">
+              <span class="font-medium text-ink-gray-7 shrink-0">
+                {{ __('Round {0}', [rev.round]) }}
               </span>
-            </Tooltip>
-          </div>
+              <span v-if="rev.value" class="text-ink-gray-6">
+                ₹{{ formatCurrency(rev.value) }}
+              </span>
+              <span v-if="rev.margin" class="text-ink-gray-6">
+                · {{ rev.margin }}%
+              </span>
+              <Button
+                v-if="rev.file_url"
+                :label="__('View')"
+                variant="subtle"
+                size="sm"
+                @click.stop="openFile(rev.file_url)"
+              />
+              <Tooltip :text="formatDate(rev.timestamp)">
+                <span class="ml-auto text-xs text-ink-gray-5">
+                  {{ timeAgo(rev.timestamp) }}
+                </span>
+              </Tooltip>
+            </div>
+            <!-- Revision request that followed this round -->
+            <div
+              v-if="rev.revision_after"
+              class="pl-4 text-xs text-ink-gray-5 italic"
+            >
+              {{ __('Revision: {0}', [rev.revision_after]) }}
+            </div>
+            <!-- Images from the latest revision request (only on last round) -->
+            <div
+              v-if="isLastRound(rev, quote) && quote.revision_images?.length"
+              class="pl-4 mt-0.5 flex flex-wrap gap-1.5"
+            >
+              <img
+                v-for="(img, idx) in quote.revision_images"
+                :key="idx"
+                :src="img"
+                class="size-12 rounded object-cover cursor-pointer border border-outline-gray-2"
+                @click.stop="openFile(img)"
+              />
+            </div>
+          </template>
         </div>
       </div>
 
@@ -134,6 +149,19 @@ const expanded = ref({})
 
 function toggleExpand(name) {
   expanded.value = { ...expanded.value, [name]: !expanded.value[name] }
+}
+
+function hasRevisionContent(quote) {
+  if (!quote.revisions?.length) return false
+  return (
+    quote.revisions.length > 1 ||
+    quote.revisions.some((r) => r.revision_after) ||
+    quote.revision_images?.length > 0
+  )
+}
+
+function isLastRound(rev, quote) {
+  return rev.round === Math.max(...quote.revisions.map((r) => r.round))
 }
 
 function openQuote(quote) {

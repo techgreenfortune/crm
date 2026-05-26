@@ -174,6 +174,13 @@ class CRMLead(Document):
 		# misleading "could not find X" link error.
 		self._enforce_c4_won_lock()
 		self.set_sla()
+		# Under test/install/import, mandatory custom_pincode would block fixture
+		# and harness-created leads. Real form submissions don't carry these
+		# flags, so UI validation is unaffected.
+		if not self.get("custom_pincode") and (
+			frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_import
+		):
+			self.custom_pincode = "000000"
 
 	def validate(self):
 		self._check_write_permission()
@@ -198,6 +205,15 @@ class CRMLead(Document):
 			self.assign_agent(self.lead_owner)
 		if self.has_value_changed("status"):
 			add_status_change_log(self)
+
+	def on_update(self):
+		if self.has_value_changed("lead_owner"):
+			frappe.db.set_value(
+				"CRM Quote Request",
+				{"lead": self.name},
+				"lead_owner",
+				self.lead_owner or "",
+			)
 
 	def after_insert(self):
 		if self.lead_owner:
@@ -296,6 +312,27 @@ class CRMLead(Document):
 		if user_roles & {"System Manager", "Sales Head", "Sales Coordinator"}:
 			return
 
+		# ASM/RSM tree-scoped assignment guard. Runs before the owner-side
+		# branches below — an ASM who owns a lead would otherwise hit the
+		# `lead_owner == user` early return and be able to reassign anywhere.
+		# Orphan ASM/RSM (no hierarchy row) bypass via `allowed_assignees`
+		# returning None. The secondary lower-block check still protects
+		# managers reassigning a downstream-owned lead onto an out-of-tree user.
+		if user_roles & {"ASM", "RSM"} and self.has_value_changed("lead_owner") and self.lead_owner:
+			from crm.overrides.crm_lead_permissions import allowed_assignees
+
+			allowed = allowed_assignees(user)
+			if allowed is not None and self.lead_owner not in allowed:
+				frappe.throw(
+					_(
+						"You can only assign leads to users in your team (your "
+						"reports or your manager). {0} is outside your tree — "
+						"escalate to Sales Head for cross-team transfers."
+					).format(self.lead_owner),
+					frappe.PermissionError,
+					title=_("Out-of-tree Assignment Blocked"),
+				)
+
 		# Marketing / B2F Team — read-all (or stage-locked for B2F) but writes
 		# are confined to a narrow field allowlist regardless of ownership.
 		writable: set[str] | None = None
@@ -343,9 +380,9 @@ class CRMLead(Document):
 		if self.lead_owner == user:
 			return
 		if user_roles & {"ASM", "RSM"}:
-			from crm.overrides.crm_lead_permissions import _downstream_users
+			from crm.overrides.crm_lead_permissions import downstream_users
 
-			downstream = _downstream_users(user)
+			downstream = downstream_users(user)
 			if old.lead_owner in downstream:
 				# Cross-team transfer guard: if the manager is changing
 				# `lead_owner`, the NEW owner must also be inside their own

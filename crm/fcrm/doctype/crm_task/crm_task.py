@@ -6,6 +6,8 @@ from frappe.desk.form.assign_to import add as assign
 from frappe.desk.form.assign_to import remove as unassign
 from frappe.model.document import Document
 
+from crm.permissions.role_config import TIER1_FULL_RW
+
 # Pool task types and the role that owns each pool. Single source of truth.
 # Used by:
 #   - validate_write_permission       (before_save doc_event)
@@ -19,8 +21,6 @@ POOL_TASK_ROLES = {
 	"handle_fabricator_lead": "B2F Team",
 }
 
-_PRIVILEGED_TASK_ROLES = {"System Manager", "Sales Manager"}
-
 
 def get_permission_query_conditions(user: str | None = None) -> str:
 	"""List-level filter for CRM Task.
@@ -29,7 +29,8 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	a SQL WHERE clause (or empty string for "no filter").
 
 	Rules:
-	- ``Administrator`` / ``System Manager`` / ``Sales Manager``: see everything.
+	- ``Administrator`` and privileged-task roles (``TIER1_FULL_RW``):
+	  see everything.
 	- Everyone else:
 	  - Tasks assigned to them, OR
 	  - Tasks where the parent ``CRM Lead`` is theirs (lead_owner = user, or
@@ -47,7 +48,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		return ""
 
 	roles = set(frappe.get_roles(user))
-	if roles & _PRIVILEGED_TASK_ROLES:
+	if roles & TIER1_FULL_RW:
 		return ""
 
 	esc = frappe.db.escape
@@ -94,7 +95,7 @@ def validate_write_permission(doc, method=None):
 	1. Won-lead lock: any task save against a C4 + lead_status=='Won' parent
 	   throws (Administrator / System Manager / `flags.ignore_c4_lock` bypass).
 	2. task_type immutability: once set, the type cannot change (Administrator
-	   / System Manager / Sales Manager bypass).
+	   / privileged-task roles bypass — see ``TIER1_FULL_RW``).
 	3. Pool/assignee permission: pool tasks need the matching role; non-pool
 	   tasks need the assignee or the parent lead owner.
 
@@ -126,7 +127,7 @@ def validate_write_permission(doc, method=None):
 	old_doc = doc.get_doc_before_save()
 	if old_doc and old_doc.task_type and doc.task_type != old_doc.task_type:
 		roles = set(frappe.get_roles(user))
-		if not (roles & _PRIVILEGED_TASK_ROLES):
+		if not (roles & TIER1_FULL_RW):
 			frappe.throw(
 				frappe._(
 					"task_type cannot be changed after the task is created (was {0!r}, attempted {1!r})."
@@ -137,7 +138,7 @@ def validate_write_permission(doc, method=None):
 
 	# Pool / assignee permission.
 	roles = set(frappe.get_roles(user))
-	if roles & _PRIVILEGED_TASK_ROLES:
+	if roles & TIER1_FULL_RW:
 		return
 
 	task_type = doc.task_type or ""
@@ -168,7 +169,8 @@ def _check_delete_permission(doc):
 	   Canceled instead. Reason: pool tasks track the work queue for a role;
 	   deleting one breaks the audit trail.
 	2. Non-pool tasks: only the assignee or the parent lead owner can delete
-	   (Administrator / System Manager / Sales Manager bypass).
+	   (Administrator / privileged-task roles bypass — see
+	   ``TIER1_FULL_RW``).
 
 	Lives as a method-call inside ``on_trash`` (not a doc_event) because the
 	class already owns ``on_trash`` for the CRM Notification cascade — placing
@@ -181,7 +183,7 @@ def _check_delete_permission(doc):
 		return
 
 	roles = set(frappe.get_roles(user))
-	if roles & _PRIVILEGED_TASK_ROLES:
+	if roles & TIER1_FULL_RW:
 		return
 
 	if (doc.task_type or "") in POOL_TASK_ROLES:

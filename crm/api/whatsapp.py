@@ -8,7 +8,20 @@ from crm.api.doc import get_assigned_users
 from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
 from crm.integrations.api import get_contact_lead_or_deal_from_number
 
-ALLOWED_WHATSAPP_ROLES = ["System Manager", "Sales Manager", "Sales User"]
+# WhatsApp access: any CRM agent qualifies. Sales User is still bundled in the
+# lower role profiles (SE/PSE/JSE/Calling/Estimation/B2F/Marketing) so the
+# legacy "Sales User in roles" check covers them. Tier-1 + ASM/RSM/Management
+# need the custom roles listed explicitly since they no longer carry Sales
+# Manager (retired 2026-05-25) or Sales User.
+ALLOWED_WHATSAPP_ROLES = [
+	"System Manager",
+	"Sales User",
+	"Sales Head",
+	"Sales Coordinator",
+	"RSM",
+	"ASM",
+	"Management",
+]
 
 
 def validate_access(reference_doctype=None, reference_name=None, permtype="read"):
@@ -371,7 +384,17 @@ def add_roles():
 	if "frappe_whatsapp" not in frappe.get_installed_apps():
 		return
 
-	role_list = ["Sales Manager", "Sales User"]
+	# Sales User covers the lower-tier role profiles (still bundled). Add the
+	# manager-tier custom roles explicitly so newly invited managers retain
+	# WhatsApp DocPerms after the Sales Manager retirement (2026-05-25).
+	role_list = [
+		"Sales User",
+		"Sales Head",
+		"Sales Coordinator",
+		"RSM",
+		"ASM",
+		"Management",
+	]
 	doctypes = ["WhatsApp Message", "WhatsApp Templates", "WhatsApp Settings"]
 	for doctype in doctypes:
 		for role in role_list:
