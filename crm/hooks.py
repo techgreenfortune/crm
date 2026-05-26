@@ -187,8 +187,8 @@ doc_events = {
 		"validate_reset_password": ["crm.api.live_demo.validate_reset_password"],
 	},
 	"CRM Sales Hierarchy": {
-		"on_update": ["crm.overrides.crm_lead_permissions.bustdownstream_users_cache"],
-		"on_trash": ["crm.overrides.crm_lead_permissions.bustdownstream_users_cache"],
+		"on_update": ["crm.overrides.crm_lead_permissions.bust_downstream_users_cache"],
+		"on_trash": ["crm.overrides.crm_lead_permissions.bust_downstream_users_cache"],
 	},
 	"CRM Task": {
 		"before_save": ["crm.fcrm.doctype.crm_task.crm_task.validate_write_permission"],
