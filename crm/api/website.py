@@ -2,7 +2,6 @@
 
 Exposed at: POST https://crm.indiframe.com/api/method/crm.api.website.create_lead
 
-Token setup: see admin-ui-setup-guide.md §10a.
 """
 
 from __future__ import annotations
