@@ -1115,7 +1115,7 @@
   "label": "Pincode",
   "length": 0,
   "link_filters": null,
-  "mandatory_depends_on": "eval:doc.status == \"C4\"",
+  "mandatory_depends_on": null,
   "modified": "2026-05-04 11:11:08.269715",
   "module": null,
   "name": "CRM Lead-custom_pincode",
