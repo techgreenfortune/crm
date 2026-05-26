@@ -84,6 +84,16 @@
           :label="call._disposition.label"
           :theme="call._disposition.color"
         />
+        <Badge
+          v-if="call.scheduled_callback_at"
+          :label="
+            formatDate(call.scheduled_callback_at, 'MMM D, h:mm A', true, true)
+          "
+        >
+          <template #prefix>
+            <CalendarIcon class="size-3" />
+          </template>
+        </Badge>
       </div>
       <div
         v-if="
