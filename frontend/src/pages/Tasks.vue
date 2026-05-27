@@ -336,10 +336,10 @@ const taskCallbacks = {
 }
 
 function showTask(name) {
-  const task = rows.value?.find?.((r) => r.name == name)
+  const task = rows.value?.find((r) => r.name === name)
   if (task && isQuoteTaskType(task.task_type)) {
     openQuoteRequest(
-      task.reference_docname,
+      task.quote_request,
       quoteTaskTitle(task.task_type),
       taskCallbacks,
     )

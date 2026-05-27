@@ -12,7 +12,7 @@
   />
   <FadedScrollableDiv class="flex flex-col h-full overflow-y-auto">
     <div
-      v-if="all_activities?.loading"
+      v-if="isLoading"
       class="flex flex-1 flex-col items-center justify-center gap-3 text-xl font-medium text-ink-gray-4"
     >
       <LoadingIndicator class="h-6 w-6" />
@@ -229,6 +229,26 @@
                   name="lock"
                   class="size-3"
                 />
+              </div>
+              <div class="ml-auto whitespace-nowrap">
+                <Tooltip :text="formatDate(activity.creation)">
+                  <div class="text-sm text-ink-gray-5">
+                    {{ __(timeAgo(activity.creation)) }}
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'assignment_log'"
+            :id="activity.name"
+            class="mb-4 flex flex-col gap-2 py-1.5"
+          >
+            <div class="flex items-center justify-stretch gap-2 text-base">
+              <div
+                class="inline-flex items-center flex-wrap gap-1.5 text-ink-gray-5"
+              >
+                <span>{{ __(activity.data.text) }}</span>
               </div>
               <div class="ml-auto whitespace-nowrap">
                 <Tooltip :text="formatDate(activity.creation)">
@@ -478,6 +498,7 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
+import AvatarIcon from '@/components/Icons/AvatarIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
@@ -546,6 +567,11 @@ const modalRef = ref(null)
 const showFilesUploader = ref(false)
 
 const title = computed(() => props.tabs?.[tabIndex.value]?.name || 'Activity')
+
+const isLoading = computed(() => {
+  if (title.value === 'Quotes') return quoteRequests.loading
+  return all_activities?.loading
+})
 
 const changeTabTo = (tabName) => {
   const tabNames = props.tabs?.map((tab) => tab.name?.toLowerCase())
@@ -854,6 +880,9 @@ function timelineIcon(activity_type, is_lead) {
       break
     case 'attachment_log':
       icon = AttachmentIcon
+      break
+    case 'assignment_log':
+      icon = AvatarIcon
       break
     default:
       icon = DotIcon

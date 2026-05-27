@@ -6,7 +6,6 @@
  "engine": "InnoDB",
  "field_order": [
   "enabled",
-  "api_base_url",
   "api_key",
   "timeout_seconds"
  ],
@@ -16,14 +15,6 @@
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled"
-  },
-  {
-   "depends_on": "enabled",
-   "fieldname": "api_base_url",
-   "fieldtype": "Data",
-   "label": "API Base URL",
-   "mandatory_depends_on": "eval: doc.enabled",
-   "description": "Base URL of the external Project API, e.g. http://localhost:3000 (no trailing slash)."
   },
   {
    "depends_on": "enabled",

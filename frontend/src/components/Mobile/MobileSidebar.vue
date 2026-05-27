@@ -61,6 +61,7 @@
                     :icon="link.icon"
                     :label="__(link.label)"
                     :to="link.to"
+                    :on-click="link.onClick || null"
                     class="mx-2 my-0.5"
                   />
                 </nav>
@@ -91,23 +92,33 @@ import {
   DialogOverlay,
 } from '@headlessui/vue'
 import Section from '@/components/Section.vue'
-import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
+import OpsGateIcon from '@/components/Icons/OpsGateIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
+import { useSidebarNavigation } from '@/composables/useSidebarNavigation.js'
 import { viewsStore } from '@/stores/views'
 import { unreadNotificationsCount } from '@/stores/notifications'
-import { computed, h } from 'vue'
-import { mobileSidebarOpened as sidebarOpened } from '@/composables/settings'
+import { computed } from 'vue'
+import {
+  mobileSidebarOpened as sidebarOpened,
+  opsGateEnabled,
+} from '@/composables/settings'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
+const { openOpsGate, parseView } = useSidebarNavigation({
+  onBeforeOpen: () => {
+    sidebarOpened.value = false
+  },
+  wrapCustomIcons: true,
+})
 
 const links = [
   {
@@ -133,6 +144,11 @@ const links = [
     to: 'Organizations',
   },
   {
+    label: 'Accounts',
+    icon: AccountsIcon,
+    to: 'Accounts',
+  },
+  {
     label: 'Notes',
     icon: NoteIcon,
     to: 'Notes',
@@ -147,6 +163,12 @@ const links = [
     icon: PhoneIcon,
     to: 'Call Logs',
   },
+  {
+    label: 'OpsGate',
+    icon: OpsGateIcon,
+    onClick: openOpsGate,
+    condition: () => opsGateEnabled.value,
+  },
 ]
 
 const allViews = computed(() => {
@@ -155,7 +177,10 @@ const allViews = computed(() => {
       name: 'All Views',
       hideLabel: true,
       opened: true,
-      views: links,
+      views: links.filter((link) => {
+        if (link.condition) return link.condition()
+        return true
+      }),
     },
   ]
   if (getPublicViews().length) {
@@ -175,39 +200,4 @@ const allViews = computed(() => {
   }
   return _views
 })
-
-function parseView(views) {
-  return views.map((view) => {
-    return {
-      label: view.label,
-      icon: getIcon(view.route_name, view.icon),
-      to: {
-        name: view.route_name,
-        params: { viewType: view.type || 'list' },
-        query: { view: view.name },
-      },
-    }
-  })
-}
-
-function getIcon(routeName, icon) {
-  if (icon) return h('div', { class: 'size-auto' }, icon)
-
-  switch (routeName) {
-    case 'Leads':
-      return LeadsIcon
-    case 'Deals':
-      return DealsIcon
-    case 'Contacts':
-      return ContactsIcon
-    case 'Organizations':
-      return OrganizationsIcon
-    case 'Notes':
-      return NoteIcon
-    case 'Call Logs':
-      return PhoneIcon
-    default:
-      return PinIcon
-  }
-}
 </script>

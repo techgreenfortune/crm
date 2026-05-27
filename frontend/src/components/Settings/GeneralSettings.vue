@@ -133,6 +133,30 @@
             />
           </div>
         </div>
+        <div class="h-px border-t mx-2 border-outline-gray-modals" />
+        <div class="flex gap-4 items-center justify-between py-3 px-2">
+          <div class="flex flex-col">
+            <div class="text-p-base font-medium text-ink-gray-7 truncate">
+              {{ __('Redirect Login Page to OpsGate') }}
+            </div>
+            <div class="text-p-sm text-ink-gray-5">
+              {{
+                __(
+                  'When enabled, guests hitting the CRM login page are redirected to the OpsGate URL',
+                )
+              }}
+            </div>
+          </div>
+          <div>
+            <Switch
+              :model-value="Boolean(settings.doc.opsgate_login_redirect)"
+              size="sm"
+              @update:modelValue="
+                (val) => toggle('opsgate_login_redirect', val)
+              "
+            />
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -140,7 +164,11 @@
 
 <script setup>
 import { ref } from 'vue'
-import { opsGateEnabled, opsGateUrl } from '@/composables/settings'
+import {
+  opsGateEnabled,
+  opsGateUrl,
+  opsGateLoginRedirect,
+} from '@/composables/settings'
 import { getSettings } from '@/stores/settings'
 import { Switch, toast } from 'frappe-ui'
 
@@ -158,6 +186,13 @@ function toggle(settingKey, val) {
         if (settingKey === 'opsgate_enabled') {
           opsGateEnabled.value = Boolean(val)
           toast.success(val ? __('OpsGate enabled') : __('OpsGate disabled'))
+        } else if (settingKey === 'opsgate_login_redirect') {
+          opsGateLoginRedirect.value = Boolean(val)
+          toast.success(
+            val
+              ? __('Login redirect to OpsGate enabled')
+              : __('Login redirect to OpsGate disabled'),
+          )
         } else {
           toast.success(
             val

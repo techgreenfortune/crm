@@ -246,13 +246,23 @@ def is_admin(user: str | None = None) -> bool:
 
 def is_sales_user(user: str | None = None) -> bool:
 	"""
-	Check whether `user` is an agent
+	Check whether `user` is a CRM agent — i.e. holds any custom CRM role
+	from ``role_config.ROLE_RANK`` (the 13-role matrix). Administrator always
+	qualifies.
+
+	Replaces the legacy ``"Sales Manager" in roles or "Sales User" in roles``
+	check (Sales Manager Frappe role retired 2026-05-25; tier-1 managers no
+	longer carry the Sales User role either after role_profile.json strip).
 
 	:param user: User to check against, defaults to current user
-	:return: Whether `user` is an agent
+	:return: Whether `user` is a CRM agent
 	"""
+	from crm.permissions.role_config import ROLE_RANK
+
 	user = user or frappe.session.user
-	return is_admin() or "Sales Manager" in frappe.get_roles(user) or "Sales User" in frappe.get_roles(user)
+	if is_admin():
+		return True
+	return bool(set(frappe.get_roles(user)) & set(ROLE_RANK))
 
 
 def sales_user_only(fn):
@@ -359,6 +369,7 @@ def create_lead_from_incoming_email(doc: Communication, method: str | None = Non
 	if frappe.db.exists("CRM Lead Source", "Email"):
 		lead.source = "Email"
 
+	lead.custom_pincode = "000000"
 	lead.insert(ignore_permissions=True)
 
 	doc.reference_doctype = "CRM Lead"
@@ -517,3 +528,55 @@ def on_communication_update(doc: Communication, method: str | None = None):
 		values,
 		update_modified=False,
 	)
+
+
+def notify_role_users(
+	role: str,
+	subject: str,
+	email_content: str,
+	document_type: str,
+	document_name: str,
+	skip_user: str | None = None,
+) -> None:
+	"""Send a Notification Log to every active user that has *role*.
+
+	Generic fan-out helper — avoids repeating the Has-Role query + loop +
+	Notification Log insert in multiple callers (quote requests, stage side
+	effects, etc.).
+
+	Args:
+		role:           Frappe Role name whose members receive the notification.
+		subject:        Notification subject line.
+		email_content:  HTML body of the notification.
+		document_type:  Doctype the notification links to.
+		document_name:  Document name the notification links to.
+		skip_user:      If provided, this user email is excluded (e.g. the
+		                requester who triggered the action).
+	"""
+	active_users = set(frappe.db.get_all("User", filters={"enabled": 1}, pluck="name"))
+	recipients = [
+		r["parent"]
+		for r in frappe.db.get_all(
+			"Has Role",
+			filters={"role": role, "parenttype": "User"},
+			fields=["parent"],
+		)
+		if r["parent"] != skip_user and r["parent"] in active_users
+	]
+	if not recipients:
+		return
+
+	for user in recipients:
+		notif = frappe.new_doc("Notification Log")
+		notif.update(
+			{
+				"subject": subject,
+				"email_content": email_content,
+				"for_user": user,
+				"document_type": document_type,
+				"document_name": document_name,
+				"from_user": skip_user or frappe.session.user,
+				"type": "Alert",
+			}
+		)
+		notif.insert(ignore_permissions=True)

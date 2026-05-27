@@ -4,14 +4,16 @@
   >
     <div class="text-base text-ink-gray-5">{{ __('Assign To') }}</div>
     <Link
+      ref="input"
       class="form-control"
       value=""
       doctype="User"
+      :url="
+        props.doctype === 'CRM Lead'
+          ? 'crm.api.session.search_assignable_users'
+          : undefined
+      "
       :placeholder="__('John Doe')"
-      :filters="{
-        name: ['in', users.data.crmUsers?.map((user) => user.name)],
-        ignore_user_type: 1,
-      }"
       :hideMe="true"
       @change="(option) => addValue(option) && ($refs.input.value = '')"
     >
@@ -91,7 +93,7 @@ const assignToMe = ref(false)
 
 const error = ref('')
 
-const { users, getUser } = usersStore()
+const { getUser } = usersStore()
 
 const removeValue = (value) => {
   if (value === getUser('').name) {

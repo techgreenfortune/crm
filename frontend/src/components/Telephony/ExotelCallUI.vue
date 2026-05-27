@@ -195,6 +195,59 @@
             />
           </Dropdown>
         </div>
+        <div v-if="dispositionRequired && callbackRequired" class="mt-3">
+          <div class="text-sm text-ink-gray-5 mb-1">
+            {{ __('Scheduled Callback At') }}
+            <span class="text-red-500">*</span>
+          </div>
+          <input
+            v-model="scheduledCallbackAt"
+            type="datetime-local"
+            :min="callbackMin"
+            class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base focus:outline-none [color-scheme:dark]"
+          />
+        </div>
+        <div
+          v-if="dispositionRequired && routingRequired"
+          class="mt-3 flex flex-col gap-2"
+        >
+          <div>
+            <div class="text-sm text-ink-gray-5 mb-1">
+              {{ __('Routing Reason') }}
+              <span class="text-red-500">*</span>
+            </div>
+            <select
+              v-model="fabricatorRoutingReason"
+              class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base focus:outline-none"
+            >
+              <option value="">{{ __('Select a reason...') }}</option>
+              <option v-for="r in routingReasonOptions" :key="r" :value="r">
+                {{ r }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <div class="text-sm text-ink-gray-5 mb-1">
+              {{ __('Partner Fabricator Name') }}
+              <span class="text-red-500">*</span>
+            </div>
+            <input
+              v-model="partnerFabricatorName"
+              type="text"
+              class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base focus:outline-none"
+            />
+          </div>
+          <div v-if="fabricatorRoutingReason === 'Other'">
+            <div class="text-sm text-ink-gray-5 mb-1">
+              {{ __('Routing Notes') }}
+              <span class="text-red-500">*</span>
+            </div>
+            <textarea
+              v-model="fabricatorRoutingNotes"
+              class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base focus:outline-none"
+            />
+          </div>
+        </div>
       </div>
       <div class="footer flex justify-between gap-2">
         <div class="flex gap-2">
@@ -255,6 +308,11 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import TaskPanel from '@/components/Telephony/TaskPanel.vue'
 import CountUpTimer from '@/components/CountUpTimer.vue'
+import {
+  persistNoteOnCallLog,
+  persistTaskOnCallLog,
+  TASK_DEFAULTS,
+} from '@/composables/useCallLogActions.js'
 import { globalStore } from '@/stores/global'
 import { sessionStore } from '@/stores/session'
 import { useDraggable, useWindowSize } from '@vueuse/core'
@@ -339,21 +397,11 @@ function showNoteWindow() {
   }
 }
 
-function createUpdateNote() {
-  createResource({
-    url: 'crm.integrations.api.add_note_to_call_log',
-    params: {
-      call_sid: callData.value.CallSid,
-      note: note.value,
-    },
-    auto: true,
-    onSuccess(_note) {
-      note.value['name'] = _note.name
-      nextTick(() => {
-        dirty.value = false
-      })
-    },
-  })
+async function createUpdateNote() {
+  const _note = await persistNoteOnCallLog(callData.value.CallSid, note.value)
+  note.value['name'] = _note.name
+  await nextTick()
+  dirty.value = false
 }
 
 const task = ref({
@@ -362,8 +410,7 @@ const task = ref({
   description: '',
   assigned_to: '',
   due_date: '',
-  status: 'Backlog',
-  priority: 'Low',
+  ...TASK_DEFAULTS,
 })
 
 const showTask = ref(false)
@@ -378,35 +425,44 @@ function showTaskWindow() {
   }
 }
 
-function createUpdateTask() {
-  createResource({
-    url: 'crm.integrations.api.add_task_to_call_log',
-    params: {
-      call_sid: callData.value.CallSid,
-      task: task.value,
-    },
-    auto: true,
-    onSuccess(_task) {
-      task.value['name'] = _task.name
-      nextTick(() => {
-        dirty.value = false
-      })
-    },
-  })
+async function createUpdateTask() {
+  const _task = await persistTaskOnCallLog(callData.value.CallSid, task.value)
+  task.value['name'] = _task.name
+  await nextTick()
+  dirty.value = false
 }
 
 watch([note, task], () => (dirty.value = true), { deep: true })
 
 const dispositions = ref([])
 const disposition = ref(null)
+const scheduledCallbackAt = ref(null)
+const fabricatorRoutingReason = ref(null)
+const partnerFabricatorName = ref('')
+const fabricatorRoutingNotes = ref('')
 const isSavingDisposition = ref(false)
+
+const routingReasonOptions = [
+  'Price Mismatch',
+  'GST Issue',
+  'Serviceability',
+  'Other',
+]
 
 const dispositionsResource = createResource({
   url: 'frappe.client.get_list',
   params: {
     doctype: 'CRM Call Disposition',
     filters: { enabled: 1 },
-    fields: ['name', 'label', 'color', 'position', 'next_status'],
+    fields: [
+      'name',
+      'label',
+      'color',
+      'position',
+      'next_status',
+      'requires_callback_datetime',
+      'requires_routing_reason',
+    ],
     order_by: 'position asc',
     limit_page_length: 50,
   },
@@ -414,6 +470,38 @@ const dispositionsResource = createResource({
   onSuccess(data) {
     dispositions.value = data || []
   },
+})
+
+const callbackRequired = computed(() => {
+  if (!disposition.value) return false
+  const d = dispositions.value.find((x) => x.name === disposition.value)
+  return !!d?.requires_callback_datetime
+})
+
+const routingRequired = computed(() => {
+  if (!disposition.value) return false
+  const d = dispositions.value.find((x) => x.name === disposition.value)
+  return !!d?.requires_routing_reason
+})
+
+function pad(n) {
+  return String(n).padStart(2, '0')
+}
+
+const callbackMin = computed(() => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+})
+
+watch(disposition, () => {
+  if (!callbackRequired.value) {
+    scheduledCallbackAt.value = null
+  }
+  if (!routingRequired.value) {
+    fabricatorRoutingReason.value = null
+    partnerFabricatorName.value = ''
+    fabricatorRoutingNotes.value = ''
+  }
 })
 
 const dispositionLocked = computed(() => callStatus.value === 'No answer')
@@ -447,6 +535,11 @@ const callActive = computed(() =>
 
 const POPUP_STATE_KEY = 'exotel_call_popup_state'
 
+// State older than 2 h is considered stale and is not restored. This limits
+// how long PII (phone number) survives in sessionStorage if the browser tab
+// is left open after a call without the popup being closed.
+const POPUP_STATE_TTL_MS = 2 * 60 * 60 * 1000
+
 function persistPopupState() {
   if (!callData.value?.CallSid) {
     try {
@@ -460,12 +553,17 @@ function persistPopupState() {
     sessionStorage.setItem(
       POPUP_STATE_KEY,
       JSON.stringify({
+        savedAt: Date.now(),
         callData: callData.value,
         callStatus: callStatus.value,
         phoneNumber: phoneNumber.value,
         showCallPopup: showCallPopup.value,
         showSmallCallPopup: showSmallCallPopup.value,
         disposition: disposition.value,
+        scheduledCallbackAt: scheduledCallbackAt.value,
+        fabricatorRoutingReason: fabricatorRoutingReason.value,
+        partnerFabricatorName: partnerFabricatorName.value,
+        fabricatorRoutingNotes: fabricatorRoutingNotes.value,
       }),
     )
   } catch {
@@ -479,12 +577,21 @@ function restorePopupState() {
     if (!raw) return
     const s = JSON.parse(raw)
     if (!s?.callData?.CallSid) return
+    // Discard stale state — protects PII after long idle periods.
+    if (s.savedAt && Date.now() - s.savedAt > POPUP_STATE_TTL_MS) {
+      sessionStorage.removeItem(POPUP_STATE_KEY)
+      return
+    }
     callData.value = s.callData
     callStatus.value = s.callStatus || ''
     phoneNumber.value = s.phoneNumber || ''
     showCallPopup.value = !!s.showCallPopup
     showSmallCallPopup.value = !!s.showSmallCallPopup
     disposition.value = s.disposition || null
+    scheduledCallbackAt.value = s.scheduledCallbackAt || null
+    fabricatorRoutingReason.value = s.fabricatorRoutingReason || null
+    partnerFabricatorName.value = s.partnerFabricatorName || ''
+    fabricatorRoutingNotes.value = s.fabricatorRoutingNotes || ''
   } catch {
     /* parse error — ignore */
   }
@@ -506,6 +613,10 @@ watch(
     showCallPopup,
     showSmallCallPopup,
     disposition,
+    scheduledCallbackAt,
+    fabricatorRoutingReason,
+    partnerFabricatorName,
+    fabricatorRoutingNotes,
   ],
   persistPopupState,
   { deep: true },
@@ -513,18 +624,66 @@ watch(
 
 const dispositionRequired = callTerminated
 
+// UX-only guard: disable the close button when we know for sure the session
+// user isn't the call handler. The backend Disposition Validation server script
+// is the authoritative check — this just prevents an obvious mismatch from
+// reaching the API.
+const isCallHandler = computed(() => {
+  if (!callData.value?.AgentEmail) return true // unknown — don't block
+  const { user } = sessionStore()
+  const sessionUser = typeof user === 'object' ? user.value : user
+  return callData.value.AgentEmail === sessionUser
+})
+
 const canClose = computed(() => {
   if (isSavingDisposition.value) return false
   if (callActive.value) return false
-  if (callTerminated.value) return !!disposition.value
+  if (callTerminated.value && !isCallHandler.value) return false
+  if (callTerminated.value) {
+    if (!disposition.value) return false
+    if (callbackRequired.value && !scheduledCallbackAt.value) return false
+    if (
+      routingRequired.value &&
+      (!fabricatorRoutingReason.value || !partnerFabricatorName.value)
+    )
+      return false
+    if (
+      routingRequired.value &&
+      fabricatorRoutingReason.value === 'Other' &&
+      !fabricatorRoutingNotes.value
+    )
+      return false
+    return true
+  }
   return true
 })
 
 const closeTooltip = computed(() => {
   if (isSavingDisposition.value) return __('Saving disposition...')
   if (callActive.value) return __('Wait for the call to end')
+  if (callTerminated.value && !isCallHandler.value)
+    return __('Only the agent who handled this call can save the disposition')
   if (callTerminated.value && !disposition.value)
     return __('Select a disposition to close')
+  if (
+    callTerminated.value &&
+    callbackRequired.value &&
+    !scheduledCallbackAt.value
+  )
+    return __('Set the scheduled callback datetime to close')
+  if (
+    callTerminated.value &&
+    routingRequired.value &&
+    (!fabricatorRoutingReason.value || !partnerFabricatorName.value)
+  )
+    return __('Fill in Routing Reason and Partner Fabricator Name to close')
+  if (
+    callTerminated.value &&
+    routingRequired.value &&
+    fabricatorRoutingReason.value === 'Other' &&
+    !fabricatorRoutingNotes.value
+  )
+    return __('Routing Notes are required when reason is "Other"')
   return __('Close')
 })
 
@@ -646,6 +805,10 @@ function closeCallPopup() {
     priority: 'Low',
   }
   disposition.value = null
+  scheduledCallbackAt.value = null
+  fabricatorRoutingReason.value = null
+  partnerFabricatorName.value = ''
+  fabricatorRoutingNotes.value = ''
   callData.value = null
   callStatus.value = ''
   clearPopupState()
@@ -658,6 +821,7 @@ async function attemptCloseCallPopup() {
     return
   }
   if (!disposition.value) return
+  if (callbackRequired.value && !scheduledCallbackAt.value) return
   if (!callData.value?.CallSid) {
     closeCallPopup()
     return
@@ -667,6 +831,10 @@ async function attemptCloseCallPopup() {
     await call('crm.integrations.api.add_disposition_to_call_log', {
       call_sid: callData.value.CallSid,
       disposition: disposition.value,
+      scheduled_callback_at: scheduledCallbackAt.value || null,
+      fabricator_routing_reason: fabricatorRoutingReason.value || null,
+      partner_fabricator_name: partnerFabricatorName.value || null,
+      fabricator_routing_notes: fabricatorRoutingNotes.value || null,
     })
     closeCallPopup()
   } catch (err) {

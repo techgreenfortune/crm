@@ -3,12 +3,41 @@ import requests
 from frappe import _
 from frappe.utils import get_url
 
+LOGIN_REDIRECT_PATHS = {"", "/", "/login", "/crm", "/app"}
+
+
+def redirect_login_to_opsgate():
+	"""Redirect guests hitting login-bound paths to OpsGate when toggle is enabled."""
+	from werkzeug.routing import RequestRedirect
+
+	try:
+		request = getattr(frappe.local, "request", None)
+		if not request:
+			return
+		path = (request.path or "").rstrip("/")
+		if path not in LOGIN_REDIRECT_PATHS:
+			return
+		session = getattr(frappe, "session", None)
+		if session and getattr(session, "user", "Guest") != "Guest":
+			return
+		if not frappe.db.get_single_value("FCRM Settings", "opsgate_login_redirect"):
+			return
+		opsgate_url = frappe.db.get_single_value("FCRM Settings", "opsgate_url")
+		if not opsgate_url:
+			return
+	except Exception:
+		frappe.log_error("OpsGate login redirect check failed")
+		return
+
+	raise RequestRedirect(opsgate_url)
+
 
 @frappe.whitelist()
 def get_opsgate_settings():
 	return {
 		"opsgate_enabled": bool(frappe.db.get_single_value("FCRM Settings", "opsgate_enabled")),
 		"opsgate_url": frappe.db.get_single_value("FCRM Settings", "opsgate_url") or "",
+		"opsgate_login_redirect": bool(frappe.db.get_single_value("FCRM Settings", "opsgate_login_redirect")),
 	}
 
 

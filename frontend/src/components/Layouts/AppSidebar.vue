@@ -161,13 +161,11 @@ import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import StepsIcon from '@/components/Icons/StepsIcon.vue'
 import Section from '@/components/Section.vue'
-import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import SquareAsterisk from '@/components/Icons/SquareAsterisk.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
-import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
+import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -190,8 +188,9 @@ import {
   opsGateEnabled,
 } from '@/composables/settings'
 import { showChangePasswordModal } from '@/composables/modals'
+import { useSidebarNavigation } from '@/composables/useSidebarNavigation.js'
 import { useBroadcast } from '@/composables/useBroadcast.js'
-import { FeatherIcon, call, toast } from 'frappe-ui'
+import { FeatherIcon, call } from 'frappe-ui'
 import {
   SignupBanner,
   TrialBanner,
@@ -213,6 +212,7 @@ const { toggle: toggleNotificationPanel } = notificationsStore()
 const { capture } = useTelemetry()
 const { clearDemoData, isDemoDataCreated } = useDemoData()
 const { send } = useBroadcast()
+const { openOpsGate, parseView } = useSidebarNavigation()
 
 const isSidebarCollapsed = useStorage('isSidebarCollapsed', false)
 
@@ -249,6 +249,11 @@ const links = [
     to: 'Organizations',
   },
   */
+  {
+    label: 'Accounts',
+    icon: AccountsIcon,
+    to: 'Accounts',
+  },
   {
     label: 'Notes',
     icon: NoteIcon,
@@ -303,56 +308,6 @@ const allViews = computed(() => {
   }
   return _views
 })
-
-async function openOpsGate() {
-  try {
-    const data = await call('crm.api.settings.get_opsgate_redirect_url')
-    if (data?.redirect_url) {
-      window.open(data.redirect_url, '_blank')
-    } else {
-      toast.error('OpsGate SSO failed: no redirect URL returned')
-    }
-  } catch {
-    toast.error(
-      'Could not sign you into OpsGate. Please contact your administrator.',
-    )
-  }
-}
-
-function parseView(views) {
-  return views.map((view) => {
-    return {
-      label: view.label,
-      icon: getIcon(view.route_name, view.icon),
-      to: {
-        name: view.route_name,
-        params: { viewType: view.type || 'list' },
-        query: { view: view.name },
-      },
-    }
-  })
-}
-
-function getIcon(routeName, icon) {
-  if (icon) return icon
-
-  switch (routeName) {
-    case 'Leads':
-      return LeadsIcon
-    case 'Deals':
-      return DealsIcon
-    case 'Contacts':
-      return ContactsIcon
-    case 'Organizations':
-      return OrganizationsIcon
-    case 'Notes':
-      return NoteIcon
-    case 'Call Logs':
-      return PhoneIcon
-    default:
-      return PinIcon
-  }
-}
 
 // onboarding
 const { user } = sessionStore()

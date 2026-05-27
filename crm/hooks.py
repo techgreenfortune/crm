@@ -135,6 +135,7 @@ permission_query_conditions = {
 	"CRM Lead": "crm.overrides.crm_lead_permissions.get_permission_query_conditions",
 	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 	"CRM Task": "crm.fcrm.doctype.crm_task.crm_task.get_permission_query_conditions",
+	"CRM Quote Request": "crm.fcrm.doctype.crm_quote_request.crm_quote_request.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -158,8 +159,11 @@ override_doctype_class = {
 doc_events = {
 	"Contact": {
 		"validate": ["crm.api.contact.validate"],
+		"after_insert": ["crm.api.contact.after_insert"],
+		"on_update": ["crm.api.contact.on_update"],
 	},
 	"ToDo": {
+		"before_insert": ["crm.overrides.crm_lead_permissions.guard_lead_assignment"],
 		"after_insert": ["crm.api.todo.after_insert"],
 		"on_update": ["crm.api.todo.on_update"],
 	},
@@ -230,7 +234,7 @@ fixtures = [
 		"filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]],
 	},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
-	{"dt": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
+	{"dt": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Account"]]]},
 	{"dt": "CRM Form Script", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
@@ -282,7 +286,7 @@ ignore_links_on_delete = ["Failed Lead Sync Log"]
 
 # Request Events
 # ----------------
-# before_request = ["crm.utils.before_request"]
+before_request = ["crm.api.settings.redirect_login_to_opsgate"]
 # after_request = ["crm.utils.after_request"]
 
 # Job Events

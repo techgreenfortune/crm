@@ -35,6 +35,8 @@
           'HTML',
           'Geolocation',
           'Text Editor',
+          'Table',
+          'Table MultiSelect',
         ].includes(field.fieldtype)
       "
       v-model="data[field.fieldname]"
@@ -590,6 +592,12 @@ async function fieldChange(value, df) {
     await triggerOnChange(df.fieldname, value, data.value)
   } else {
     await triggerOnChange(df.fieldname, value)
+    // triggerOnChange is captured at setup; if data.value.name was empty then,
+    // it writes to the wrong cache entry. Mirror onto the live doc resource.
+    const live = useDocument(doctype, data.value?.name)?.document
+    if (live?.doc && live.doc[df.fieldname] !== value) {
+      live.doc[df.fieldname] = value
+    }
   }
 }
 </script>

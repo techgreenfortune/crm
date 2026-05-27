@@ -20,7 +20,7 @@ Adding/renaming/re-ranking a CRM role is a one-file change here.
 ROLE_RANK alignment with the access matrix: RSM is above ASM (per the docstring
 in ``crm_lead_permissions.py``), SE/PSE are leaf-level, the tier-1 full-RW roles
 sit at the top, and cross-cutting roles (Management, Marketing, Calling/B2F/
-Estimation/JSE, CRM User) sit at the leaf with no subordinates because the tree
+Estimation/JSE) sit at the leaf with no subordinates because the tree
 isn't their permission gate.
 """
 
@@ -43,7 +43,6 @@ ROLE_RANK: dict[str, int] = {
 	"Calling Team": 4,
 	"B2F Team": 4,
 	"Estimation Team": 4,
-	"CRM User": 4,
 }
 
 # Display priority for the User Resource. The most-prestigious role a user
@@ -65,7 +64,6 @@ ROLE_PRIORITY: tuple[str, ...] = (
 	"Jr. Sales Executive",
 	"B2F Team",
 	"Estimation Team",
-	"CRM User",
 )
 
 # Access-matrix sets for the CRM Lead 13-role policy. See the docstring in
@@ -75,8 +73,11 @@ TIER1_READ_ONLY: frozenset[str] = frozenset({"Management"})
 FIELD_GATED_RW: frozenset[str] = frozenset({"Marketing", "B2F Team"})
 STAGE_LOCKED: dict[str, frozenset[str]] = {
 	"B2F Team": frozenset({"C7"}),
-	"Estimation Team": frozenset({"C2"}),
 }
+
+# Roles whose lead visibility is gated on an active CRM Quote Request rather
+# than a fixed stage. "Active" = Pending / Quote Received / Revision Requested.
+QUOTE_SCOPE_ROLES: frozenset[str] = frozenset({"Estimation Team"})
 NO_C7_ROLES: frozenset[str] = frozenset({"Calling Team", "Jr. Sales Executive"})
 
 # Roles permitted to view leads with no ``lead_owner`` (the unassigned pool).
@@ -96,6 +97,21 @@ OWNER_SCOPE_ROLES: dict[str, dict] = {
 	"ASM": {"scope": "downstream", "lead_type": None},
 	"RSM": {"scope": "downstream", "lead_type": None},
 }
+
+# Downstream-scoped roles — subject to the tree-scoped assignment rule
+# (``crm.overrides.crm_lead_permissions.guard_lead_assignment``). Derived from
+# OWNER_SCOPE_ROLES so adding a new downstream role is a one-line change above.
+DOWNSTREAM_SCOPE_ROLES: frozenset[str] = frozenset(
+	r for r, cfg in OWNER_SCOPE_ROLES.items() if cfg["scope"] == "downstream"
+)
+
+# Roles that occupy non-leaf positions in CRM Sales Hierarchy: tier-1 sits at
+# the root, downstream-scoped roles (RSM / ASM) sit in the middle with reports
+# below them. Used by ``crm.api.user.update_user_role`` to block demoting a
+# user with active hierarchy responsibility (root node or has direct reports)
+# to a non-managerial profile. System Manager is in the set too but never
+# reaches the gate — it's handled out-of-band in update_user_role.
+MANAGERIAL_ROLES: frozenset[str] = TIER1_FULL_RW | TIER1_READ_ONLY | DOWNSTREAM_SCOPE_ROLES
 
 
 @frappe.whitelist()

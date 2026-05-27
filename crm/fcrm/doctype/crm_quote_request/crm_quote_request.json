@@ -1,299 +1,387 @@
 {
- "actions": [],
- "autoname": "CRM-QR-.YYYY.-.####",
- "creation": "2026-05-04 00:00:00.000000",
- "doctype": "DocType",
- "engine": "InnoDB",
- "field_order": [
-  "lead",
-  "lead_name",
-  "lead_owner",
-  "status",
-  "requested_by",
-  "requested_on",
-  "column_break_1",
-  "quote_file",
-  "quote_value",
-  "quote_margin",
-  "quote_validity",
-  "quote_sq_ft",
-  "quote_number",
-  "section_break_1",
-  "estimation_remarks",
-  "revision_notes",
-  "revision_images"
- ],
- "fields": [
-  {
-   "fieldname": "lead",
-   "fieldtype": "Link",
-   "label": "Lead",
-   "options": "CRM Lead",
-   "reqd": 1,
-   "read_only": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "lead_name",
-   "fieldtype": "Data",
-   "label": "Lead Name",
-   "fetch_from": "lead.lead_name",
-   "fetch_if_empty": 1,
-   "read_only": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "lead_owner",
-   "fieldtype": "Link",
-   "label": "Lead Owner",
-   "options": "User",
-   "fetch_from": "lead.lead_owner",
-   "fetch_if_empty": 1,
-   "hidden": 1
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Pending\nQuote Received\nRevision Requested\nAccepted",
-   "reqd": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "requested_by",
-   "fieldtype": "Link",
-   "label": "Requested By",
-   "options": "User",
-   "read_only": 1
-  },
-  {
-   "fieldname": "requested_on",
-   "fieldtype": "Date",
-   "label": "Requested On",
-   "read_only": 1
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "quote_file",
-   "fieldtype": "Attach",
-   "label": "Quote File",
-   "mandatory_depends_on": "eval:doc.status != 'Pending'"
-  },
-  {
-   "fieldname": "quote_value",
-   "fieldtype": "Currency",
-   "label": "Quote Value",
-   "mandatory_depends_on": "eval:doc.status != 'Pending'",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "quote_margin",
-   "fieldtype": "Percent",
-   "label": "Quote Margin",
-   "mandatory_depends_on": "eval:doc.status != 'Pending'",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "quote_validity",
-   "fieldtype": "Date",
-   "label": "Quote Validity",
-   "description": "Date this quote expires. Optional.",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "quote_sq_ft",
-   "fieldtype": "Float",
-   "label": "Quote Area (sqft)",
-   "mandatory_depends_on": "eval:doc.status != 'Pending'",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "quote_number",
-   "fieldtype": "Data",
-   "label": "External Quote No.",
-   "description": "Vendor/factory reference (e.g. PDF number).",
-   "mandatory_depends_on": "eval:doc.status != 'Pending'",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "section_break_1",
-   "fieldtype": "Section Break",
-   "label": "Notes"
-  },
-  {
-   "fieldname": "estimation_remarks",
-   "fieldtype": "Small Text",
-   "label": "Estimation Remarks",
-   "description": "Assumptions, exclusions, or context the Sales team should know.",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "revision_notes",
-   "fieldtype": "Small Text",
-   "label": "Revision Notes",
-   "mandatory_depends_on": "eval:doc.status == 'Revision Requested'"
-  },
-  {
-   "fieldname": "revision_images",
-   "fieldtype": "Table",
-   "label": "Revision Images",
-   "options": "CRM Quote Revision Image",
-   "description": "Photos or markups attached when requesting a revision."
-  }
- ],
- "index_web_pages_for_search": 0,
- "links": [],
- "modified": "2026-05-21 12:00:00.000000",
- "modified_by": "Administrator",
- "module": "FCRM",
- "name": "CRM Quote Request",
- "naming_rule": "Expression (old style)",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Sales Manager",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Sales Executive",
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Sales Coordinator",
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "ASM",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Project Sales Executive",
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "RSM",
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Estimation Team",
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "read": 1,
-   "report": 1,
-   "role": "Sales User",
-   "write": 0
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Sales Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "System Manager",
-   "write": 1
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Sales Manager",
-   "write": 1
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Estimation Team",
-   "write": 1
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Sales Manager"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Sales Executive"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Sales Coordinator"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "ASM"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Project Sales Executive"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "RSM"
-  },
-  {
-   "permlevel": 1,
-   "read": 1,
-   "role": "Sales User"
-  }
- ],
- "row_format": "Dynamic",
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "title_field": "lead_name",
- "track_changes": 1
+  "actions": [],
+  "autoname": "CRM-QR-.YYYY.-.####",
+  "creation": "2026-05-04 00:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "lead",
+    "lead_name",
+    "lead_owner",
+    "status",
+    "requested_by",
+    "requested_on",
+    "column_break_1",
+    "quote_file",
+    "quote_value",
+    "quote_margin",
+    "quote_validity",
+    "quote_sq_ft",
+    "total_quantity",
+    "quote_number",
+    "section_break_1",
+    "estimation_remarks",
+    "revision_notes",
+    "revision_images"
+  ],
+  "fields": [
+    {
+      "fieldname": "lead",
+      "fieldtype": "Link",
+      "label": "Lead",
+      "options": "CRM Lead",
+      "reqd": 1,
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "lead_name",
+      "fieldtype": "Data",
+      "label": "Lead Name",
+      "fetch_from": "lead.lead_name",
+      "fetch_if_empty": 1,
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "lead_owner",
+      "fieldtype": "Link",
+      "label": "Lead Owner",
+      "options": "User",
+      "fetch_from": "lead.lead_owner",
+      "fetch_if_empty": 1,
+      "hidden": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Pending\nQuote Received\nRevision Requested\nAccepted",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "requested_by",
+      "fieldtype": "Link",
+      "label": "Requested By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "requested_on",
+      "fieldtype": "Date",
+      "label": "Requested On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "quote_file",
+      "fieldtype": "Attach",
+      "label": "Quote File",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'"
+    },
+    {
+      "fieldname": "quote_value",
+      "fieldtype": "Currency",
+      "label": "Quote Value",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "quote_margin",
+      "fieldtype": "Percent",
+      "label": "Quote Margin",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "quote_validity",
+      "fieldtype": "Date",
+      "label": "Quote Validity",
+      "description": "Date this quote expires. Optional.",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "quote_sq_ft",
+      "fieldtype": "Float",
+      "label": "Quote Area (sqft)",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "total_quantity",
+      "fieldtype": "Float",
+      "label": "Total Quantity",
+      "description": "Total quantity covered by this quote. Sent to OpsGate with the project handoff payload.",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "quote_number",
+      "fieldtype": "Data",
+      "label": "EVA Quotation Number",
+      "description": "Vendor/factory reference (e.g. PDF number).",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "section_break_1",
+      "fieldtype": "Section Break",
+      "label": "Notes"
+    },
+    {
+      "fieldname": "estimation_remarks",
+      "fieldtype": "Small Text",
+      "label": "Estimation Remarks",
+      "description": "Assumptions, exclusions, or context the Sales team should know.",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "revision_notes",
+      "fieldtype": "Small Text",
+      "label": "Revision Notes",
+      "depends_on": "eval:doc.status != 'Pending'",
+      "mandatory_depends_on": "eval:doc.status == 'Revision Requested'",
+      "permlevel": 2
+    },
+    {
+      "fieldname": "revision_images",
+      "fieldtype": "Table",
+      "label": "Revision Images",
+      "options": "CRM Quote Revision Image",
+      "depends_on": "eval:doc.status != 'Pending'",
+      "description": "Photos or markups attached when requesting a revision.",
+      "permlevel": 2
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-05-23 16:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "FCRM",
+  "name": "CRM Quote Request",
+  "naming_rule": "Expression (old style)",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Sales Head",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Sales Executive",
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Sales Coordinator",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "ASM",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Project Sales Executive",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "RSM",
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Estimation Team",
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Sales User",
+      "write": 0
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Estimation Team",
+      "write": 1
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Sales Executive"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Sales Coordinator"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "ASM"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Project Sales Executive"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "RSM"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Sales User"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "System Manager"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Sales Head"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Sales Coordinator"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Sales Executive"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Project Sales Executive"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "ASM"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "RSM"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "role": "Estimation Team"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "role": "Sales User"
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Sales Head",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Jr. Sales Executive"
+    },
+    {
+      "read": 1,
+      "role": "Calling Team"
+    },
+    {
+      "read": 1,
+      "role": "B2F Team"
+    },
+    {
+      "read": 1,
+      "role": "Marketing"
+    },
+    {
+      "read": 1,
+      "role": "Management"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "write": 1,
+      "role": "Sales Head"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
+      "role": "Management"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "role": "Management"
+    }
+  ],
+  "row_format": "Dynamic",
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "title_field": "lead_name",
+  "track_changes": 1
 }

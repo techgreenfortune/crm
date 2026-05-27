@@ -1,6 +1,35 @@
 import frappe
 from frappe import _
 
+from crm.utils import notify_role_users
+
+
+def _notify_estimation_team_on_quote_request(
+	qr_name: str, lead_name: str, lead_display: str, requester: str
+) -> None:
+	"""Send a Notification Log to every active Estimation Team member.
+
+	Delegates to ``crm.utils.notify_role_users`` — the fan-out pattern is
+	shared with the Stage Side Effects server script and other callers.
+	"""
+	requester_name = frappe.get_cached_value("User", requester, "full_name") or requester
+	subject = f"Quote requested for {lead_display}"
+	email_content = (
+		f"<p><b>{requester_name}</b> has requested a quote for lead "
+		f"<b>{lead_display}</b> ({lead_name}).</p>"
+		f"<p>Please open Quote Request <b>{qr_name}</b>, attach the quote "
+		f"file, fill in Quote Value, Margin and Area, then set the status "
+		f"to <em>Quote Received</em>.</p>"
+	)
+	notify_role_users(
+		role="Estimation Team",
+		subject=subject,
+		email_content=email_content,
+		document_type="CRM Quote Request",
+		document_name=qr_name,
+		skip_user=requester,
+	)
+
 
 @frappe.whitelist()
 def list_lead_quote_requests(lead: str) -> list[dict]:
@@ -39,6 +68,7 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 			"requested_on",
 			"requested_by",
 			"modified",
+			"revision_notes",
 		],
 		order_by="modified desc",
 		limit=50,
@@ -48,20 +78,23 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 
 	# Child rows: safe to read with get_all since visibility is already gated
 	# by their parent QR being in the filtered set above.
-	rows = frappe.get_all(
+	image_rows = frappe.get_all(
 		"CRM Quote Revision Image",
 		filters={
 			"parenttype": "CRM Quote Request",
 			"parent": ["in", [q["name"] for q in qrs]],
 		},
-		fields=["parent"],
-		pluck="parent",
+		fields=["parent", "image"],
+		order_by="idx asc",
 	)
 	counts: dict[str, int] = {}
-	for parent in rows:
-		counts[parent] = counts.get(parent, 0) + 1
+	image_map: dict[str, list[str]] = {}
+	for row in image_rows:
+		counts[row["parent"]] = counts.get(row["parent"], 0) + 1
+		image_map.setdefault(row["parent"], []).append(row["image"])
 	for q in qrs:
 		q["images_count"] = counts.get(q["name"], 0)
+		q["revision_images"] = image_map.get(q["name"], [])
 	return qrs
 
 
@@ -133,4 +166,12 @@ def request_quote(lead: str) -> str:
 			"content": f"[AUTOMATION] Quote Request manually initiated by {frappe.session.user}.",
 		}
 	).insert(ignore_permissions=True)
+
+	_notify_estimation_team_on_quote_request(
+		qr_name=qr.name,
+		lead_name=lead,
+		lead_display=lead_doc.lead_name or lead,
+		requester=frappe.session.user,
+	)
+
 	return qr.name

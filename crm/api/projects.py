@@ -95,6 +95,37 @@ def create_project_for_lead(lead: str) -> str:
 	lead_doc.reload()
 	project_id = lead_doc.get("custom_external_project_id") or ""
 
+	# Hard gate: if the integration didn't populate the project id, the handoff
+	# did NOT succeed end-to-end (HTTP error logged earlier, or 2xx with a body
+	# shape we couldn't read). Refuse to flip lead_status to Won — leave the
+	# lead re-triable. Post a failure audit + throw so the user sees the issue
+	# at click time instead of finding a half-handed-off lead later.
+	if not project_id:
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Comment",
+					"comment_type": "Comment",
+					"reference_doctype": "CRM Lead",
+					"reference_name": lead_doc.name,
+					"content": (
+						f"[AUTOMATION] Project creation FAILED for this lead "
+						f"(no external project id returned). Triggered by {user}. "
+						f"Check Error Log for details and re-click Create Project."
+					),
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			pass
+		frappe.throw(
+			_(
+				"Project creation did not return a project id. The handoff failed — "
+				"check Error Log for details. The lead is NOT marked Won; you can "
+				"retry once the underlying issue is resolved."
+			),
+			title=_("Project Handoff Failed"),
+		)
+
 	# --- Mark the lead Won (C-stage stays at C4; lead_status flips). The
 	# `_enforce_c4_won_lock` guard fires on subsequent edits but not on this
 	# write — db.set_value bypasses validate().
@@ -108,7 +139,7 @@ def create_project_for_lead(lead: str) -> str:
 				"comment_type": "Comment",
 				"reference_doctype": "CRM Lead",
 				"reference_name": lead_doc.name,
-				"content": f"[AUTOMATION] Project created (external id: {project_id or 'pending'}) by {user}. Lead marked Won (handoff complete).",
+				"content": f"[AUTOMATION] Project created (external id: {project_id}) by {user}. Lead marked Won (handoff complete).",
 			}
 		).insert(ignore_permissions=True)
 	except Exception:
