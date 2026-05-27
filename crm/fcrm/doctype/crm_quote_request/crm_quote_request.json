@@ -17,6 +17,7 @@
     "quote_margin",
     "quote_validity",
     "quote_sq_ft",
+    "total_quantity",
     "quote_number",
     "section_break_1",
     "estimation_remarks",
@@ -108,6 +109,14 @@
       "fieldname": "quote_sq_ft",
       "fieldtype": "Float",
       "label": "Quote Area (sqft)",
+      "mandatory_depends_on": "eval:doc.status != 'Pending'",
+      "permlevel": 1
+    },
+    {
+      "fieldname": "total_quantity",
+      "fieldtype": "Float",
+      "label": "Total Quantity",
+      "description": "Total quantity covered by this quote. Sent to OpsGate with the project handoff payload.",
       "mandatory_depends_on": "eval:doc.status != 'Pending'",
       "permlevel": 1
     },
