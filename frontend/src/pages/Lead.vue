@@ -458,6 +458,7 @@ import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
+import { sessionStore } from '@/stores/session'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import {
@@ -752,7 +753,7 @@ async function setPrimaryContact(contact) {
 
 // --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
 const { isManager } = usersStore()
-const sessionUser = window.frappe?.session?.user || ''
+const { user: sessionUser } = sessionStore()
 
 const canShowCreateProject = computed(() => {
   if (!doc.value) return false

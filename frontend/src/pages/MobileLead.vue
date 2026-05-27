@@ -197,6 +197,7 @@ import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
+import { sessionStore } from '@/stores/session'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled, isMobileView } from '@/composables/settings'
@@ -399,7 +400,7 @@ const sections = createResource({
 
 // --- Manual Create Project handoff (mobile parity) ---
 const { isManager } = usersStore()
-const sessionUser = window.frappe?.session?.user || ''
+const { user: sessionUser } = sessionStore()
 
 const canShowCreateProject = computed(() => {
   if (!doc.value) return false
