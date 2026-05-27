@@ -400,7 +400,7 @@ const sections = createResource({
 
 // --- Manual Create Project handoff (mobile parity) ---
 const { isManager } = usersStore()
-const { user: sessionUser } = sessionStore()
+const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {
   if (!doc.value) return false
@@ -409,7 +409,7 @@ const canShowCreateProject = computed(() => {
   if (doc.value.custom_external_project_id) return false
   // Visible for ALL lead types — lead_type just selects retail vs project
   // order on the downstream API.
-  return doc.value.lead_owner === sessionUser || isManager()
+  return doc.value.lead_owner === _session.user || isManager()
 })
 
 const projectFieldsReady = computed(() => {
