@@ -197,6 +197,7 @@ import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
+import { sessionStore } from '@/stores/session'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
 import { whatsappEnabled, isMobileView } from '@/composables/settings'
@@ -399,7 +400,7 @@ const sections = createResource({
 
 // --- Manual Create Project handoff (mobile parity) ---
 const { isManager } = usersStore()
-const sessionUser = window.frappe?.session?.user || ''
+const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {
   if (!doc.value) return false
@@ -408,7 +409,7 @@ const canShowCreateProject = computed(() => {
   if (doc.value.custom_external_project_id) return false
   // Visible for ALL lead types — lead_type just selects retail vs project
   // order on the downstream API.
-  return doc.value.lead_owner === sessionUser || isManager()
+  return doc.value.lead_owner === _session.user || isManager()
 })
 
 const projectFieldsReady = computed(() => {
