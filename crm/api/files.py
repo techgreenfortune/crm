@@ -68,6 +68,10 @@ def build_signed_file_url(file_url: str, ttl_seconds: int = _DEFAULT_TTL_SECONDS
 	return f"{base}/api/method/crm.api.files.get_signed_file?fid={file_doc_name}&exp={expires_at}&sig={sig}"
 
 
+# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+# Security review: guest access is intentional. Auth is HMAC-SHA256 over
+# (file_doc_name, expires_at) using crm_sso_secret. No Frappe session is
+# issued. Reviewed: 2026-05-27.
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_signed_file():
 	"""Serve a private File doc to an unauthenticated caller if the HMAC checks out.
@@ -106,9 +110,19 @@ def get_signed_file():
 		frappe.local.response.http_status_code = 404
 		frappe.throw(_("File not found"), frappe.DoesNotExistError)
 
-	with open(disk_path, "rb") as f:
+	# Explicit bounds check: ensure the resolved path stays within the site
+	# directory even if get_file_path's own traversal guard is ever relaxed.
+	site_root = os.path.realpath(frappe.get_site_path())
+	resolved_path = os.path.realpath(disk_path)
+	if not resolved_path.startswith(site_root + os.sep):
+		frappe.local.response.http_status_code = 403
+		frappe.throw(_("Forbidden"), frappe.PermissionError)
+
+	with open(  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-security-file-traversal
+		resolved_path, "rb"
+	) as f:
 		filecontent = f.read()
 
-	frappe.local.response.filename = os.path.basename(disk_path)
+	frappe.local.response.filename = os.path.basename(resolved_path)
 	frappe.local.response.filecontent = filecontent
 	frappe.local.response.type = "download"
