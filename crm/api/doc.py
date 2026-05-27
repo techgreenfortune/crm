@@ -7,6 +7,7 @@ from frappe.desk.form.assign_to import set_status
 from frappe.model import no_value_fields
 from frappe.model.document import get_controller
 from frappe.utils import make_filter_tuple
+from frappe.utils.pdf import get_pdf
 from pypika import Criterion
 
 from crm.api.views import get_views
@@ -834,3 +835,65 @@ def delete_bulk_docs(doctype: str, items: str | list, delete_linked: bool = Fals
 	else:
 		delete_bulk(doctype, items)
 	return "success"
+
+
+@frappe.whitelist()
+def export_pdf(
+	doctype: str,
+	fields: str,
+	filters: str = "[]",
+	order_by: str = "modified desc",
+	page_length: int = 100,
+	selected_items: str | None = None,
+) -> None:
+	# Server-side PDF export of a list view. Returns the PDF as a file download
+	# via frappe.local.response (the pattern Frappe uses for binary downloads).
+	fields_list = json.loads(fields)
+	filters_list = json.loads(filters)
+	selected = json.loads(selected_items) if selected_items else None
+
+	if selected:
+		filters_list.append(["name", "in", selected])
+
+	rows = frappe.get_list(
+		doctype,
+		fields=fields_list,
+		filters=filters_list,
+		order_by=order_by,
+		limit_page_length=int(page_length),
+	)
+
+	headers_html = "".join(f"<th>{frappe.unscrub(f)}</th>" for f in fields_list)
+	body_html = ""
+	for r in rows:
+		cells = "".join(
+			f"<td>{frappe.utils.escape_html(str(r.get(f))) if r.get(f) is not None else ''}</td>"
+			for f in fields_list
+		)
+		body_html += f"<tr>{cells}</tr>"
+
+	html = f"""
+	<html><head><style>
+	  body {{ font-family: Arial, sans-serif; font-size: 10px; color: #111; }}
+	  h2 {{ margin: 0 0 4px 0; font-size: 16px; }}
+	  .meta {{ color: #6b7280; font-size: 9px; margin-bottom: 10px; }}
+	  table {{ width: 100%; border-collapse: collapse; }}
+	  th, td {{ border: 1px solid #d1d5db; padding: 5px 7px; text-align: left; vertical-align: top; }}
+	  th {{ background: #f3f4f6; font-weight: 600; }}
+	  tr:nth-child(even) td {{ background: #fafafa; }}
+	</style></head><body>
+	  <h2>{frappe.utils.escape_html(doctype)}</h2>
+	  <div class="meta">Generated: {frappe.utils.now_datetime()} &nbsp;|&nbsp; Rows: {len(rows)}</div>
+	  <table>
+	    <thead><tr>{headers_html}</tr></thead>
+	    <tbody>{body_html}</tbody>
+	  </table>
+	</body></html>
+	"""
+
+	pdf = get_pdf(html, options={"orientation": "Landscape"})
+
+	frappe.local.response.filename = f"{doctype.replace(' ', '_')}.pdf"
+	frappe.local.response.filecontent = pdf
+	frappe.local.response.type = "pdf"
+	frappe.local.response.display_content_as = "attachment"

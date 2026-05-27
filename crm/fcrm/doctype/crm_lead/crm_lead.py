@@ -284,11 +284,12 @@ class CRMLead(Document):
 			return
 		if self.get("custom_lead_type") != "Projects":
 			return
+		# Project Category + Project Configuration are optional at C4 handoff
+		# (sales can fill them later). Only site address + pincode are required
+		# — OpsGate needs them to geo-tag the project. Removed on 2026-05-27.
 		missing = [
 			label
 			for field, label in (
-				("custom_project_category", "Project Category"),
-				("custom_project_configuration", "Project Configuration"),
 				("custom_site_address_full", "Site Address (Full)"),
 				("custom_site_pincode", "Site Pincode"),
 			)
@@ -894,3 +895,76 @@ def convert_to_deal(
 	organization = lead.create_organization(existing_organization)
 	_deal = lead.create_deal(contact, organization, deal)
 	return _deal
+
+
+def _get_lead_for_write(lead: str):
+	"""Fetch a CRM Lead doc, throwing PermissionError if the session user
+	doesn't have write access. Shared by add_contact, remove_contact, and
+	set_primary_contact to avoid repeating the permission+fetch pattern."""
+	if not frappe.has_permission("CRM Lead", "write", lead):
+		frappe.throw(_("Not allowed to modify Lead"), frappe.PermissionError)
+	return frappe.get_doc("CRM Lead", lead)
+
+
+@frappe.whitelist()
+def get_lead_contacts(name: str):
+	if not frappe.has_permission("CRM Lead", "read", name):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	rows = frappe.get_all(
+		"CRM Contacts",
+		filters={"parenttype": "CRM Lead", "parent": name},
+		fields=["contact", "is_primary"],
+		distinct=True,
+	)
+	contact_names = [r.contact for r in rows if r.contact]
+	if not contact_names:
+		return []
+
+	contact_data = {
+		c.name: c
+		for c in frappe.get_all(
+			"Contact",
+			filters={"name": ["in", contact_names]},
+			fields=["name", "image", "full_name", "email_id", "mobile_no"],
+		)
+	}
+	is_primary_map = {r.contact: r.is_primary for r in rows if r.contact}
+
+	return [
+		{
+			"name": name_,
+			"image": contact_data[name_].image,
+			"full_name": contact_data[name_].full_name,
+			"email": contact_data[name_].email_id,
+			"mobile_no": contact_data[name_].mobile_no,
+			"is_primary": is_primary_map.get(name_),
+		}
+		for name_ in contact_names
+		if name_ in contact_data
+	]
+
+
+@frappe.whitelist()
+def add_contact(lead: str, contact: str):
+	doc = _get_lead_for_write(lead)
+	doc.append("contacts", {"contact": contact})
+	doc.save()
+	return True
+
+
+@frappe.whitelist()
+def remove_contact(lead: str, contact: str):
+	doc = _get_lead_for_write(lead)
+	doc.contacts = [d for d in doc.contacts if d.contact != contact]
+	doc.save()
+	return True
+
+
+@frappe.whitelist()
+def set_primary_contact(lead: str, contact: str):
+	doc = _get_lead_for_write(lead)
+	for row in doc.contacts:
+		row.is_primary = 1 if row.contact == contact else 0
+	doc.save()
+	return True

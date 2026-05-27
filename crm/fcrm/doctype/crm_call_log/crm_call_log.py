@@ -246,6 +246,20 @@ def get_call_log(name: str):
 
 	call["_tasks"] = tasks
 	call["_notes"] = notes
+
+	if call.get("_lead"):
+		lead_routing = (
+			frappe.db.get_value(
+				"CRM Lead",
+				call["_lead"],
+				["custom_fabricator_routing_reason", "custom_partner_fabricator_name"],
+				as_dict=True,
+			)
+			or {}
+		)
+		call["_fabricator_routing_reason"] = lead_routing.get("custom_fabricator_routing_reason")
+		call["_partner_fabricator_name"] = lead_routing.get("custom_partner_fabricator_name")
+
 	return call
 
 

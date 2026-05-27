@@ -10,7 +10,8 @@
         >
           <template v-if="filters?.size" #suffix>
             <div
-              class="flex h-5 w-5 items-center justify-center rounded-[5px] bg-surface-white pt-px text-xs font-medium text-ink-gray-8 shadow-sm"
+              class="flex h-5 w-5 items-center justify-center rounded-[5px] pt-px text-xs font-medium text-white shadow-sm"
+              style="background-color: #0e7490"
             >
               {{ filters.size }}
             </div>

@@ -285,6 +285,10 @@
             label: __('CSV'),
             value: 'CSV',
           },
+          {
+            label: __('PDF'),
+            value: 'PDF',
+          },
         ]"
         :placeholder="__('Excel')"
       />
@@ -573,11 +577,23 @@ async function exportRows() {
     page_length = list.value.data.total_count
   }
 
-  let url = `/api/method/frappe.desk.reportview.export_query?file_format_type=${export_type.value}&title=${props.doctype}&doctype=${props.doctype}&fields=${fields}&filters=${encodeURIComponent(filters)}&order_by=${order_by}&page_length=${page_length}&start=0&view=Report&with_comment_count=1`
-
-  // Add selected items parameter if rows are selected
-  if (selectedRows.value?.length && !export_all.value) {
-    url += `&selected_items=${JSON.stringify(selectedRows.value)}`
+  let url
+  if (export_type.value === 'PDF') {
+    url =
+      `/api/method/crm.api.doc.export_pdf` +
+      `?doctype=${encodeURIComponent(props.doctype)}` +
+      `&fields=${encodeURIComponent(fields)}` +
+      `&filters=${encodeURIComponent(filters)}` +
+      `&order_by=${encodeURIComponent(order_by)}` +
+      `&page_length=${page_length}`
+    if (selectedRows.value?.length && !export_all.value) {
+      url += `&selected_items=${encodeURIComponent(JSON.stringify(selectedRows.value))}`
+    }
+  } else {
+    url = `/api/method/frappe.desk.reportview.export_query?file_format_type=${export_type.value}&title=${props.doctype}&doctype=${props.doctype}&fields=${fields}&filters=${encodeURIComponent(filters)}&order_by=${order_by}&page_length=${page_length}&start=0&view=Report&with_comment_count=1`
+    if (selectedRows.value?.length && !export_all.value) {
+      url += `&selected_items=${JSON.stringify(selectedRows.value)}`
+    }
   }
 
   window.location.href = url

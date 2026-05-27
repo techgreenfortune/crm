@@ -168,12 +168,13 @@
     :defaults="{
       custom_account: props.accountId,
       custom_lead_type: 'Projects',
+      custom_customer_type: account.doc?.account_type,
     }"
   />
   <ContactModal
     v-if="showContactModal"
     v-model="showContactModal"
-    :contact="{ company_name: props.accountId }"
+    :contact="{ custom_account: props.accountId }"
     :options="{ redirect: false, afterInsert: () => contacts.reload() }"
   />
   <DeleteLinkedDocModal
@@ -381,11 +382,11 @@ const contacts = createListResource({
     'image',
     'email_id',
     'mobile_no',
-    'company_name',
+    'custom_account',
     'modified',
   ],
   filters: {
-    company_name: props.accountId,
+    custom_account: props.accountId,
   },
   orderBy: 'modified desc',
   pageLength: 20,
@@ -445,8 +446,8 @@ function getContactRowObject(contact) {
     },
     email: contact.email_id,
     mobile_no: contact.mobile_no,
-    company_name: {
-      label: contact.company_name,
+    custom_account: {
+      label: contact.custom_account,
       logo: account.doc?.account_logo,
     },
     modified: {
@@ -474,7 +475,7 @@ const contactColumns = [
   { label: __('Name'), key: 'full_name', width: '17rem' },
   { label: __('Email'), key: 'email', width: '12rem' },
   { label: __('Phone'), key: 'mobile_no', width: '12rem' },
-  { label: __('Account'), key: 'company_name', width: '12rem' },
+  { label: __('Account'), key: 'custom_account', width: '12rem' },
   { label: __('Last Modified'), key: 'modified', width: '8rem' },
 ]
 

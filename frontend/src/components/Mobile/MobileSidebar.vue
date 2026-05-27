@@ -92,29 +92,33 @@ import {
   DialogOverlay,
 } from '@headlessui/vue'
 import Section from '@/components/Section.vue'
-import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
-import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
-// import AccountsIcon from '@/components/Icons/AccountsIcon.vue'  // disabled: Accounts hidden pending testing
+import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import OpsGateIcon from '@/components/Icons/OpsGateIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
+import { useSidebarNavigation } from '@/composables/useSidebarNavigation.js'
 import { viewsStore } from '@/stores/views'
 import { unreadNotificationsCount } from '@/stores/notifications'
-import { computed, h } from 'vue'
+import { computed } from 'vue'
 import {
   mobileSidebarOpened as sidebarOpened,
   opsGateEnabled,
 } from '@/composables/settings'
-import { call, toast } from 'frappe-ui'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
+const { openOpsGate, parseView } = useSidebarNavigation({
+  onBeforeOpen: () => {
+    sidebarOpened.value = false
+  },
+  wrapCustomIcons: true,
+})
 
 const links = [
   {
@@ -139,13 +143,11 @@ const links = [
     icon: OrganizationsIcon,
     to: 'Organizations',
   },
-  /* disabled: Accounts hidden pending testing
   {
     label: 'Accounts',
     icon: AccountsIcon,
     to: 'Accounts',
   },
-  */
   {
     label: 'Notes',
     icon: NoteIcon,
@@ -168,22 +170,6 @@ const links = [
     condition: () => opsGateEnabled.value,
   },
 ]
-
-async function openOpsGate() {
-  sidebarOpened.value = false
-  try {
-    const data = await call('crm.api.settings.get_opsgate_redirect_url')
-    if (data?.redirect_url) {
-      window.open(data.redirect_url, '_blank')
-    } else {
-      toast.error('OpsGate SSO failed: no redirect URL returned')
-    }
-  } catch {
-    toast.error(
-      'Could not sign you into OpsGate. Please contact your administrator.',
-    )
-  }
-}
 
 const allViews = computed(() => {
   let _views = [
@@ -214,39 +200,4 @@ const allViews = computed(() => {
   }
   return _views
 })
-
-function parseView(views) {
-  return views.map((view) => {
-    return {
-      label: view.label,
-      icon: getIcon(view.route_name, view.icon),
-      to: {
-        name: view.route_name,
-        params: { viewType: view.type || 'list' },
-        query: { view: view.name },
-      },
-    }
-  })
-}
-
-function getIcon(routeName, icon) {
-  if (icon) return h('div', { class: 'size-auto' }, icon)
-
-  switch (routeName) {
-    case 'Leads':
-      return LeadsIcon
-    case 'Deals':
-      return DealsIcon
-    case 'Contacts':
-      return ContactsIcon
-    case 'Organizations':
-      return OrganizationsIcon
-    case 'Notes':
-      return NoteIcon
-    case 'Call Logs':
-      return PhoneIcon
-    default:
-      return PinIcon
-  }
-}
 </script>

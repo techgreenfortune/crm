@@ -240,12 +240,123 @@
       >
         <SidePanelLayout
           :sections="sections.data"
+          :addContact="addContact"
           doctype="CRM Lead"
           :docname="leadId"
           @reload="sections.reload"
           @beforeFieldChange="beforeStatusChange"
           @afterFieldChange="reloadResources"
-        />
+        >
+          <template #default="{ section }">
+            <div
+              v-if="section.name == 'contacts_section'"
+              class="contacts-area"
+            >
+              <div
+                v-if="leadContacts?.loading && leadContacts?.data?.length == 0"
+                class="flex min-h-20 flex-1 items-center justify-center gap-3 text-base text-ink-gray-4"
+              >
+                <LoadingIndicator class="h-4 w-4" />
+                <span>{{ __('Loading...') }}</span>
+              </div>
+              <div
+                v-for="(contact, i) in leadContacts.data"
+                v-else-if="leadContacts?.data?.length"
+                :key="contact.name"
+              >
+                <div class="px-2 pb-2.5" :class="[i == 0 ? 'pt-5' : 'pt-2.5']">
+                  <Section :opened="contact.opened">
+                    <template #header="{ opened, toggle }">
+                      <div
+                        class="flex cursor-pointer items-center justify-between gap-2 pr-1 text-base leading-5 text-ink-gray-7"
+                      >
+                        <div
+                          class="flex h-7 items-center gap-2 truncate"
+                          @click="toggle()"
+                        >
+                          <Avatar
+                            :label="contact.full_name"
+                            :image="contact.image"
+                            size="md"
+                          />
+                          <div class="truncate">
+                            {{ contact.full_name }}
+                          </div>
+                          <Badge
+                            v-if="contact.is_primary"
+                            class="ml-2"
+                            variant="outline"
+                            :label="__('Primary')"
+                            theme="green"
+                          />
+                        </div>
+                        <div class="flex items-center">
+                          <Dropdown :options="contactOptions(contact)">
+                            <Button
+                              icon="more-horizontal"
+                              class="text-ink-gray-5"
+                              variant="ghost"
+                            />
+                          </Dropdown>
+                          <Button
+                            variant="ghost"
+                            :tooltip="__('View Contact')"
+                            :icon="ArrowUpRightIcon"
+                            @click="
+                              router.push({
+                                name: 'Contact',
+                                params: { contactId: contact.name },
+                              })
+                            "
+                          />
+                          <Button
+                            variant="ghost"
+                            class="transition-all duration-300 ease-in-out"
+                            :class="{ 'rotate-90': opened }"
+                            icon="chevron-right"
+                            @click="toggle()"
+                          />
+                        </div>
+                      </div>
+                    </template>
+                    <div class="flex flex-col gap-1.5 text-base">
+                      <div
+                        v-if="contact.email"
+                        class="flex items-center gap-3 pb-1.5 pl-1 pt-4 text-ink-gray-8"
+                      >
+                        <Email2Icon class="h-4 w-4" />
+                        {{ contact.email }}
+                      </div>
+                      <div
+                        v-if="contact.mobile_no"
+                        class="flex items-center gap-3 p-1 py-1.5 text-ink-gray-8"
+                      >
+                        <PhoneIcon class="h-4 w-4" />
+                        {{ contact.mobile_no }}
+                      </div>
+                      <div
+                        v-if="!contact.email && !contact.mobile_no"
+                        class="flex items-center justify-center py-4 text-sm text-ink-gray-4"
+                      >
+                        {{ __('No Details Added') }}
+                      </div>
+                    </div>
+                  </Section>
+                </div>
+                <div
+                  v-if="i != leadContacts.data.length - 1"
+                  class="mx-2 h-px border-t border-outline-gray-modals"
+                />
+              </div>
+              <div
+                v-else
+                class="flex h-20 items-center justify-center text-base text-ink-gray-5"
+              >
+                {{ __('No Contacts Added') }}
+              </div>
+            </div>
+          </template>
+        </SidePanelLayout>
       </div>
     </Resizer>
   </div>
@@ -291,6 +402,15 @@
     doctype="CRM Lead"
     :document="document"
   />
+  <ContactModal
+    v-if="showContactModal"
+    v-model="showContactModal"
+    :contact="_contact"
+    :options="{
+      redirect: false,
+      afterInsert: (_doc) => addContact(_doc.name),
+    }"
+  />
 </template>
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
@@ -319,7 +439,12 @@ import AssignTo from '@/components/AssignTo.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import SidePanelLayout from '@/components/SidePanelLayout.vue'
 import SLASection from '@/components/SLASection.vue'
+import Section from '@/components/Section.vue'
+import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import CustomActions from '@/components/CustomActions.vue'
+import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
+import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
+import ContactModal from '@/components/Modals/ContactModal.vue'
 // import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
@@ -346,13 +471,14 @@ import {
   Dropdown,
   Tooltip,
   Avatar,
+  Badge,
   Tabs,
   Breadcrumbs,
   call,
   usePageMeta,
   toast,
 } from 'frappe-ui'
-import { ref, computed, watch, nextTick, onMounted, provide } from 'vue'
+import { ref, computed, watch, h, nextTick, onMounted, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 
@@ -552,6 +678,78 @@ const sections = createResource({
   auto: true,
 })
 
+const leadContacts = createResource({
+  url: 'crm.fcrm.doctype.crm_lead.crm_lead.get_lead_contacts',
+  cache: ['lead_contacts', props.leadId],
+  params: { name: props.leadId },
+  transform: (data) => {
+    data.forEach((contact) => {
+      contact.opened = false
+    })
+    return data
+  },
+})
+
+if (!leadContacts.data) leadContacts.fetch()
+
+const showContactModal = ref(false)
+let _contact = ref({})
+
+function contactOptions(contact) {
+  let options = [
+    {
+      label: __('Remove'),
+      icon: 'trash-2',
+      onClick: () => removeContact(contact.name),
+    },
+  ]
+  if (!contact.is_primary) {
+    options.push({
+      label: __('Set as Primary Contact'),
+      icon: h(SuccessIcon, { class: 'h-4 w-4' }),
+      onClick: () => setPrimaryContact(contact.name),
+    })
+  }
+  return options
+}
+
+async function addContact(contact) {
+  if (leadContacts.data?.find((c) => c.name === contact)) {
+    toast.error(__('Contact Already Added'))
+    return
+  }
+  let d = await call('crm.fcrm.doctype.crm_lead.crm_lead.add_contact', {
+    lead: props.leadId,
+    contact,
+  })
+  if (d) {
+    leadContacts.reload()
+    toast.success(__('Contact Added'))
+  }
+}
+
+async function removeContact(contact) {
+  let d = await call('crm.fcrm.doctype.crm_lead.crm_lead.remove_contact', {
+    lead: props.leadId,
+    contact,
+  })
+  if (d) {
+    leadContacts.reload()
+    toast.success(__('Contact Removed'))
+  }
+}
+
+async function setPrimaryContact(contact) {
+  let d = await call('crm.fcrm.doctype.crm_lead.crm_lead.set_primary_contact', {
+    lead: props.leadId,
+    contact,
+  })
+  if (d) {
+    leadContacts.reload()
+    toast.success(__('Primary Contact Set'))
+  }
+}
+
 // --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
 const { isManager } = usersStore()
 const sessionUser = window.frappe?.session?.user || ''
@@ -573,12 +771,11 @@ const projectFieldsReady = computed(() => {
   // soon as the C4 baseline (validate_won_fields + validate_c4_handoff_fields)
   // is satisfied, which is enforced at the status change.
   if (doc.value.custom_lead_type !== 'Projects') return true
-  return !!(
-    doc.value.custom_project_category &&
-    doc.value.custom_project_configuration &&
-    doc.value.custom_site_address_full &&
-    doc.value.custom_site_pincode
-  )
+  // Project Category + Project Configuration are optional at handoff
+  // (sales can fill later). Only site address + pincode are required —
+  // OpsGate needs them to geo-tag the project. Mirrors backend gate in
+  // CRMLead.validate_project_specific_fields.
+  return !!(doc.value.custom_site_address_full && doc.value.custom_site_pincode)
 })
 
 const createProjectResource = createResource({
