@@ -183,12 +183,13 @@
     :defaults="{
       custom_account: props.accountId,
       custom_lead_type: 'Projects',
+      custom_customer_type: account.doc?.account_type,
     }"
   />
   <ContactModal
     v-if="showContactModal"
     v-model="showContactModal"
-    :contact="{ company_name: props.accountId }"
+    :contact="{ custom_account: props.accountId }"
     :options="{ redirect: false, afterInsert: () => contacts.reload() }"
   />
   <ErrorPage
@@ -443,11 +444,11 @@ const contacts = createListResource({
     'image',
     'email_id',
     'mobile_no',
-    'company_name',
+    'custom_account',
     'modified',
   ],
   filters: {
-    company_name: props.accountId,
+    custom_account: props.accountId,
   },
   orderBy: 'modified desc',
   pageLength: 20,
@@ -503,8 +504,8 @@ function getContactRowObject(contact) {
     },
     email: contact.email_id,
     mobile_no: contact.mobile_no,
-    company_name: {
-      label: contact.company_name,
+    custom_account: {
+      label: contact.custom_account,
       logo: account.doc?.account_logo,
     },
     modified: {
@@ -566,7 +567,7 @@ const contactColumns = [
   },
   {
     label: __('Account'),
-    key: 'company_name',
+    key: 'custom_account',
     width: '12rem',
   },
   {

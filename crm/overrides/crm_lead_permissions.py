@@ -249,10 +249,24 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		else:
 			clauses.append(f"({owner_clause})")
 
+	# DocShare fallback: a lead explicitly shared with the user (e.g. via the
+	# AssignTo button, which calls frappe.assign_to.add and auto-creates a
+	# DocShare) must appear in their list view even if lead_owner is outside
+	# their tree scope. This mirrors the share-OR behaviour that has_permission
+	# already relies on from the Frappe framework.
+	docshare_sql = (
+		f"EXISTS (SELECT 1 FROM `tabDocShare` "
+		f"WHERE `tabDocShare`.share_doctype = 'CRM Lead' "
+		f"AND `tabDocShare`.share_name = `tabCRM Lead`.name "
+		f"AND `tabDocShare`.user = {esc(user)} "
+		f"AND `tabDocShare`.`read` = 1)"
+	)
+
 	if not clauses:
-		# No rule grants any access — exclude everything.
-		return "1=0"
-	return "(" + " OR ".join(clauses) + ")"
+		# No owner-scope rule applies, but an explicit share grant should still
+		# surface the lead (mirrors has_permission share-OR).
+		return f"({docshare_sql})"
+	return "(" + " OR ".join(clauses) + f" OR {docshare_sql})"
 
 
 def downstream_users(user: str) -> set[str]:

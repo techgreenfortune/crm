@@ -175,9 +175,10 @@ import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import { getCallLogDetail } from '@/utils/callLog'
 import { sanitizeHTML, formatDate } from '@/utils'
 import { isMobileView } from '@/composables/settings'
+import { useCallLogModalActions } from '@/composables/useCallLogActions.js'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useDocument } from '@/data/document'
-import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
+import { useTelemetry } from 'frappe-ui/frappe'
 import { FeatherIcon, Dropdown, Avatar, Tooltip, call, toast } from 'frappe-ui'
 import { ref, computed, h, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -188,65 +189,13 @@ const show = defineModel({ type: Boolean })
 
 const callLog = defineModel('callLog', { type: Object })
 
-const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
 const { showModal } = useDoctypeModal()
+const { openNoteModal: showNote, openTaskModal: showTask } =
+  useCallLogModalActions(callLog)
 
 const note = ref('')
 const task = ref('')
-
-function showNote(name) {
-  showModal({
-    name,
-    doctype: 'FCRM Note',
-    title: 'Note',
-    callbacks: {
-      afterInsert: (d) => addNoteToCallLog(d, true),
-      afterUpdate: (d) => addNoteToCallLog(d, false),
-    },
-  })
-}
-
-function showTask(name) {
-  showModal({
-    name,
-    doctype: 'CRM Task',
-    title: 'Task',
-    defaults: { status: 'Backlog', priority: 'Low' },
-    callbacks: {
-      afterInsert: (d) => addTaskToCallLog(d, true),
-      afterUpdate: (d) => addTaskToCallLog(d, false),
-    },
-  })
-}
-
-async function addNoteToCallLog(_note, isInsert = false) {
-  if (isInsert && _note.name) {
-    await call('crm.integrations.api.add_note_to_call_log', {
-      call_sid: callLog.value?.data?.id,
-      note: _note,
-    })
-    updateOnboardingStep('create_first_note')
-    capture('note_created')
-  } else {
-    capture('note_updated')
-  }
-  callLog.value?.reload?.()
-}
-
-async function addTaskToCallLog(_task, isInsert = false) {
-  if (isInsert && _task.name) {
-    await call('crm.integrations.api.add_task_to_call_log', {
-      call_sid: callLog.value?.data?.id,
-      task: _task,
-    })
-    updateOnboardingStep('create_first_task')
-    capture('task_created')
-  } else {
-    capture('task_updated')
-  }
-  callLog.value?.reload?.()
-}
 
 const detailFields = computed(() => {
   if (!callLog.value?.data) return []
@@ -316,6 +265,22 @@ const detailFields = computed(() => {
       }),
       name: 'disposition',
       value: data.disposition,
+    },
+    {
+      icon: h(FeatherIcon, {
+        name: 'git-branch',
+        class: 'h-4 w-4',
+      }),
+      name: '_fabricator_routing_reason',
+      value: data._fabricator_routing_reason,
+    },
+    {
+      icon: h(FeatherIcon, {
+        name: 'user',
+        class: 'h-4 w-4',
+      }),
+      name: '_partner_fabricator_name',
+      value: data._partner_fabricator_name,
     },
     {
       icon: h(FeatherIcon, {

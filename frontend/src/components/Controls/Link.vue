@@ -78,6 +78,10 @@ const props = defineProps({
   filters: { type: [Array, Object, String], default: () => [] },
   modelValue: { type: String, default: '' },
   hideMe: { type: Boolean, default: false },
+  // Optional URL override: when set, replaces frappe.desk.search.search_link.
+  // Useful when the standard search_link is restricted by Frappe's User doctype
+  // permissions (non-admin users can only read their own record via search_link).
+  url: { type: String, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -130,8 +134,14 @@ watchDebounced(
 )
 
 const options = createResource({
-  url: 'frappe.desk.search.search_link',
-  cache: [props.doctype, text.value, props.hideMe, props.filters],
+  url: props.url || 'frappe.desk.search.search_link',
+  cache: [
+    props.url || 'search_link',
+    props.doctype,
+    text.value,
+    props.hideMe,
+    props.filters,
+  ],
   method: 'POST',
   params: {
     txt: text.value,

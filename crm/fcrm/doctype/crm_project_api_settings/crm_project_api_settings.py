@@ -11,7 +11,6 @@ class CRMProjectAPISettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		api_base_url: DF.Data | None
 		api_key: DF.Password | None
 		enabled: DF.Check
 		timeout_seconds: DF.Int
