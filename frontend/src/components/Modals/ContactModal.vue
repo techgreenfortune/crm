@@ -58,8 +58,8 @@ import { useDocument } from '@/data/document'
 import { evaluateDependsOnValue } from '@/utils'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { createResource } from 'frappe-ui'
-import { ref, nextTick, onMounted } from 'vue'
+import { createResource, call } from 'frappe-ui'
+import { ref, watch, watchEffect, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -183,7 +183,7 @@ const tabs = createResource({
   params: { doctype: 'Contact', type: 'Quick Entry' },
   auto: true,
   transform: (_tabs) => {
-    return _tabs.forEach((tab) => {
+    _tabs.forEach((tab) => {
       tab.sections.forEach((section) => {
         section.columns.forEach((column) => {
           column.fields.forEach((field) => {
@@ -204,18 +204,66 @@ const tabs = createResource({
             if (field.fieldname === 'first_name') {
               field.reqd = 1
             }
-
-            if (field.fieldname === 'company_name') {
+            if (field.fieldname === 'custom_account') {
               field.fieldtype = 'Link'
               field.options = 'CRM Account'
-              field.label = 'Account'
+            }
+            if (field.fieldname === 'custom_lead') {
+              field.fieldtype = 'Link'
+              field.options = 'CRM Lead'
+              field.filters = {}
             }
           })
         })
       })
     })
+    return _tabs
   },
 })
+
+function findField(fieldname) {
+  if (!tabs.data) return null
+  for (const tab of tabs.data) {
+    for (const section of tab.sections) {
+      for (const column of section.columns) {
+        const f = column.fields.find((f) => f.fieldname === fieldname)
+        if (f) return f
+      }
+    }
+  }
+  return null
+}
+
+watchEffect(() => {
+  if (!tabs.data) return
+  const lf = findField('custom_lead')
+  if (!lf) return
+  lf.filters = _contact.doc.custom_account
+    ? { custom_account: _contact.doc.custom_account }
+    : {}
+})
+
+watch(
+  () => _contact.doc.custom_account,
+  () => {
+    _contact.doc.custom_lead = null
+  },
+)
+
+watch(
+  () => _contact.doc.custom_lead,
+  async (leadName) => {
+    if (!leadName) return
+    const res = await call('frappe.client.get_value', {
+      doctype: 'CRM Lead',
+      filters: { name: leadName },
+      fieldname: 'custom_account',
+    })
+    if (res?.message) {
+      _contact.doc.custom_account = res.message
+    }
+  },
+)
 
 onMounted(() => {
   _contact.doc = {}

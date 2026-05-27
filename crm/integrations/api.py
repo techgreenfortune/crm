@@ -86,6 +86,9 @@ def add_disposition_to_call_log(
 	call_sid: str,
 	disposition: str,
 	scheduled_callback_at: str | None = None,
+	fabricator_routing_reason: str | None = None,
+	partner_fabricator_name: str | None = None,
+	fabricator_routing_notes: str | None = None,
 ):
 	"""Persist a disposition on a call log. Ownership and No-Answer validation
 	live in the `CRM Call Log — Before Save — Disposition Validation` server
@@ -94,6 +97,28 @@ def add_disposition_to_call_log(
 	call_log.disposition = disposition
 	if scheduled_callback_at:
 		call_log.scheduled_callback_at = scheduled_callback_at
+
+	# Push fabricator routing fields to the linked lead before saving the call
+	# log so the Before-Save server script's requires_routing_reason check passes.
+	if fabricator_routing_reason or partner_fabricator_name:
+		lead_name = None
+		if call_log.reference_doctype == "CRM Lead" and call_log.reference_docname:
+			lead_name = call_log.reference_docname
+		else:
+			for row in call_log.links or []:
+				if row.link_doctype == "CRM Lead" and row.link_name:
+					lead_name = row.link_name
+					break
+		if lead_name:
+			updates = {}
+			if fabricator_routing_reason:
+				updates["custom_fabricator_routing_reason"] = fabricator_routing_reason
+			if partner_fabricator_name:
+				updates["custom_partner_fabricator_name"] = partner_fabricator_name
+			if fabricator_routing_notes:
+				updates["custom_fabricator_routing_notes"] = fabricator_routing_notes
+			frappe.db.set_value("CRM Lead", lead_name, updates)
+
 	call_log.save(ignore_permissions=True)
 	return {
 		"name": call_sid,
