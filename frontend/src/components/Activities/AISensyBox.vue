@@ -40,6 +40,32 @@
         />
       </div>
     </div>
+    <div>
+      <div class="mb-1 text-sm font-medium text-ink-gray-7">
+        {{ __('Media URL') }}
+        <span class="text-xs font-normal text-ink-gray-4">
+          ({{ __('optional — for image/document templates') }})
+        </span>
+      </div>
+      <FormControl
+        v-model="mediaUrl"
+        type="text"
+        :placeholder="__('https://example.com/file.jpg')"
+      />
+    </div>
+    <div v-if="mediaUrl">
+      <div class="mb-1 text-sm font-medium text-ink-gray-7">
+        {{ __('Media Filename') }}
+        <span class="text-xs font-normal text-ink-gray-4">
+          ({{ __('optional — auto-derived from URL if blank') }})
+        </span>
+      </div>
+      <FormControl
+        v-model="mediaFilename"
+        type="text"
+        :placeholder="__('file.jpg')"
+      />
+    </div>
     <div class="flex justify-end">
       <Button
         variant="solid"
@@ -71,6 +97,8 @@ const aisensyMessages = defineModel('aisensyMessages', {
 
 const templateName = ref('')
 const variables = ref([])
+const mediaUrl = ref('')
+const mediaFilename = ref('')
 const sending = ref(false)
 
 function addVariable() {
@@ -106,10 +134,14 @@ async function send() {
       to: doc.value.mobile_no,
       template_name: templateName.value,
       variables: variableList,
+      media_url: mediaUrl.value.trim() || null,
+      media_filename: mediaFilename.value.trim() || null,
     })
     toast.success(__('WhatsApp message sent'))
     templateName.value = ''
     variables.value = []
+    mediaUrl.value = ''
+    mediaFilename.value = ''
     aisensyMessages.value.reload()
   } catch (err) {
     toast.error(err.messages?.[0] || __('Failed to send message'))

@@ -47,6 +47,12 @@ def send_message(
 	to: str,
 	template_name: str,
 	variables: list | None = None,
+	media_url: str | None = None,
+	media_filename: str | None = None,
+	source: str | None = None,
+	buttons: list | None = None,
+	attributes: dict | None = None,
+	params_fallback_value: dict | None = None,
 ) -> dict:
 	if not _is_enabled():
 		frappe.throw(frappe._("AISensy integration is not enabled."))
@@ -56,4 +62,10 @@ def send_message(
 		variables=variables or [],
 		reference_doctype=reference_doctype,
 		reference_name=reference_name,
+		media_url=media_url,
+		media_filename=media_filename,
+		source=source,
+		buttons=buttons,
+		attributes=attributes,
+		params_fallback_value=params_fallback_value,
 	)
