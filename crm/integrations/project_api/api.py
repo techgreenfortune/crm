@@ -69,6 +69,49 @@ def _resolve_sales_person_email(lead_name: str) -> str:
 	return frappe.db.get_value("CRM Lead", lead_name, "lead_owner") or ""
 
 
+def _build_order_block(lead_name: str) -> dict:
+	"""Return the order block for a lead, sourced from the latest Quote Request.
+
+	A Won lead must have a Quote Request — that's the source of commercial
+	truth handed to OpsGate. If none exists this is a data-integrity bug, so
+	throw and abort the handoff rather than send a half-populated project.
+	"""
+	from crm.api.files import build_signed_file_url
+
+	rows = frappe.get_all(
+		"CRM Quote Request",
+		filters={"lead": lead_name},
+		fields=[
+			"name",
+			"quote_number",
+			"quote_value",
+			"quote_sq_ft",
+			"total_quantity",
+			"quote_file",
+		],
+		order_by="creation desc",
+		limit=1,
+	)
+	if not rows:
+		frappe.throw(
+			frappe._(
+				"Cannot create project: lead {0} has no Quote Request. "
+				"Create and accept a quote before handing off to OpsGate."
+			).format(lead_name),
+			title=frappe._("Quote Request Required"),
+		)
+
+	qr = rows[0]
+	return {
+		"name": qr.name,
+		"quotation_number": qr.quote_number or "",
+		"order_value": qr.quote_value or 0,
+		"area": qr.quote_sq_ft or 0,
+		"total_quantity": qr.total_quantity or 0,
+		"quote_file_url": build_signed_file_url(qr.quote_file) if qr.quote_file else None,
+	}
+
+
 def _post_with_retry(url: str, json: dict, headers: dict, timeout: float):
 	"""POST with a single retry on HTTP 429.
 
@@ -220,6 +263,14 @@ def create_project_on_won(lead_name: str) -> None:
 	# B6 — Don't pollute alternate_number with a duplicate of mobile_no.
 	alt_number = lead.phone if (lead.phone and lead.phone != lead.mobile_no) else ""
 
+	# Order block: the latest CRM Quote Request linked to the lead drives the
+	# project's commercial details. "Latest by creation" without a status filter
+	# is intentional — if a newer revision exists, OpsGate should see the
+	# freshest numbers even if it isn't formally Accepted yet. The quote PDF is
+	# shared as a short-lived HMAC-signed URL; OpsGate downloads it once and
+	# copies to its own S3.
+	order = _build_order_block(lead.name)
+
 	# Payload shape matches the receiver exactly — every field below is read by
 	# either validateCreateProjectV2 (top-level) or createProjectFromFrappe's
 	# customer block. Anything not read by the controller has been dropped.
@@ -264,6 +315,7 @@ def create_project_on_won(lead_name: str) -> None:
 			"customer_alternate_number": alt_number,
 			"customer_gst_number": lead.get("custom_gst_number") or "",
 		},
+		"order": order,
 	}
 	headers = {
 		"accept": "application/json",

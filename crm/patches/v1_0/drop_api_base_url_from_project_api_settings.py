@@ -11,11 +11,18 @@ import frappe
 
 
 def execute():
-	stored = frappe.db.get_value(
-		"Singles",
-		{"doctype": "CRM Project API Settings", "field": "api_base_url"},
-		"value",
+	# `tabSingles` is a flat (doctype, field, value) table with no `creation`
+	# column, so frappe.db.get_value / frappe.db.delete (which auto-add
+	# ORDER BY creation) blow up on it. Hit it with raw SQL.
+	row = frappe.db.sql(
+		"""
+		SELECT value FROM `tabSingles`
+		WHERE doctype = %s AND field = %s
+		""",
+		("CRM Project API Settings", "api_base_url"),
 	)
+	stored = row[0][0] if row else None
+
 	if stored:
 		expected = (frappe.conf.get("opsgate_api_url") or "").rstrip("/")
 		stored_norm = stored.rstrip("/")
@@ -27,7 +34,11 @@ def execute():
 				"Project API: api_base_url drift at deprecation",
 			)
 
-	frappe.db.delete(
-		"Singles",
-		{"doctype": "CRM Project API Settings", "field": "api_base_url"},
+	frappe.db.sql(
+		"""
+		DELETE FROM `tabSingles`
+		WHERE doctype = %s AND field = %s
+		""",
+		("CRM Project API Settings", "api_base_url"),
 	)
+	frappe.db.commit()
