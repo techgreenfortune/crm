@@ -415,12 +415,9 @@ const projectFieldsReady = computed(() => {
   if (!doc.value) return false
   // Retail leads need no extra project-specific fields.
   if (doc.value.custom_lead_type !== 'Projects') return true
-  return !!(
-    doc.value.custom_project_category &&
-    doc.value.custom_project_configuration &&
-    doc.value.custom_site_address_full &&
-    doc.value.custom_site_pincode
-  )
+  // Project Category + Project Configuration are optional at handoff.
+  // Mirrors desktop Lead.vue + backend CRMLead.validate_project_specific_fields.
+  return !!(doc.value.custom_site_address_full && doc.value.custom_site_pincode)
 })
 
 const createProjectResource = createResource({

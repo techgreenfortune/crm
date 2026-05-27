@@ -284,11 +284,12 @@ class CRMLead(Document):
 			return
 		if self.get("custom_lead_type") != "Projects":
 			return
+		# Project Category + Project Configuration are optional at C4 handoff
+		# (sales can fill them later). Only site address + pincode are required
+		# — OpsGate needs them to geo-tag the project. Removed on 2026-05-27.
 		missing = [
 			label
 			for field, label in (
-				("custom_project_category", "Project Category"),
-				("custom_project_configuration", "Project Configuration"),
 				("custom_site_address_full", "Site Address (Full)"),
 				("custom_site_pincode", "Site Pincode"),
 			)

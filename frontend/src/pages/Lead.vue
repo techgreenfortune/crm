@@ -573,12 +573,11 @@ const projectFieldsReady = computed(() => {
   // soon as the C4 baseline (validate_won_fields + validate_c4_handoff_fields)
   // is satisfied, which is enforced at the status change.
   if (doc.value.custom_lead_type !== 'Projects') return true
-  return !!(
-    doc.value.custom_project_category &&
-    doc.value.custom_project_configuration &&
-    doc.value.custom_site_address_full &&
-    doc.value.custom_site_pincode
-  )
+  // Project Category + Project Configuration are optional at handoff
+  // (sales can fill later). Only site address + pincode are required —
+  // OpsGate needs them to geo-tag the project. Mirrors backend gate in
+  // CRMLead.validate_project_specific_fields.
+  return !!(doc.value.custom_site_address_full && doc.value.custom_site_pincode)
 })
 
 const createProjectResource = createResource({

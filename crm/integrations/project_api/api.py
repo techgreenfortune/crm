@@ -4,7 +4,11 @@ import frappe
 import requests
 
 _RETRY_AFTER_CAP_SECONDS = 5.0
-_DEFAULT_TIMEOUT_SECONDS = 10
+# OpsGate's /v2/projects/public does synchronous S3 download (of the signed
+# quote PDF) + DB write before responding, so the response can easily exceed
+# the old 10s default. 60s gives comfortable headroom; admins can override
+# via CRM Project API Settings.timeout_seconds.
+_DEFAULT_TIMEOUT_SECONDS = 60
 # OpsGate's public Frappe-handoff endpoint (renamed from the legacy
 # /api/external/frappe/projects on 2026-05-22). Mounted before verifyToken
 # in src/routes/v2.routes.ts; auth is via X-Api-Secret + FRAPPE_CRM_SECRET.
@@ -327,12 +331,44 @@ def create_project_on_won(lead_name: str) -> None:
 		"X-Api-Secret": api_key,
 	}
 
-	response = _post_with_retry(
-		f"{base_url}{_CREATE_PROJECT_PATH}",
-		json=payload,
-		headers=headers,
-		timeout=timeout,
-	)
+	try:
+		response = _post_with_retry(
+			f"{base_url}{_CREATE_PROJECT_PATH}",
+			json=payload,
+			headers=headers,
+			timeout=timeout,
+		)
+	except requests.exceptions.RequestException as exc:
+		# Network-level failure (timeout, DNS, connection refused, TLS, etc.).
+		# Log + audit comment + `frappe.throw` so the user sees the underlying
+		# cause in the UI instead of a generic "no project id" message. OpsGate
+		# dedupes on external_id, so a manual re-click after the cause is fixed
+		# is safe.
+		frappe.log_error(
+			f"Lead {lead_name}: network error talking to project API — {type(exc).__name__}: {exc}",
+			"Project API: network error",
+		)
+		try:
+			frappe.get_doc(
+				{
+					"doctype": "Comment",
+					"comment_type": "Comment",
+					"reference_doctype": "CRM Lead",
+					"reference_name": lead_name,
+					"content": (
+						f"[AUTOMATION] External Project create failed "
+						f"(network error: {type(exc).__name__}). Manual re-trigger may be required."
+					),
+				}
+			).insert(ignore_permissions=True)
+		except Exception:
+			pass
+		frappe.throw(
+			frappe._("Could not reach the project API: {0}. Check network and retry.").format(
+				type(exc).__name__
+			),
+			title=frappe._("Project Handoff Failed"),
+		)
 
 	if not response.ok:
 		# Trim the response body — backend validator errors often echo request
@@ -343,6 +379,21 @@ def create_project_on_won(lead_name: str) -> None:
 			f"Lead {lead_name}: status {response.status_code} — {response.text[:500]}",
 			"Project API: create failed",
 		)
+		# Pull a user-readable message out of the response — OpsGate returns
+		# `{ "error": "...", "message": "..." }` shapes on 4xx; fall back to
+		# trimmed raw text so the user always sees *something* actionable.
+		opsgate_message = ""
+		try:
+			err_body = response.json()
+			if isinstance(err_body, dict):
+				opsgate_message = (
+					err_body.get("message") or err_body.get("error") or err_body.get("detail") or ""
+				)
+		except ValueError:
+			pass
+		if not opsgate_message:
+			opsgate_message = (response.text or "").strip()[:300]
+
 		# Audit trail on the lead so ops sees the failure without trawling Error Log.
 		try:
 			frappe.get_doc(
@@ -353,13 +404,22 @@ def create_project_on_won(lead_name: str) -> None:
 					"reference_name": lead_name,
 					"content": (
 						f"[AUTOMATION] External Project create failed "
-						f"(HTTP {response.status_code}). Manual re-trigger may be required."
+						f"(HTTP {response.status_code}): {opsgate_message}"
 					),
 				}
 			).insert(ignore_permissions=True)
 		except Exception:
 			pass
-		return
+
+		# Surface OpsGate's actual error to the user instead of the generic
+		# "no project id" message from the caller's gate. `frappe.throw` renders
+		# the message as a toast/modal in the UI.
+		frappe.throw(
+			frappe._("Project creation failed (HTTP {0}): {1}").format(
+				response.status_code, opsgate_message or frappe._("no error details")
+			),
+			title=frappe._("Project Handoff Failed"),
+		)
 
 	try:
 		body = response.json()
@@ -367,6 +427,32 @@ def create_project_on_won(lead_name: str) -> None:
 		body = {}
 
 	project_id, idempotent = _extract_project_id(body)
+	if not project_id:
+		# 2xx but the response body didn't include a project id in either the
+		# flat (`body.project.project_id`/`id`) or wrapped (`body.data.project.*`)
+		# shape. Log the raw body trimmed to 1KB so we can fix `_extract_project_id`
+		# or surface a backend contract drift. Caller (`create_project_for_lead`)
+		# detects the missing id and aborts the Won flip, so this is a recoverable
+		# state — user re-clicks once the shape is reconciled.
+		import json as _json
+
+		try:
+			body_excerpt = _json.dumps(body)[:1024]
+		except (TypeError, ValueError):
+			body_excerpt = repr(body)[:1024]
+		frappe.log_error(
+			f"Lead {lead_name}: HTTP {response.status_code} OK but no project id "
+			f"in response body. Body excerpt: {body_excerpt}",
+			"Project API: missing project id in 2xx response",
+		)
+		frappe.throw(
+			frappe._(
+				"Project API returned {0} but no project id. Backend may not have "
+				"committed the project — check Error Log for response body and retry."
+			).format(response.status_code),
+			title=frappe._("Project Handoff Failed"),
+		)
+
 	if project_id:
 		frappe.db.set_value(
 			"CRM Lead",
