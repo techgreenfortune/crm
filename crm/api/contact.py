@@ -6,6 +6,43 @@ def validate(doc, method):
 	update_deals_email_mobile_no(doc)
 
 
+def after_insert(doc, method):
+	_link_contact_to_lead(doc)
+
+
+def on_update(doc, method):
+	if doc.has_value_changed("custom_lead"):
+		_link_contact_to_lead(doc)
+
+
+def _link_contact_to_lead(doc):
+	lead_name = doc.get("custom_lead")
+	if not lead_name:
+		return
+	already_linked = frappe.db.exists(
+		"CRM Contacts",
+		{"parenttype": "CRM Lead", "parent": lead_name, "contact": doc.name},
+	)
+	if already_linked:
+		return
+	try:
+		frappe.get_doc(
+			{
+				"doctype": "CRM Contacts",
+				"parenttype": "CRM Lead",
+				"parentfield": "contacts",
+				"parent": lead_name,
+				"contact": doc.name,
+			}
+		).insert(ignore_permissions=True)
+		# Touch the parent lead's modified timestamp so list-view sort and
+		# cache invalidation reflect the new contact link.
+		frappe.db.set_value("CRM Lead", lead_name, "modified", frappe.utils.now_datetime())
+	except frappe.exceptions.DuplicateEntryError:
+		# Concurrent save already inserted this link — silently ignore.
+		pass
+
+
 def update_deals_email_mobile_no(doc):
 	linked_deals = frappe.get_all(
 		"CRM Contacts",
@@ -118,9 +155,9 @@ def search_emails(txt: str):
 	meta = frappe.get_meta(doctype)
 	filters = [["Contact", "email_id", "is", "set"]]
 
-	if meta.get("fields", {"fieldname": "enabled", "fieldtype": "Check"}):
+	if meta.get_field("enabled"):
 		filters.append([doctype, "enabled", "=", 1])
-	if meta.get("fields", {"fieldname": "disabled", "fieldtype": "Check"}):
+	if meta.get_field("disabled"):
 		filters.append([doctype, "disabled", "!=", 1])
 
 	or_filters = []

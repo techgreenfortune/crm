@@ -64,12 +64,20 @@ async function saveAssignees(
 
   let owner = ownerField.value.replace('_', ' ')
 
+  // Use setValue (frappe.client.set_value) instead of save (frappe.client.save)
+  // so that only the owner field is submitted. document.save triggers full
+  // document validation including mandatory fields unrelated to this change
+  // (e.g. custom_pincode), causing the owner update to silently fail.
+  async function setOwner(newValue) {
+    document.doc[ownerField.value] = newValue
+    await document.setValue.submit({ [ownerField.value]: newValue })
+  }
+
   if (
     document.doc[ownerField.value] &&
     removedAssignees.includes(document.doc[ownerField.value])
   ) {
-    document.doc[ownerField.value] = nextAssignee ? nextAssignee.name : ''
-    document.save.submit()
+    await setOwner(nextAssignee ? nextAssignee.name : '')
 
     if (nextAssignee) {
       toast.info(
@@ -87,8 +95,7 @@ async function saveAssignees(
       )
     }
   } else if (!document.doc[ownerField.value] && nextAssignee) {
-    document.doc[ownerField.value] = nextAssignee ? nextAssignee.name : ''
-    document.save.submit()
+    await setOwner(nextAssignee.name)
     toast.info(
       __('Since you added a new assignee, the {0} has been set to {1}.', [
         owner,
@@ -96,8 +103,7 @@ async function saveAssignees(
       ]),
     )
   } else if (addedAssignees.length && nextAssignee) {
-    document.doc[ownerField.value] = nextAssignee.name
-    document.save.submit()
+    await setOwner(nextAssignee.name)
   }
 }
 </script>

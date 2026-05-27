@@ -159,6 +159,8 @@ override_doctype_class = {
 doc_events = {
 	"Contact": {
 		"validate": ["crm.api.contact.validate"],
+		"after_insert": ["crm.api.contact.after_insert"],
+		"on_update": ["crm.api.contact.on_update"],
 	},
 	"ToDo": {
 		"before_insert": ["crm.overrides.crm_lead_permissions.guard_lead_assignment"],
