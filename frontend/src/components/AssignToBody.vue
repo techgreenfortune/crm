@@ -8,11 +8,7 @@
       class="form-control"
       value=""
       doctype="User"
-      :url="
-        props.doctype === 'CRM Lead'
-          ? 'crm.api.session.search_assignable_users'
-          : undefined
-      "
+      :url="searchUrl"
       :placeholder="__('John Doe')"
       :hideMe="true"
       @change="(option) => addValue(option) && ($refs.input.value = '')"
@@ -86,6 +82,11 @@ const props = defineProps({
 })
 
 const { capture } = useTelemetry()
+
+const searchUrl =
+  props.doctype === 'CRM Lead'
+    ? 'crm.api.session.search_assignable_users'
+    : 'crm.api.session.search_crm_users'
 
 const assignees = defineModel({ type: Array, default: () => [] })
 const oldAssignees = ref([])
