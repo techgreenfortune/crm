@@ -12,9 +12,19 @@ const documentsCache = {}
 const controllersCache = {}
 const assigneesCache = {}
 const permissionsCache = {}
+const optimisticCache = {}
 
 const recentErrorToasts = new Map()
 const ERROR_TOAST_DEDUP_MS = 1500
+
+function getOptimisticMap(doctype, docname) {
+  optimisticCache[doctype] = optimisticCache[doctype] || {}
+  const key = docname || ''
+  if (!optimisticCache[doctype][key]) {
+    optimisticCache[doctype][key] = new Map()
+  }
+  return optimisticCache[doctype][key]
+}
 
 function showErrorToastOnce(message) {
   if (!message) return
@@ -105,16 +115,54 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
       // TODO: fix validate function to return error message instead of throwing error in frappe-ui and remove try-catch block here
       const _save = documentsCache[doctype][docname].save
       const _originalSubmit = _save.submit
-      _save.submit = async function (...args) {
+      _save.submit = async function (values, options = {}, ...rest) {
+        const revertOptimistic = () => {
+          const liveMap = getOptimisticMap(doctype, docname)
+          const doc = documentsCache[doctype]?.[docname || '']?.doc
+          if (doc) {
+            for (const [field, oldVal] of liveMap) {
+              doc[field] = oldVal
+            }
+          }
+          liveMap.clear()
+        }
+
         try {
           await triggerOnValidate()
         } catch (err) {
+          revertOptimistic()
           console.error(err)
           return
         }
         const mandatory = checkMandatory(documentsCache[doctype][docname].doc)
-        if (mandatory) return
-        return _originalSubmit.apply(_save, args)
+        if (mandatory) {
+          revertOptimistic()
+          return
+        }
+
+        // Take ownership of pending optimistic changes so concurrent saves
+        // don't clobber each other's revert targets.
+        const liveMap = getOptimisticMap(doctype, docname)
+        const snapshot = new Map(liveMap)
+        liveMap.clear()
+
+        const originalOnSuccess = options?.onSuccess
+        const originalOnError = options?.onError
+        const wrappedOptions = {
+          ...(options || {}),
+          onSuccess: (...cbArgs) => originalOnSuccess?.(...cbArgs),
+          onError: (...cbArgs) => {
+            const doc = documentsCache[doctype]?.[docname || '']?.doc
+            if (doc) {
+              for (const [field, oldVal] of snapshot) {
+                doc[field] = oldVal
+              }
+            }
+            return originalOnError?.(...cbArgs)
+          },
+        }
+
+        return _originalSubmit.call(_save, values, wrappedOptions, ...rest)
       }
     } else {
       documentsCache[doctype][''] = reactive({
@@ -290,6 +338,11 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
       row[fieldname] = value
     } else {
       oldValue = documentsCache[doctype][docname || ''].doc[fieldname]
+      // first-write-wins: a multi-step cascade on the same field reverts to its pre-cascade value on save error
+      const optMap = getOptimisticMap(doctype, docname)
+      if (!optMap.has(fieldname)) {
+        optMap.set(fieldname, oldValue)
+      }
       documentsCache[doctype][docname || ''].doc[fieldname] = value
       trackOldFile(oldValue, value)
     }
