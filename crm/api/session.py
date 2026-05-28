@@ -51,6 +51,7 @@ def get_users():
 		user.session_user = frappe.session.user == user.name
 
 		user.roles = frappe.get_roles(user.name)
+		user.has_desk_access = user.user_type == "System User"
 
 		user.role = ""
 		for role in ROLE_PRIORITY:

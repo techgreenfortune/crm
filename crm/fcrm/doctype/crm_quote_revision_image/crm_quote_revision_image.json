@@ -41,6 +41,7 @@
  "module": "FCRM",
  "name": "CRM Quote Revision Image",
  "owner": "Administrator",
+ "parent_doctype": "CRM Quote Request",
  "permissions": [],
  "row_format": "Dynamic",
  "sort_field": "modified",

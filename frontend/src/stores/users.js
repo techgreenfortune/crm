@@ -90,6 +90,10 @@ export const usersStore = defineStore('crm-users', () => {
     return getUser(email).user_type === 'Website User'
   }
 
+  function hasDeskAccess(email) {
+    return !!getUser(email).has_desk_access
+  }
+
   // Any non-tier-1 role that is in the CRM role matrix. The `role in
   // roleRank.value` membership check prevents stray Frappe defaults
   // (e.g. raw "Sales Manager" / "Sales User") from being classified as
@@ -127,6 +131,7 @@ export const usersStore = defineStore('crm-users', () => {
     isTelephonyAgent,
     getUserRole,
     isWebsiteUser,
+    hasDeskAccess,
     isCrmUser,
     roleConfig,
     roleRank,
