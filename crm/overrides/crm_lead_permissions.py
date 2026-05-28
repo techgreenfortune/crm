@@ -369,20 +369,36 @@ def guard_lead_assignment(doc, method=None):
 	roles = set(frappe.get_roles(user))
 	if roles & TIER1_FULL_RW:
 		return
-	if not (roles & DOWNSTREAM_SCOPE_ROLES):
+
+	# Mirror _resolve_allowed_users priority order so the backend guard and the
+	# frontend picker are always consistent:
+	#   1. DOWNSTREAM roles → hierarchy check (co-held pool role doesn't block)
+	#   2. All CRM roles are pool roles → blocked
+	#   3. Otherwise (SE/PSE/Marketing/Calling/etc.) → unrestricted, skip check
+	if roles & DOWNSTREAM_SCOPE_ROLES:
+		allowed = allowed_assignees(user)
+		if allowed is None:
+			# Orphan / newly-onboarded — skip the check.
+			return
+		allocated_to = getattr(doc, "allocated_to", None)
+		if allocated_to and allocated_to not in allowed:
+			frappe.throw(
+				_(
+					"You can only assign leads to users in your team (your reports "
+					"or your manager). {0} is outside your tree — escalate to Sales "
+					"Head for cross-team transfers."
+				).format(allocated_to),
+				frappe.PermissionError,
+				title=_("Out-of-tree Assignment Blocked"),
+			)
 		return
-	allowed = allowed_assignees(user)
-	if allowed is None:
-		# Orphan / newly-onboarded — skip the check.
-		return
-	allocated_to = getattr(doc, "allocated_to", None)
-	if allocated_to and allocated_to not in allowed:
+
+	from crm.permissions.role_config import ASSIGN_BLOCKED_ROLES, ROLE_RANK
+
+	unblocked = roles & (frozenset(ROLE_RANK) - ASSIGN_BLOCKED_ROLES)
+	if not unblocked:
 		frappe.throw(
-			_(
-				"You can only assign leads to users in your team (your reports "
-				"or your manager). {0} is outside your tree — escalate to Sales "
-				"Head for cross-team transfers."
-			).format(allocated_to),
+			_("Your role does not allow assigning CRM Leads."),
 			frappe.PermissionError,
-			title=_("Out-of-tree Assignment Blocked"),
+			title=_("Assignment Blocked"),
 		)
