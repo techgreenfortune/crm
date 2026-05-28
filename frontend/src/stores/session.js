@@ -32,7 +32,11 @@ export const sessionStore = defineStore('crm-session', () => {
     url: 'logout',
     onSuccess() {
       user.value = null
-      if (window.opsgate_enabled && window.opsgate_url) {
+      if (
+        window.opsgate_enabled &&
+        window.opsgate_login_redirect &&
+        window.opsgate_url
+      ) {
         window.location.href = window.opsgate_url
         return
       }
