@@ -108,7 +108,7 @@
                         />
                         <FormControl
                           v-else-if="field.fieldtype == 'Check'"
-                          v-model="doc[field.fieldname]"
+                          :model-value="doc[field.fieldname]"
                           class="form-control"
                           type="checkbox"
                           :disabled="Boolean(field.read_only)"
@@ -134,7 +134,7 @@
                         />
                         <FormControl
                           v-else-if="field.fieldtype === 'Select'"
-                          v-model="doc[field.fieldname]"
+                          :model-value="doc[field.fieldname]"
                           class="form-control cursor-pointer [&_select]:cursor-pointer truncate [&>*]:!ring-0"
                           type="select"
                           :options="field.options"
