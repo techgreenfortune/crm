@@ -445,6 +445,7 @@ import CustomActions from '@/components/CustomActions.vue'
 import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
+import { useDoctypeModal } from '@/composables/doctypeModal'
 // import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
@@ -677,7 +678,46 @@ const sections = createResource({
   cache: ['sidePanelSections', 'CRM Lead', 'v2-engagement'],
   params: { doctype: 'CRM Lead' },
   auto: true,
+  transform: (data) => getParsedSections(data),
 })
+
+function getParsedSections(_sections) {
+  return _sections.map((section) => {
+    section.columns = section.columns.map((column) => {
+      column.fields = column.fields.map((field) => {
+        if (field.fieldname === 'address') {
+          return {
+            ...field,
+            create: (value, close) => {
+              showAddressModal()
+              close()
+            },
+            edit: (address) => showAddressModal(address),
+          }
+        }
+        return field
+      })
+      return column
+    })
+    return section
+  })
+}
+
+const { showModal: showDoctypeModal } = useDoctypeModal()
+
+function showAddressModal(_address) {
+  showDoctypeModal({
+    name: _address || null,
+    doctype: 'Address',
+    defaults: { address_type: 'Billing' },
+    callbacks: {
+      afterInsert: (d) => {
+        document.doc.address = d.name
+        document.save.submit()
+      },
+    },
+  })
+}
 
 const leadContacts = createResource({
   url: 'crm.fcrm.doctype.crm_lead.crm_lead.get_lead_contacts',
