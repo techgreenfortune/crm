@@ -313,9 +313,7 @@ def create_project_on_won(lead_name: str) -> None:
 			"customer_pincode": lead.get("custom_pincode") or "",
 			"customer_city": lead.get("custom_city") or "",
 			"customer_state": lead.get("custom_state") or "",
-			# Mirror the site address into the customer block until a billing-
-			# address field exists. Empty string lets backend's safeAddress kick in.
-			"customer_address": site_address or "",
+			"customer_address": lead.get("custom_customer_address") or "",
 			"customer_profession": lead.get("custom_customer_type") or "",
 			"customer_alternate_number": alt_number,
 			"customer_gst_number": lead.get("custom_gst_number") or "",
