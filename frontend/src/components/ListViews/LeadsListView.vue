@@ -9,7 +9,7 @@
         params: { leadId: row.name },
         query: { view: route.query.view, viewType: route.params.viewType },
       }),
-      selectable: options.selectable,
+      selectable: options.selectable ?? true,
       showTooltip: options.showTooltip,
       resizeColumn: options.resizeColumn,
     }"

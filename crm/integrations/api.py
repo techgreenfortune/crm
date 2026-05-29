@@ -257,7 +257,7 @@ def get_contact(phone_number, country="IN", exact_match=False):
 
 	query = (
 		frappe.qb.from_(Lead)
-		.select(Lead.name, Lead.lead_name, Lead.image, Lead.mobile_no)
+		.select(Lead.name, Lead.lead_name, Lead.image, Lead.mobile_no, Lead.status, Lead.lead_status)
 		.where(Lead.converted == 0)
 		.where(normalized_phone.like(f"%{cleaned_number}%"))
 		.orderby("modified", order=Order.desc)

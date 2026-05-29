@@ -356,7 +356,7 @@ if (doctype) {
     formatCurrency(doc[fn], '', window.sysdefaults?.currency || 'USD', null)
 }
 
-const { users, getUser } = usersStore()
+const { users, getUser, isAdmin } = usersStore()
 
 let triggerOnChange
 let triggerButton
@@ -476,11 +476,13 @@ const field = computed(() => {
 
   if (field.fieldtype === 'Link' && field.options !== 'User') {
     if (!field.create) {
-      field.create = (value, close) => {
-        const callback = (d) => {
-          if (d) fieldChange(d.name, field)
+      if (isAdmin()) {
+        field.create = (value, close) => {
+          const callback = (d) => {
+            if (d) fieldChange(d.name, field)
+          }
+          createDocument(field.options, value, close, callback)
         }
-        createDocument(field.options, value, close, callback)
       }
     }
   }
