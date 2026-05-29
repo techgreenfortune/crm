@@ -31,7 +31,10 @@ def execute():
 	if frappe.db.exists("__Auth", {"doctype": "CRM Project API Settings"}):
 		Auth = frappe.qb.DocType("__Auth")
 		rows = (
-			frappe.qb.from_(Auth).select("*").where(Auth.doctype == "CRM Project API Settings").run(as_dict=True)
+			frappe.qb.from_(Auth)
+			.select("*")
+			.where(Auth.doctype == "CRM Project API Settings")
+			.run(as_dict=True)
 		)
 		for row in rows:
 			frappe.qb.into(Auth).insert(
