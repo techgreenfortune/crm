@@ -224,6 +224,36 @@ class CRMLead(Document):
 
 	def before_save(self):
 		self.apply_sla()
+		self._extract_coordinates_from_map_link()
+
+	def _extract_coordinates_from_map_link(self):
+		"""Populate `custom_latitude` / `custom_longitude` from a pasted
+		Google Maps URL in `custom_google_map_link`. Runs only when the URL
+		field has changed (paste on create, edit on existing lead). A bad or
+		unparseable URL surfaces a soft warning — the save still goes through
+		so users can correct coordinates manually.
+		"""
+		if not self.has_value_changed("custom_google_map_link"):
+			return
+		url = (self.get("custom_google_map_link") or "").strip()
+		if not url:
+			return
+
+		from crm.utils.google_maps import extract_lat_lng
+
+		coords = extract_lat_lng(url)
+		if not coords:
+			frappe.msgprint(
+				_(
+					"Could not extract latitude/longitude from the Google Map link. "
+					"Please verify the URL or set the coordinates manually."
+				),
+				title=_("Map Link Not Recognised"),
+				indicator="orange",
+			)
+			return
+		self.custom_latitude = coords[0]
+		self.custom_longitude = coords[1]
 
 	def set_full_name(self):
 		if self.first_name:
