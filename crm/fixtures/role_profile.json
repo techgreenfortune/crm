@@ -102,21 +102,6 @@
   "docstatus": 0,
   "doctype": "Role Profile",
   "modified": "2026-05-20 12:00:00",
-  "name": "ASM",
-  "role_profile": "ASM",
-  "roles": [
-   {
-    "parent": "ASM",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "ASM"
-   }
-  ]
- },
- {
-  "docstatus": 0,
-  "doctype": "Role Profile",
-  "modified": "2026-05-20 12:00:00",
   "name": "Project Sales Executive",
   "role_profile": "Project Sales Executive",
   "roles": [
@@ -218,6 +203,21 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "Sales Head"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-20 12:00:00",
+  "name": "ASM",
+  "role_profile": "ASM",
+  "roles": [
+   {
+    "parent": "ASM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "ASM"
    }
   ]
  }
