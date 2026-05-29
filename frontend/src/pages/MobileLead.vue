@@ -200,6 +200,7 @@ import { statusesStore } from '@/stores/statuses'
 import { sessionStore } from '@/stores/session'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
+import { useDoctypeModal } from '@/composables/doctypeModal'
 import { whatsappEnabled, isMobileView } from '@/composables/settings'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 import {
@@ -396,7 +397,49 @@ const sections = createResource({
   cache: ['sidePanelSections', 'CRM Lead', 'v2-engagement'],
   params: { doctype: 'CRM Lead' },
   auto: true,
+  transform: (data) => getParsedSections(data),
 })
+
+function getParsedSections(_sections) {
+  if (!Array.isArray(_sections)) return _sections
+  return _sections.map((section) => {
+    if (!Array.isArray(section?.columns)) return section
+    section.columns = section.columns.map((column) => {
+      if (!Array.isArray(column?.fields)) return column
+      column.fields = column.fields.map((field) => {
+        if (field?.fieldname === 'address') {
+          return {
+            ...field,
+            create: (value, close) => {
+              showAddressModal()
+              close()
+            },
+            edit: (address) => showAddressModal(address),
+          }
+        }
+        return field
+      })
+      return column
+    })
+    return section
+  })
+}
+
+const { showModal: showDoctypeModal } = useDoctypeModal()
+
+function showAddressModal(_address) {
+  showDoctypeModal({
+    name: _address || null,
+    doctype: 'Address',
+    defaults: { address_type: 'Billing' },
+    callbacks: {
+      afterInsert: (d) => {
+        document.doc.address = d.name
+        document.save.submit()
+      },
+    },
+  })
+}
 
 // --- Manual Create Project handoff (mobile parity) ---
 const { isManager } = usersStore()

@@ -242,6 +242,7 @@
     :options="{
       showTooltip: false,
       resizeColumn: true,
+      selectable: isAdmin(),
       rowCount: leads.data.row_count,
       totalCount: leads.data.total_count,
     }"
@@ -300,7 +301,7 @@ import { ref, computed, reactive, h } from 'vue'
 const { getFormattedPercent, getFormattedFloat, getFormattedCurrency } =
   getMeta('CRM Lead')
 const { makeCall } = globalStore()
-const { getUser } = usersStore()
+const { getUser, isAdmin } = usersStore()
 const { getLeadStatus, getLeadEngagementStatus } = statusesStore()
 const { on } = useBroadcast()
 const { updateOnboardingStep } = useOnboarding('frappecrm')

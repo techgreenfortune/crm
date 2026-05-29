@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "enabled",
+  "api_base_url",
   "api_key",
   "timeout_seconds"
  ],
@@ -15,6 +16,14 @@
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled"
+  },
+  {
+   "depends_on": "enabled",
+   "fieldname": "api_base_url",
+   "fieldtype": "Data",
+   "label": "API Base URL",
+   "mandatory_depends_on": "eval: doc.enabled",
+   "description": "Base URL of the OpsGate backend (e.g. https://backend.thegreenfortune.com/api). Used by both the Project handoff and the SSO flow. Trailing slash stripped automatically."
   },
   {
    "depends_on": "enabled",
@@ -36,10 +45,10 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-05-16 00:00:00.000000",
+ "modified": "2026-05-29 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
- "name": "CRM Project API Settings",
+ "name": "CRM OpsGate API Settings",
  "owner": "Administrator",
  "permissions": [
   {
