@@ -190,6 +190,7 @@ class CRMLead(Document):
 		self.set_title()
 		self.validate_email()
 		self.validate_lost_reason()
+		self.validate_retail_specific_fields()
 		# Re-pull accepted quote fields BEFORE the Stage Field Requirements
 		# server script runs (it checks `custom_final_*` for Won-type stages,
 		# which this sync populates).
@@ -329,6 +330,17 @@ class CRMLead(Document):
 		if missing:
 			frappe.throw(
 				_("Required for Project leads at C4: {0}.").format(", ".join(missing)),
+				frappe.ValidationError,
+			)
+
+	def validate_retail_specific_fields(self):
+		if self.status != "C4":
+			return
+		if self.get("custom_lead_type") != "Retail":
+			return
+		if not self.get("custom_customer_address"):
+			frappe.throw(
+				_("Customer Address is required for Retail leads at C4."),
 				frappe.ValidationError,
 			)
 
