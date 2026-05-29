@@ -1,5 +1,69 @@
 [
  {
+  "description": "The prospect found the pricing to be too high or not competitive.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Pricing",
+  "modified": "2026-05-23 13:00:40.129161",
+  "name": "Pricing"
+ },
+ {
+  "description": "The prospect chose a competitor's product or service.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Competition",
+  "modified": "2026-05-23 13:00:40.131526",
+  "name": "Competition"
+ },
+ {
+  "description": "The prospect did not have the budget to proceed with the purchase.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Budget Constraints",
+  "modified": "2026-05-23 13:00:40.133952",
+  "name": "Budget Constraints"
+ },
+ {
+  "description": "The prospect felt that the product or service was missing key features they needed.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Missing Features",
+  "modified": "2026-05-23 13:00:40.136124",
+  "name": "Missing Features"
+ },
+ {
+  "description": "The sales process took too long, leading to loss of interest.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Long Sales Cycle",
+  "modified": "2026-05-23 13:00:40.138343",
+  "name": "Long Sales Cycle"
+ },
+ {
+  "description": "The prospect was not the decision-maker and could not proceed.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "No Decision-Maker",
+  "modified": "2026-05-23 13:00:40.140649",
+  "name": "No Decision-Maker"
+ },
+ {
+  "description": "The prospect did not respond to follow-ups.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Unresponsive Prospect",
+  "modified": "2026-05-23 13:00:40.142844",
+  "name": "Unresponsive Prospect"
+ },
+ {
+  "description": "The prospect was not a good fit for the product or service.",
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Poor Fit",
+  "modified": "2026-05-23 13:00:40.145155",
+  "name": "Poor Fit"
+ },
+ {
   "description": null,
   "docstatus": 0,
   "doctype": "CRM Lost Reason",

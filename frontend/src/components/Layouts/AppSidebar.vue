@@ -312,6 +312,24 @@ const allViews = computed(() => {
 // onboarding
 const { user } = sessionStore()
 const { users, isManager } = usersStore()
+
+// frappe-ui's useOnboarding() positions stored steps against our local list
+// by INDEX (see node_modules/frappe-ui/frappe/Onboarding/onboarding.js
+// syncStatus, l.133). Since we retired `convert_lead_to_deal` from the
+// local list, users whose server/localStorage state was saved with the
+// original 9-step shape hit `onboardings[appName][8]` → undefined →
+// "Cannot set properties of undefined (setting 'completed')", which kills
+// the entire sidebar render. Pre-set the completion flag in the exact
+// useStorage() key the lib reads on init so its early-returns kick in and
+// the syncStatus path is never entered. Onboarding hints are skipped;
+// fine in this fork since the convert flow is gone.
+try {
+  localStorage.setItem(`isOnboardingStepsCompletedfrappecrm${user}`, 'true')
+} catch (_) {
+  // localStorage may be disabled in some browser modes — swallow and let
+  // the library's own try-catch handle it.
+}
+
 const { isOnboardingStepsCompleted, setUp } = useOnboarding('frappecrm')
 
 async function getFirstLead() {

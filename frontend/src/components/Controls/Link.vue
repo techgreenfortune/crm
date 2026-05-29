@@ -13,6 +13,7 @@
       :disabled="attrs.disabled"
       :placement="attrs.placement"
       :filterable="false"
+      @update:query="onQueryUpdate"
     >
       <template #target="{ open, togglePopover }">
         <slot name="target" v-bind="{ open, togglePopover }" />
@@ -69,7 +70,7 @@
 <script setup>
 import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import { isTranslatable } from '@/utils'
-import { watchDebounced } from '@vueuse/core'
+import { watchDebounced, useDebounceFn } from '@vueuse/core'
 import { createResource } from 'frappe-ui'
 import { useAttrs, computed, ref } from 'vue'
 
@@ -108,16 +109,12 @@ const value = computed({
 const autocomplete = ref(null)
 const text = ref('')
 
-watchDebounced(
-  () => autocomplete.value?.query,
-  (val) => {
-    val = val || ''
-    if (text.value === val) return
-    text.value = val
-    reload(val)
-  },
-  { debounce: 300, immediate: true },
-)
+const onQueryUpdate = useDebounceFn((q) => {
+  q = q || ''
+  if (text.value === q) return
+  text.value = q
+  reload(q)
+}, 300)
 
 watchDebounced(
   () => props.doctype,

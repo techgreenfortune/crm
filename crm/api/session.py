@@ -51,6 +51,7 @@ def get_users():
 		user.session_user = frappe.session.user == user.name
 
 		user.roles = frappe.get_roles(user.name)
+		user.has_desk_access = user.user_type == "System User"
 
 		user.role = ""
 		for role in ROLE_PRIORITY:
@@ -80,23 +81,40 @@ def _resolve_allowed_users(crm_users: list, user: str) -> list:
 	callers have identical filtering logic; they differ only in post-filter steps
 	(text search / self-exclusion).
 
-	Returns the full list for Administrator, tier-1 roles, and roles without a
-	downstream tree. ASM/RSM get only their subtree; orphan ASM/RSM (no node)
-	bypass the filter to match the backend skip in
-	``crm_lead_permissions.guard_lead_assignment``.
+	Tier-1 (Sales Head / Sales Coordinator / System Manager) see everyone.
+	Pool roles (B2F Team / Estimation Team) see nothing — they receive leads but
+	cannot drive assignments — BUT only when those are the user's ONLY CRM roles.
+	A dual-role user (Marketing + B2F Team) retains the broader access from
+	Marketing. ASM/RSM are filtered to their hierarchy subtree + direct upline;
+	orphan ASM/RSM (no hierarchy node) bypass the filter to match the backend skip
+	in ``crm_lead_permissions.guard_lead_assignment``.
 	"""
 	if user == "Administrator":
 		return crm_users
 
 	roles = set(frappe.get_roles(user))
 	from crm.overrides.crm_lead_permissions import allowed_assignees
-	from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, TIER1_FULL_RW
+	from crm.permissions.role_config import (
+		ASSIGN_BLOCKED_ROLES,
+		DOWNSTREAM_SCOPE_ROLES,
+		ROLE_RANK,
+		TIER1_FULL_RW,
+	)
 
-	if (roles & TIER1_FULL_RW) or not (roles & DOWNSTREAM_SCOPE_ROLES):
+	if roles & TIER1_FULL_RW:
 		return crm_users
 
-	allowed = allowed_assignees(user)
-	return crm_users if allowed is None else [u for u in crm_users if u.name in allowed]
+	if roles & DOWNSTREAM_SCOPE_ROLES:
+		allowed = allowed_assignees(user)
+		return crm_users if allowed is None else [u for u in crm_users if u.name in allowed]
+
+	# Block only if every CRM role the user holds is a pool (blocked) role.
+	# Marketing + B2F Team → Marketing is unblocked → return all.
+	unblocked = roles & (frozenset(ROLE_RANK) - ASSIGN_BLOCKED_ROLES)
+	if not unblocked:
+		return []
+
+	return crm_users
 
 
 @frappe.whitelist()
@@ -122,7 +140,7 @@ def get_assignable_users():
 def search_assignable_users(
 	txt: str = "",
 	doctype: str = "User",
-	filters: str | dict | None = None,
+	filters: str | dict | list | None = None,
 	page_length: int = 20,
 	**kwargs,
 ):
@@ -150,6 +168,38 @@ def search_assignable_users(
 	allowed = [u for u in allowed if u.name != user]
 
 	# Text search against full_name and email (case-insensitive)
+	txt_lower = (txt or "").lower().strip()
+	if txt_lower:
+		allowed = [
+			u for u in allowed if txt_lower in (u.full_name or "").lower() or txt_lower in u.name.lower()
+		]
+
+	page_length = int(page_length or 20)
+	return [
+		{"label": u.full_name or u.name, "value": u.name, "description": u.role or ""}
+		for u in allowed[:page_length]
+	]
+
+
+@frappe.whitelist()
+def search_crm_users(
+	txt: str = "",
+	doctype: str = "User",
+	filters: str | dict | list | None = None,
+	page_length: int = 20,
+	**kwargs,
+):
+	"""Like search_assignable_users but with no hierarchy or block-role filtering.
+
+	Used for doctypes that have no tree-scoped assignment rule (e.g. CRM Deal).
+	Parameters mirror search_link so Link.vue can swap in this URL unchanged.
+	"""
+	get_session_role_flags()
+	user = frappe.session.user
+	_, crm_users = get_users()
+
+	allowed = [u for u in crm_users if u.name != user]
+
 	txt_lower = (txt or "").lower().strip()
 	if txt_lower:
 		allowed = [

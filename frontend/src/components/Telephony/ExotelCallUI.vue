@@ -176,7 +176,12 @@
             {{ contact.mobile_no }}
           </div>
         </div>
-        <div v-if="dispositionRequired" class="mt-3">
+        <div
+          v-if="
+            dispositionRequired && (dispositionEligible || dispositionLocked)
+          "
+          class="mt-3"
+        >
           <div class="text-sm text-ink-gray-5 mb-1">
             {{ __('Disposition') }}
             <span class="text-red-500">*</span>
@@ -195,7 +200,16 @@
             />
           </Dropdown>
         </div>
-        <div v-if="dispositionRequired && callbackRequired" class="mt-3">
+        <div
+          v-else-if="dispositionRequired && !dispositionEligible"
+          class="mt-3 text-sm text-ink-gray-5"
+        >
+          {{ __('Disposition not required — lead is past C0.') }}
+        </div>
+        <div
+          v-if="dispositionRequired && dispositionEligible && callbackRequired"
+          class="mt-3"
+        >
           <div class="text-sm text-ink-gray-5 mb-1">
             {{ __('Scheduled Callback At') }}
             <span class="text-red-500">*</span>
@@ -506,6 +520,18 @@ watch(disposition, () => {
 
 const dispositionLocked = computed(() => callStatus.value === 'No answer')
 
+// Outcome dispositions are only meaningful on leads in the disposition-eligible set
+// (C0 OR engagement Cold-Unresponsive/Reactivated). Mirrors the backend gate in
+// crm/api/call_log.py:register_no_answer and the disposition Before-Save server
+// script. For deals or unmatched numbers (no contact.lead), the gate doesn't apply.
+const dispositionEligible = computed(() => {
+  if (!contact.value?.lead) return true
+  return (
+    contact.value.status === 'C0' ||
+    ['Cold-Unresponsive', 'Reactivated'].includes(contact.value.lead_status)
+  )
+})
+
 const dispositionDropdownOptions = computed(() =>
   dispositions.value
     .filter((d) => {
@@ -526,6 +552,12 @@ const dispositionDropdownOptions = computed(() =>
 const callTerminated = computed(
   () => callStatus.value === 'Call ended' || callStatus.value === 'No answer',
 )
+
+// Re-fetch lead state at call-end so dispositionEligible evaluates against
+// current DB values, not the snapshot captured when the call started.
+watch(callTerminated, (val) => {
+  if (val && phoneNumber.value) getContact.fetch()
+})
 
 const callActive = computed(() =>
   ['Calling...', 'Ringing...', 'In progress', 'Incoming call'].includes(
@@ -640,6 +672,7 @@ const canClose = computed(() => {
   if (callActive.value) return false
   if (callTerminated.value && !isCallHandler.value) return false
   if (callTerminated.value) {
+    if (!dispositionEligible.value && !dispositionLocked.value) return true
     if (!disposition.value) return false
     if (callbackRequired.value && !scheduledCallbackAt.value) return false
     if (
@@ -663,7 +696,7 @@ const closeTooltip = computed(() => {
   if (callActive.value) return __('Wait for the call to end')
   if (callTerminated.value && !isCallHandler.value)
     return __('Only the agent who handled this call can save the disposition')
-  if (callTerminated.value && !disposition.value)
+  if (callTerminated.value && dispositionEligible.value && !disposition.value)
     return __('Select a disposition to close')
   if (
     callTerminated.value &&
@@ -817,6 +850,13 @@ function closeCallPopup() {
 async function attemptCloseCallPopup() {
   if (isSavingDisposition.value) return
   if (!dispositionRequired.value) {
+    closeCallPopup()
+    return
+  }
+  // Non-eligible leads (past C0, engagement Active/Archived/Won) skip the
+  // disposition step entirely. Close without posting; the call log stays
+  // disposition-blank, which the backend gate accepts.
+  if (!dispositionEligible.value && !dispositionLocked.value) {
     closeCallPopup()
     return
   }

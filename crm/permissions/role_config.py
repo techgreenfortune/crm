@@ -105,6 +105,16 @@ DOWNSTREAM_SCOPE_ROLES: frozenset[str] = frozenset(
 	r for r, cfg in OWNER_SCOPE_ROLES.items() if cfg["scope"] == "downstream"
 )
 
+# Roles that have no assign-to rights — they receive staged leads or cost
+# estimates but cannot initiate or change assignments.
+ASSIGN_BLOCKED_ROLES: frozenset[str] = frozenset({"B2F Team", "Estimation Team"})
+
+# Roles permitted to review a CRM Quote Request — see the status field and
+# choose Accept / Revision Requested. Lead owner always gets review access;
+# this set adds the managerial chain (tier-1 + hierarchy managers) so ASM/RSM
+# can review quotes for their SEs' leads without being the lead_owner.
+REVIEWER_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
+
 # Roles that occupy non-leaf positions in CRM Sales Hierarchy: tier-1 sits at
 # the root, downstream-scoped roles (RSM / ASM) sit in the middle with reports
 # below them. Used by ``crm.api.user.update_user_role`` to block demoting a
