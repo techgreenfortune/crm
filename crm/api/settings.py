@@ -56,9 +56,13 @@ def get_opsgate_redirect_url():
 	if not sso_secret:
 		frappe.throw(_("CRM SSO secret is not configured. Add crm_sso_secret to site_config.json"))
 
-	opsgate_api_url = (frappe.conf.get("opsgate_api_url") or "").rstrip("/")
+	opsgate_api_url = (
+		frappe.db.get_single_value("CRM OpsGate API Settings", "api_base_url") or ""
+	).rstrip("/")
 	if not opsgate_api_url:
-		frappe.throw(_("OpsGate API URL is not configured. Add opsgate_api_url to site_config.json"))
+		frappe.throw(
+			_("OpsGate API URL is not configured. Set 'API Base URL' in CRM OpsGate API Settings.")
+		)
 
 	# frappe.session.user is 'Administrator' for admin — fetch the actual email from User doctype
 	user_email = frappe.db.get_value("User", frappe.session.user, "email") or frappe.session.user

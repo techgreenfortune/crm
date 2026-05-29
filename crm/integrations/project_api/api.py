@@ -7,18 +7,18 @@ _RETRY_AFTER_CAP_SECONDS = 5.0
 # OpsGate's /v2/projects/public does synchronous S3 download (of the signed
 # quote PDF) + DB write before responding, so the response can easily exceed
 # the old 10s default. 60s gives comfortable headroom; admins can override
-# via CRM Project API Settings.timeout_seconds.
+# via CRM OpsGate API Settings.timeout_seconds.
 _DEFAULT_TIMEOUT_SECONDS = 60
 # OpsGate's public Frappe-handoff endpoint (renamed from the legacy
 # /api/external/frappe/projects on 2026-05-22). Mounted before verifyToken
 # in src/routes/v2.routes.ts; auth is via X-Api-Secret + FRAPPE_CRM_SECRET.
-# Path is relative to `opsgate_api_url` (site_config.json), which already
+# Path is relative to `api_base_url` (CRM OpsGate API Settings), which already
 # includes the `/api` prefix — same base the SSO flow uses.
 _CREATE_PROJECT_PATH = "/v2/projects/public"
 
 
 def _get_settings():
-	return frappe.get_single("CRM Project API Settings")
+	return frappe.get_single("CRM OpsGate API Settings")
 
 
 def _resolve_sales_person_email(lead_name: str) -> str:
@@ -164,7 +164,7 @@ def create_project_on_won(lead_name: str) -> None:
 	can invoke it. Auto-enqueue from After-Save is no longer wired — project creation
 	is triggered by an explicit Sales Owner click; see `crm.api.projects`.
 
-	Auth: sends ``X-Api-Secret`` (value taken from ``CRM Project API Settings.api_key``).
+	Auth: sends ``X-Api-Secret`` (value taken from ``CRM OpsGate API Settings.api_key``).
 	The receiver does a ``timingSafeEqual`` against its ``FRAPPE_CRM_SECRET`` env var;
 	missing/wrong → 401 and the handler logs + drops an audit comment on the lead.
 
@@ -186,13 +186,14 @@ def create_project_on_won(lead_name: str) -> None:
 		return
 
 	api_key = settings.get_password("api_key")
-	# Base URL comes from site_config.json (same key the SSO flow uses) so the
-	# two integrations cannot drift onto different OpsGate hosts.
-	base_url = (frappe.conf.get("opsgate_api_url") or "").rstrip("/")
+	# Base URL comes from CRM OpsGate API Settings — same single source the
+	# SSO flow reads, so the two integrations cannot drift onto different
+	# OpsGate hosts.
+	base_url = (settings.get("api_base_url") or "").rstrip("/")
 	if not (api_key and base_url):
 		frappe.log_error(
 			f"Lead {lead_name}: project handoff misconfigured "
-			f"(opsgate_api_url in site_config.json or api_key in CRM Project API Settings missing).",
+			f"(api_base_url or api_key in CRM OpsGate API Settings missing).",
 			"Project API: misconfigured",
 		)
 		return
@@ -326,7 +327,7 @@ def create_project_on_won(lead_name: str) -> None:
 		"content-type": "application/json",
 		# Renamed from x-api-key on 2026-05-22. The verifyFrappeSecret middleware
 		# on OpsGate matches against FRAPPE_CRM_SECRET; the value lives in
-		# CRM Project API Settings.api_key (Password field — name kept stable to
+		# CRM OpsGate API Settings.api_key (Password field — name kept stable to
 		# avoid migrating existing sites; admins set it to the new secret value).
 		"X-Api-Secret": api_key,
 	}
