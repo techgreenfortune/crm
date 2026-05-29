@@ -26,7 +26,6 @@
   "job_title",
   "source",
   "lead_owner",
-  "address",
   "organization_tab",
   "section_break_uixv",
   "naming_series",
@@ -445,12 +444,6 @@
    "fieldtype": "Table",
    "label": "Contacts",
    "options": "CRM Contacts"
-  },
-  {
-   "fieldname": "address",
-   "fieldtype": "Link",
-   "label": "Address",
-   "options": "Address"
   }
  ],
  "grid_page_length": 50,
