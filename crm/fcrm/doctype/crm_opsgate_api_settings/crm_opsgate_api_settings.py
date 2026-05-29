@@ -5,15 +5,16 @@ import frappe
 from frappe.model.document import Document
 
 
-class CRMProjectAPISettings(Document):
+class CRMOpsGateAPISettings(Document):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		api_base_url: DF.Data | None
 		api_key: DF.Password | None
 		enabled: DF.Check
 		timeout_seconds: DF.Int
 
 	def on_update(self):
-		frappe.clear_document_cache("CRM Project API Settings", "CRM Project API Settings")
+		frappe.clear_document_cache("CRM OpsGate API Settings", "CRM OpsGate API Settings")

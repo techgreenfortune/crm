@@ -26,6 +26,7 @@
   "job_title",
   "source",
   "lead_owner",
+  "address",
   "organization_tab",
   "section_break_uixv",
   "naming_series",
@@ -444,13 +445,19 @@
    "fieldtype": "Table",
    "label": "Contacts",
    "options": "CRM Contacts"
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Link",
+   "label": "Address",
+   "options": "Address"
   }
  ],
  "grid_page_length": 50,
  "image_field": "image",
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-04 12:33:17.177897",
+ "modified": "2026-05-29 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Lead",

@@ -151,7 +151,14 @@
           :columns="columns"
           :options="{ selectable: false, showTooltip: false }"
         />
-        <EmptyState v-if="!rows.length" :icon="tab.icon" name="Deals" />
+        <LeadsListView
+          v-else-if="tab.label === 'Leads' && leadRows.length"
+          class="mt-4"
+          :rows="leadRows"
+          :columns="leadColumns"
+          :options="{ selectable: false, showTooltip: false }"
+        />
+        <EmptyState v-else :icon="tab.icon" :name="tab.label" />
       </template>
     </Tabs>
   </div>
@@ -179,6 +186,8 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import DealsListView from '@/components/ListViews/DealsListView.vue'
+import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
+import LeadsListView from '@/components/ListViews/LeadsListView.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import {
   formatDate,
@@ -217,7 +226,7 @@ const { makeCall, $dialog, $socket } = globalStore()
 
 const { getUser } = usersStore()
 const { getOrganization } = organizationsStore()
-const { getDealStatus } = statusesStore()
+const { getDealStatus, getLeadStatus } = statusesStore()
 const { doctypeMeta } = getMeta('Contact')
 const { capture } = useTelemetry()
 
@@ -302,6 +311,11 @@ const tabs = [
     icon: DealsIcon,
     count: computed(() => deals.data?.length),
   },
+  {
+    label: 'Leads',
+    icon: LeadsIcon,
+    count: computed(() => leads.data?.length),
+  },
 ]
 
 const deals = createResource({
@@ -311,10 +325,22 @@ const deals = createResource({
   auto: true,
 })
 
+const leads = createResource({
+  url: 'crm.api.contact.get_linked_leads',
+  cache: ['leads', props.contactId],
+  params: { contact: props.contactId },
+  auto: true,
+})
+
 const rows = computed(() => {
   if (!deals.data || deals.data == []) return []
 
   return deals.data.map((row) => getDealRowObject(row))
+})
+
+const leadRows = computed(() => {
+  if (!leads.data?.length) return []
+  return leads.data.map((row) => getLeadRowObject(row))
 })
 
 const sections = createResource({
@@ -491,6 +517,69 @@ async function deleteOption(doctype, name) {
 const { getFormattedCurrency } = getMeta('CRM Deal')
 
 const columns = computed(() => dealColumns)
+const leadColumns = [
+  {
+    label: __('Lead Name'),
+    key: 'lead_name',
+    width: '12rem',
+  },
+  {
+    label: __('Organization'),
+    key: 'organization',
+    width: '11rem',
+  },
+  {
+    label: __('Status'),
+    key: 'status',
+    width: '10rem',
+  },
+  {
+    label: __('Email'),
+    key: 'email',
+    width: '12rem',
+  },
+  {
+    label: __('Mobile No.'),
+    key: 'mobile_no',
+    width: '11rem',
+  },
+  {
+    label: __('Lead Owner'),
+    key: 'lead_owner',
+    width: '10rem',
+  },
+  {
+    label: __('Last Modified'),
+    key: 'modified',
+    width: '8rem',
+  },
+]
+
+function getLeadRowObject(lead) {
+  return {
+    name: lead.name,
+    lead_name: {
+      label: lead.lead_name,
+      image: lead.image,
+      image_label: lead.lead_name,
+    },
+    organization: lead.organization,
+    status: {
+      label: lead.status,
+      color: getLeadStatus(lead.status)?.color,
+    },
+    email: lead.email,
+    mobile_no: lead.mobile_no,
+    lead_owner: {
+      label: lead.lead_owner && getUser(lead.lead_owner).full_name,
+      ...(lead.lead_owner && getUser(lead.lead_owner)),
+    },
+    modified: {
+      label: formatDate(lead.modified),
+      timeAgo: __(timeAgo(lead.modified)),
+    },
+  }
+}
 
 function getDealRowObject(deal) {
   return {

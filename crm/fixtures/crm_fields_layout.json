@@ -3,8 +3,8 @@
   "docstatus": 0,
   "doctype": "CRM Fields Layout",
   "dt": "CRM Lead",
-  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Lead Contact Details\",\"name\":\"person_section\",\"opened\":true,\"columns\":[{\"name\":\"column_6c5g\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_1n7Q\",\"fields\":[\"mobile_no\",\"email\"]}],\"editingLabel\":false},{\"label\":\"Details\",\"name\":\"details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_ZgLG\",\"fields\":[\"lead_owner\",\"custom_site_address_full\"]},{\"name\":\"column_TbYq\",\"fields\":[\"custom_lead_type\",\"lead_status\"]},{\"name\":\"column_OKSX\",\"fields\":[\"source\"]}]},{\"label\":\"Order Creation Details \",\"name\":\"section_eEiC\",\"opened\":true,\"columns\":[{\"name\":\"column_biic\",\"fields\":[\"custom_project_category\",\"custom_project_configuration\"]}],\"editingLabel\":false},{\"label\":\"\",\"name\":\"section_WUcu\",\"opened\":true,\"columns\":[{\"name\":\"column_Mjby\",\"fields\":[]}]}]}]",
-  "modified": "2026-05-26 10:30:22.734089",
+  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Lead Contact Details\",\"name\":\"person_section\",\"opened\":true,\"columns\":[{\"name\":\"column_6c5g\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_1n7Q\",\"fields\":[\"mobile_no\",\"email\"]}],\"editingLabel\":false},{\"label\":\"Details\",\"name\":\"details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_ZgLG\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_site_pincode\"]},{\"name\":\"column_TbYq\",\"fields\":[\"custom_lead_type\",\"lead_status\",\"source\",\"custom_sub_source\"]}]},{\"label\":\"Order Creation Details \",\"name\":\"section_eEiC\",\"opened\":true,\"columns\":[{\"name\":\"column_biic\",\"fields\":[\"custom_project_category\",\"custom_project_configuration\"]}],\"editingLabel\":false},{\"label\":\"\",\"name\":\"section_WUcu\",\"opened\":true,\"columns\":[{\"name\":\"column_Mjby\",\"fields\":[]}]}]}]",
+  "modified": "2026-05-29 12:43:12.680780",
   "name": "CRM Lead-Data Fields",
   "type": "Data Fields"
  },
@@ -21,8 +21,8 @@
   "docstatus": 0,
   "doctype": "CRM Fields Layout",
   "dt": "CRM Lead",
-  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"name\":\"person_section\",\"label\":\"Lead Contact Details\",\"columns\":[{\"name\":\"column_qe_p1\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_qe_p2\",\"fields\":[\"mobile_no\",\"email\"]}],\"collapsible\":false,\"editingLabel\":false},{\"name\":\"property_section\",\"label\":\"Site Details\",\"columns\":[{\"name\":\"column_qe_pr1\",\"fields\":[\"custom_site_address_full\",\"custom_city\",\"custom_state\",\"custom_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_qe_pr2\",\"fields\":[\"custom_tentative_area_sqft\",\"custom_tentative_value\",\"custom_site_photos\",\"custom_competitors\"]}],\"editingLabel\":false,\"collapsible\":false},{\"name\":\"classification_section\",\"label\":\"Lead Classification\",\"columns\":[{\"name\":\"column_qe_c1\",\"fields\":[\"custom_lead_type\",\"custom_customer_type\",\"custom_account\"]},{\"name\":\"column_qe_c2\",\"fields\":[\"source\",\"custom_sub_source\"]}],\"collapsible\":false},{\"name\":\"lead_section\",\"label\":\"Lead Owner & Stage\",\"columns\":[{\"name\":\"column_qe_l1\",\"fields\":[\"status\",\"lead_status\"]}],\"collapsible\":false}]}]",
-  "modified": "2026-05-25 15:43:07.597036",
+  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"name\":\"person_section\",\"label\":\"Lead Contact Details\",\"columns\":[{\"name\":\"column_qe_p1\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_qe_p2\",\"fields\":[\"mobile_no\",\"email\"]}],\"collapsible\":false,\"editingLabel\":false},{\"name\":\"property_section\",\"label\":\"Site Details\",\"columns\":[{\"name\":\"column_qe_pr1\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_qe_pr2\",\"fields\":[\"custom_tentative_area_sqft\",\"custom_tentative_value\",\"custom_site_photos\",\"custom_tentative_units\",\"custom_competitors\"]}],\"editingLabel\":false,\"collapsible\":false},{\"name\":\"classification_section\",\"label\":\"Lead Classification\",\"columns\":[{\"name\":\"column_qe_c1\",\"fields\":[\"custom_lead_type\",\"custom_customer_type\",\"custom_account\"]},{\"name\":\"column_qe_c2\",\"fields\":[\"source\",\"custom_sub_source\"]}],\"collapsible\":false},{\"name\":\"lead_section\",\"label\":\"Lead Owner & Stage\",\"columns\":[{\"name\":\"column_qe_l1\",\"fields\":[\"status\",\"lead_status\"]}],\"collapsible\":false}]}]",
+  "modified": "2026-05-29 12:46:04.344496",
   "name": "CRM Lead-Quick Entry",
   "type": "Quick Entry"
  },
@@ -40,7 +40,7 @@
   "doctype": "CRM Fields Layout",
   "dt": "CRM Account",
   "layout": "[{\"name\":\"account_section\",\"label\":\"Account\",\"columns\":[{\"name\":\"column_qe_a1\",\"fields\":[\"account_name\",\"account_type\"]},{\"name\":\"column_qe_a2\",\"fields\":[\"mobile_no\",\"email\"]}]}]",
-  "modified": "2026-05-26 00:00:00.000000",
+  "modified": "2026-05-26 00:00:00",
   "name": "CRM Account-Quick Entry",
   "type": "Quick Entry"
  },
@@ -49,7 +49,7 @@
   "doctype": "CRM Fields Layout",
   "dt": "CRM Account",
   "layout": "[{\"label\":\"Account Details\",\"name\":\"account_details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_sp_a1\",\"fields\":[\"account_type\",\"mobile_no\",\"email\",\"website\",\"industry\",\"territory\",\"address\"]}]}]",
-  "modified": "2026-05-26 00:00:00.000000",
+  "modified": "2026-05-26 00:00:00",
   "name": "CRM Account-Side Panel",
   "type": "Side Panel"
  }
