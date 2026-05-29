@@ -11,28 +11,6 @@
   "type": "Open"
  },
  {
-  "color": "orange",
-  "docstatus": 0,
-  "doctype": "CRM Lead Status",
-  "lead_status": "C2",
-  "modified": "2026-05-19 00:00:00",
-  "name": "C2",
-  "position": 3,
-  "stage_label": "C2 — Active Engagement",
-  "type": "Ongoing"
- },
- {
-  "color": "green",
-  "docstatus": 0,
-  "doctype": "CRM Lead Status",
-  "lead_status": "C4",
-  "modified": "2026-05-19 00:00:00",
-  "name": "C4",
-  "position": 4,
-  "stage_label": "C4 — Won (Advance Payment Made)",
-  "type": "Won"
- },
- {
   "color": "red",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
@@ -55,6 +33,17 @@
   "type": "On Hold"
  },
  {
+  "color": "orange",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C2",
+  "modified": "2026-05-19 00:00:00",
+  "name": "C2",
+  "position": 3,
+  "stage_label": "C2 — Active Engagement",
+  "type": "Ongoing"
+ },
+ {
   "color": "gray",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
@@ -64,5 +53,16 @@
   "position": 1,
   "stage_label": "C0 — New Lead",
   "type": "Open"
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C4",
+  "modified": "2026-05-19 00:00:00",
+  "name": "C4",
+  "position": 4,
+  "stage_label": "C4 — Won (Advance Payment Made)",
+  "type": "Won"
  }
 ]
