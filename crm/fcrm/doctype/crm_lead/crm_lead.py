@@ -124,6 +124,7 @@ class CRMLead(Document):
 		)
 		from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import CRMStatusChangeLog
 
+		address: DF.Link | None
 		annual_revenue: DF.Currency
 		communication_status: DF.Link | None
 		converted: DF.Check
