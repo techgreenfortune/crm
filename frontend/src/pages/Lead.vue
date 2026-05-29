@@ -519,7 +519,9 @@ const {
   error,
 } = useDocument('CRM Lead', props.leadId)
 
-const canDelete = computed(() => permissions.data?.permissions?.delete || false)
+const canDelete = computed(
+  () => (permissions.data?.permissions?.delete || false) && isAdmin(),
+)
 
 const doc = computed(() => document.doc || {})
 
@@ -792,7 +794,7 @@ async function setPrimaryContact(contact) {
 }
 
 // --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
-const { isManager } = usersStore()
+const { isManager, isAdmin } = usersStore()
 const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {

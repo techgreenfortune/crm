@@ -10,7 +10,7 @@ Implements:
 Access matrix:
 
 - Admin / System Manager / Sales Head / Sales Coordinator: full RW, incl. unassigned
-- Calling Team: all non-C7 leads, incl. unassigned; can create leads
+- Calling Team: all non-C7 leads, incl. unassigned
 - Management: read-only across assigned leads
 - Marketing: read all assigned + write (field-level lock in CRMLead.validate())
 - B2F Team: C7 assigned only + field-locked writes
@@ -28,8 +28,7 @@ visible to that ASM and to the RSM above them.
 
 Unassigned leads (``lead_owner`` is NULL/empty) are visible only to
 ``UNASSIGNED_VISIBLE_ROLES`` — Tier-1 full-RW plus Calling Team. Every other
-role sees only leads with an owner. This makes the Calling Team the explicit
-inbox for new leads: they create + first-touch, then assign downstream.
+role sees only leads with an owner.
 
 Multi-role users get the union of allow-clauses. The list-level query and the
 single-doc gate must stay consistent — both call the same role-tier helpers.
@@ -50,20 +49,6 @@ from crm.permissions.role_config import (
 	STAGE_LOCKED,
 	TIER1_FULL_RW,
 	TIER1_READ_ONLY,
-)
-
-# Roles that cannot create a CRM Lead. Calling Team is intentionally NOT in
-# this set — they own the unassigned inbox and create new leads. JSE is still
-# blocked from creating (despite sharing the non-C7 visibility bucket with
-# Calling Team) because they're a leaf-level sales role, not the lead-intake
-# team. Management is included (read-only role) because there's no longer an
-# early-return that would block it before the create gate.
-_NO_CREATE_ROLES = (
-	set(STAGE_LOCKED)
-	| set(QUOTE_SCOPE_ROLES)
-	| set(OWNER_SCOPE_ROLES)
-	| set(TIER1_READ_ONLY)
-	| {"Jr. Sales Executive", "Marketing"}
 )
 
 # SQL fragment for "the lead has an owner" — used to gate non-tier-1,
@@ -97,11 +82,8 @@ def has_permission(doc, ptype, user):
 	if roles & TIER1_FULL_RW:
 		return True
 
-	# Create gate: pool / stage-locked / owner-scoped / Marketing / JSE
-	# roles cannot create leads. Calling Team CAN create (handled by its
-	# absence from _NO_CREATE_ROLES). Tier-1 full-RW already returned above.
 	if ptype == "create":
-		if roles & _NO_CREATE_ROLES:
+		if roles & (set(STAGE_LOCKED) | QUOTE_SCOPE_ROLES):
 			frappe.throw(
 				_("Users with your role(s) are not allowed to create leads."),
 				exc=frappe.PermissionError,

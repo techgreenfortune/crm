@@ -70,34 +70,66 @@ def get_linked_deals(contact: str):
 	if not frappe.has_permission("Contact", "read", contact):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	deal_names = frappe.get_all(
+	names = frappe.get_all(
 		"CRM Contacts",
 		filters={"contact": contact, "parenttype": "CRM Deal"},
-		fields=["parent"],
+		pluck="parent",
 		distinct=True,
 	)
+	if not names:
+		return []
 
-	# get deals data
-	deals = []
-	for d in deal_names:
-		deal = frappe.get_cached_doc(
-			"CRM Deal",
-			d.parent,
-			fields=[
-				"name",
-				"organization",
-				"currency",
-				"annual_revenue",
-				"status",
-				"email",
-				"mobile_no",
-				"deal_owner",
-				"modified",
-			],
-		)
-		deals.append(deal.as_dict())
+	return frappe.get_list(
+		"CRM Deal",
+		filters={"name": ["in", names]},
+		fields=[
+			"name",
+			"organization",
+			"currency",
+			"annual_revenue",
+			"status",
+			"email",
+			"mobile_no",
+			"deal_owner",
+			"modified",
+		],
+		order_by="modified desc",
+	)
 
-	return deals
+
+@frappe.whitelist()
+def get_linked_leads(contact: str):
+	"""Get linked leads for a contact"""
+
+	if not frappe.has_permission("Contact", "read", contact):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	names = frappe.get_all(
+		"CRM Contacts",
+		filters={"contact": contact, "parenttype": "CRM Lead"},
+		pluck="parent",
+		distinct=True,
+	)
+	if not names:
+		return []
+
+	return frappe.get_list(
+		"CRM Lead",
+		filters={"name": ["in", names]},
+		fields=[
+			"name",
+			"lead_name",
+			"organization",
+			"status",
+			"lead_status",
+			"email",
+			"mobile_no",
+			"lead_owner",
+			"modified",
+			"image",
+		],
+		order_by="modified desc",
+	)
 
 
 @frappe.whitelist()
