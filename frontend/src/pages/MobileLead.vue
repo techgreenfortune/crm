@@ -401,10 +401,13 @@ const sections = createResource({
 })
 
 function getParsedSections(_sections) {
+  if (!Array.isArray(_sections)) return _sections
   return _sections.map((section) => {
+    if (!Array.isArray(section?.columns)) return section
     section.columns = section.columns.map((column) => {
+      if (!Array.isArray(column?.fields)) return column
       column.fields = column.fields.map((field) => {
-        if (field.fieldname === 'address') {
+        if (field?.fieldname === 'address') {
           return {
             ...field,
             create: (value, close) => {
