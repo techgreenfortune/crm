@@ -71,14 +71,16 @@ def send_retry_whatsapp(lead_name: str, day: int) -> None:
 		frappe.logger().info(f"[RetryEngine] No mobile_no on lead {lead_name} — skipping WhatsApp")
 		return
 
+	display_name = lead.get("lead_name") or lead_name
 	try:
 		send_template_message(
 			to=phone,
 			template_name=template_name,
-			variables=[lead.get("lead_name") or lead_name, lead_name, "Retry Call Follow-up"],
+			variables=["$FirstName"],
 			reference_doctype="CRM Lead",
 			reference_name=lead_name,
-			recipient_name=lead.get("lead_name") or lead_name,
+			recipient_name=display_name,
+			params_fallback_value={"FirstName": display_name},
 		)
 	except Exception:
 		frappe.log_error(

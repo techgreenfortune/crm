@@ -28,7 +28,7 @@ def add_lead_comment(lead_name: str, content: str, source: str = "SYSTEM_RETRY")
 def register_no_answer(lead_name: str) -> None:
 	# Gate: only C0 leads or leads with engagement in (Cold-Unresponsive, Reactivated)
 	# enter the retry sequence. Mirrors the server-script gate at
-	# fixtures/server_script.json "After Save — No Answer Retry Trigger" — kept here
+	# fixtures/server_script.json "After Save — Call Not Answered Retry Trigger" — kept here
 	# as defense-in-depth so direct callers (console, REST, future server scripts)
 	# can't bypass.
 	state = frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
