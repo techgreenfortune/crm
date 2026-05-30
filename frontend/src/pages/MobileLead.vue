@@ -1,14 +1,14 @@
 <template>
   <LayoutHeader>
-    <header
-      class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2"
-    >
-      <Breadcrumbs :items="breadcrumbs">
-        <template #prefix="{ item }">
-          <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
-        </template>
-      </Breadcrumbs>
-      <div class="absolute right-0 flex items-center gap-2">
+    <header class="flex h-10.5 items-center gap-2 py-2.5 pl-2 pr-2">
+      <div class="min-w-0 flex-1">
+        <Breadcrumbs :items="breadcrumbs">
+          <template #prefix="{ item }">
+            <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
+          </template>
+        </Breadcrumbs>
+      </div>
+      <div class="flex flex-shrink-0 items-center gap-2">
         <Dropdown
           v-if="doc"
           :options="
@@ -33,23 +33,6 @@
             </Button>
           </template>
         </Dropdown>
-        <Dropdown
-          v-if="doc.lead_status && doc.lead_status !== 'Active'"
-          :options="engagementStatusOptions(triggerLeadStatusChange)"
-        >
-          <template #default="{ open }">
-            <Button
-              :label="doc.lead_status"
-              :iconRight="open ? 'chevron-up' : 'chevron-down'"
-            >
-              <template #prefix>
-                <IndicatorIcon
-                  :class="getLeadEngagementStatus(doc.lead_status)?.color"
-                />
-              </template>
-            </Button>
-          </template>
-        </Dropdown>
       </div>
     </header>
   </LayoutHeader>
@@ -66,10 +49,26 @@
   <div
     v-if="doc.name"
     class="flex min-h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
-    :class="canShowCreateProject ? 'flex-wrap' : ''"
   >
     <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
     <div class="flex items-center gap-2">
+      <Dropdown
+        v-if="doc.lead_status && doc.lead_status !== 'Active'"
+        :options="engagementStatusOptions(triggerLeadStatusChange)"
+      >
+        <template #default="{ open }">
+          <Button
+            :label="doc.lead_status"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          >
+            <template #prefix>
+              <IndicatorIcon
+                :class="getLeadEngagementStatus(doc.lead_status)?.color"
+              />
+            </template>
+          </Button>
+        </template>
+      </Dropdown>
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -85,17 +84,16 @@
         @click="showConvertToDealModal = true"
       />
       -->
+      <Button
+        v-if="canShowCreateProject"
+        variant="solid"
+        :label="__('Create Project')"
+        iconLeft="briefcase"
+        :loading="createProjectResource.loading"
+        :disabled="!projectFieldsReady"
+        @click="triggerCreateProject"
+      />
     </div>
-    <Button
-      v-if="canShowCreateProject"
-      variant="solid"
-      class="w-full"
-      :label="__('Create Project')"
-      iconLeft="briefcase"
-      :loading="createProjectResource.loading"
-      :disabled="!projectFieldsReady"
-      @click="triggerCreateProject"
-    />
   </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
     <Tabs

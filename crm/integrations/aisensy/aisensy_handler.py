@@ -29,11 +29,11 @@ def send_template_message(
 ) -> dict:
 	settings = get_aisensy_settings()
 	api_key = settings.get_password("api_key")
-	user_name = recipient_name or settings.default_user_name or ""
+	user_name = settings.default_user_name or ""
 
 	phone = "".join(c for c in to if c.isdigit())
-	if not phone.startswith("91") and len(phone) == 10:
-		phone = "91" + phone
+	if phone.startswith("91") and len(phone) == 12:
+		phone = phone[2:]
 
 	# AiSensy expects media as {"url": "...", "filename": "..."}. Empty dict
 	# means no media attachment. Filename defaults to the basename of the URL.
