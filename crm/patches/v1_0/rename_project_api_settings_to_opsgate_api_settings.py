@@ -51,7 +51,11 @@ def execute():
 
 	# Migrate the URL from site_config.json into the doctype, but only if the
 	# doctype value is empty (don't clobber a value an admin has already set
-	# via the UI after the rename ran).
+	# via the UI after the rename ran). Skip on fresh installs where the
+	# renamed doctype hasn't been synced yet — post_model_sync will handle it.
+	if not frappe.db.exists("DocType", "CRM OpsGate API Settings"):
+		return
+
 	conf_url = (frappe.conf.get("opsgate_api_url") or "").strip()
 	existing = frappe.db.get_single_value("CRM OpsGate API Settings", "api_base_url") or ""
 	if conf_url and not existing:
