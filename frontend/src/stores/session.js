@@ -32,6 +32,11 @@ export const sessionStore = defineStore('crm-session', () => {
     url: 'logout',
     onSuccess() {
       user.value = null
+      try {
+        sessionStorage.removeItem('exotel_call_popup_state')
+      } catch {
+        /* storage unavailable */
+      }
       if (
         window.opsgate_enabled &&
         window.opsgate_login_redirect &&

@@ -71,9 +71,8 @@ def build_signed_file_url(file_url: str, ttl_seconds: int = _DEFAULT_TTL_SECONDS
 # Security review: guest access is intentional. Auth is HMAC-SHA256 over
 # (file_doc_name, expires_at) using crm_sso_secret. No Frappe session is
 # issued. Reviewed: 2026-05-27.
-# fmt: off
-@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
-# fmt: on
+# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+@frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_signed_file():
 	"""Serve a private File doc to an unauthenticated caller if the HMAC checks out.
 
