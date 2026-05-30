@@ -442,6 +442,15 @@ const partnerFabricatorName = ref('')
 const fabricatorRoutingNotes = ref('')
 const isSavingDisposition = ref(false)
 
+const lastSocketAt = ref(Date.now())
+let staleCheckTimer = null
+const PRE_ANSWER_STALE_MS = 30 * 1000
+const ACTIVE_STALE_MS = 60 * 1000
+const STALE_CHECK_INTERVAL_MS = 10 * 1000
+const PRE_ANSWER_STATUSES = ['Calling...', 'Ringing...', 'Incoming call']
+const DISPOSITION_SAVE_MAX_ATTEMPTS = 3
+const DISPOSITION_SAVE_BACKOFF_MS = [1000, 2000, 4000]
+
 const routingReasonOptions = [
   'Price Mismatch',
   'GST Issue',
@@ -564,6 +573,7 @@ function persistPopupState() {
         fabricatorRoutingReason: fabricatorRoutingReason.value,
         partnerFabricatorName: partnerFabricatorName.value,
         fabricatorRoutingNotes: fabricatorRoutingNotes.value,
+        lastSocketAt: lastSocketAt.value,
       }),
     )
   } catch {
@@ -592,6 +602,7 @@ function restorePopupState() {
     fabricatorRoutingReason.value = s.fabricatorRoutingReason || null
     partnerFabricatorName.value = s.partnerFabricatorName || ''
     fabricatorRoutingNotes.value = s.fabricatorRoutingNotes || ''
+    if (typeof s.lastSocketAt === 'number') lastSocketAt.value = s.lastSocketAt
   } catch {
     /* parse error — ignore */
   }
@@ -617,6 +628,7 @@ watch(
     fabricatorRoutingReason,
     partnerFabricatorName,
     fabricatorRoutingNotes,
+    lastSocketAt,
   ],
   persistPopupState,
   { deep: true },
@@ -738,6 +750,7 @@ function makeOutgoingCall(number, context) {
       callStatus.value = 'Calling...'
       showCallPopup.value = true
       showSmallCallPopup.value = false
+      lastSocketAt.value = Date.now()
     },
     onError(err) {
       toast.error(err.messages[0])
@@ -749,6 +762,7 @@ function setup() {
   dispositionsResource.fetch()
   restorePopupState()
   $socket.on('exotel_call', (data) => {
+    lastSocketAt.value = Date.now()
     callData.value = data
     console.log(data)
 
@@ -766,10 +780,41 @@ function setup() {
       }
     }
   })
+  startStaleCheck()
+}
+
+function startStaleCheck() {
+  if (staleCheckTimer) return
+  staleCheckTimer = setInterval(checkStale, STALE_CHECK_INTERVAL_MS)
+}
+
+function stopStaleCheck() {
+  if (staleCheckTimer) {
+    clearInterval(staleCheckTimer)
+    staleCheckTimer = null
+  }
+}
+
+function checkStale() {
+  if (!showCallPopup.value && !showSmallCallPopup.value) return
+  if (!callData.value?.CallSid) return
+  // Skip auto-close when agent is actively engaging with disposition form.
+  if (callTerminated.value && disposition.value) return
+  const threshold = PRE_ANSWER_STATUSES.includes(callStatus.value)
+    ? PRE_ANSWER_STALE_MS
+    : ACTIVE_STALE_MS
+  if (Date.now() - lastSocketAt.value <= threshold) return
+  toast.info(
+    __(
+      'Call popup closed — no telephony update received. Add disposition via call log activity if needed.',
+    ),
+  )
+  closeCallPopup()
 }
 
 onBeforeUnmount(() => {
   $socket.off('exotel_call')
+  stopStaleCheck()
 })
 
 const router = useRouter()
@@ -811,6 +856,7 @@ function closeCallPopup() {
   fabricatorRoutingNotes.value = ''
   callData.value = null
   callStatus.value = ''
+  lastSocketAt.value = Date.now()
   clearPopupState()
 }
 
@@ -827,23 +873,44 @@ async function attemptCloseCallPopup() {
     return
   }
   isSavingDisposition.value = true
-  try {
-    await call('crm.integrations.api.add_disposition_to_call_log', {
-      call_sid: callData.value.CallSid,
-      disposition: disposition.value,
-      scheduled_callback_at: scheduledCallbackAt.value || null,
-      fabricator_routing_reason: fabricatorRoutingReason.value || null,
-      partner_fabricator_name: partnerFabricatorName.value || null,
-      fabricator_routing_notes: fabricatorRoutingNotes.value || null,
-    })
-    closeCallPopup()
-  } catch (err) {
-    toast.error(
-      err?.messages?.[0] || err?.message || __('Failed to save disposition'),
-    )
-  } finally {
-    isSavingDisposition.value = false
+  const payload = {
+    call_sid: callData.value.CallSid,
+    disposition: disposition.value,
+    scheduled_callback_at: scheduledCallbackAt.value || null,
+    fabricator_routing_reason: fabricatorRoutingReason.value || null,
+    partner_fabricator_name: partnerFabricatorName.value || null,
+    fabricator_routing_notes: fabricatorRoutingNotes.value || null,
   }
+  let lastErr = null
+  for (let attempt = 1; attempt <= DISPOSITION_SAVE_MAX_ATTEMPTS; attempt++) {
+    try {
+      await call('crm.integrations.api.add_disposition_to_call_log', payload)
+      isSavingDisposition.value = false
+      closeCallPopup()
+      return
+    } catch (err) {
+      lastErr = err
+      const msg =
+        err?.messages?.[0] || err?.message || __('Failed to save disposition')
+      if (attempt < DISPOSITION_SAVE_MAX_ATTEMPTS) {
+        toast.error(
+          `${msg} ${__('— retrying')} (${attempt}/${DISPOSITION_SAVE_MAX_ATTEMPTS - 1})`,
+        )
+        await new Promise((r) =>
+          setTimeout(r, DISPOSITION_SAVE_BACKOFF_MS[attempt - 1] || 4000),
+        )
+      }
+    }
+  }
+  isSavingDisposition.value = false
+  toast.error(
+    lastErr?.messages?.[0] ||
+      lastErr?.message ||
+      __(
+        'Failed to save disposition after retries. Closing popup — add disposition via call log activity.',
+      ),
+  )
+  closeCallPopup()
 }
 
 function save() {
