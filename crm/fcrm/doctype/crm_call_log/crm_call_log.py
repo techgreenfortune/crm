@@ -38,7 +38,7 @@ class CRMCallLog(Document):
 			"Completed",
 			"Failed",
 			"Busy",
-			"No Answer",
+			"Call Not Answered",
 			"Queued",
 			"Canceled",
 		]

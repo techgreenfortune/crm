@@ -99,7 +99,7 @@
                 class="flex h-8 w-7 items-center justify-center bg-surface-white text-ink-gray-8"
               >
                 <MissedCallIcon
-                  v-if="call.status == 'No Answer'"
+                  v-if="call.status == 'Call Not Answered'"
                   class="text-ink-red-4"
                 />
                 <DeclinedCallIcon v-else-if="call.status == 'Busy'" />
@@ -166,7 +166,7 @@
                 v-else-if="
                   ['incoming_call', 'outgoing_call'].includes(
                     activity.activity_type,
-                  ) && activity.status == 'No Answer'
+                  ) && activity.status == 'Call Not Answered'
                 "
                 class="text-ink-red-4"
               />
