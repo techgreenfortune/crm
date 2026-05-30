@@ -50,15 +50,6 @@
             </Button>
           </template>
         </Dropdown>
-        <Button
-          v-if="canShowCreateProject"
-          variant="solid"
-          :label="__('Create Project')"
-          iconLeft="briefcase"
-          :loading="createProjectResource.loading"
-          :disabled="!projectFieldsReady"
-          @click="triggerCreateProject"
-        />
       </div>
     </header>
   </LayoutHeader>
@@ -74,7 +65,8 @@
   </div>
   <div
     v-if="doc.name"
-    class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
+    class="flex min-h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
+    :class="canShowCreateProject ? 'flex-wrap' : ''"
   >
     <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
     <div class="flex items-center gap-2">
@@ -94,6 +86,16 @@
       />
       -->
     </div>
+    <Button
+      v-if="canShowCreateProject"
+      variant="solid"
+      class="w-full"
+      :label="__('Create Project')"
+      iconLeft="briefcase"
+      :loading="createProjectResource.loading"
+      :disabled="!projectFieldsReady"
+      @click="triggerCreateProject"
+    />
   </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
     <Tabs
