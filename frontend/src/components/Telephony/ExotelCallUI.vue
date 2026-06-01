@@ -460,6 +460,7 @@ const lastSocketAt = ref(Date.now())
 let staleCheckTimer = null
 const PRE_ANSWER_STALE_MS = 30 * 1000
 const ACTIVE_STALE_MS = 60 * 1000
+const IN_PROGRESS_STALE_MS = 30 * 60 * 1000
 const STALE_CHECK_INTERVAL_MS = 10 * 1000
 const PRE_ANSWER_STATUSES = ['Calling...', 'Ringing...', 'Incoming call']
 const DISPOSITION_SAVE_MAX_ATTEMPTS = 3
@@ -833,9 +834,16 @@ function checkStale() {
   if (!callData.value?.CallSid) return
   // Skip auto-close when agent is actively engaging with disposition form.
   if (callTerminated.value && disposition.value) return
-  const threshold = PRE_ANSWER_STATUSES.includes(callStatus.value)
-    ? PRE_ANSWER_STALE_MS
-    : ACTIVE_STALE_MS
+  // No intermediate socket events expected while call is live, so use a long
+  // safety-net timeout rather than the short ACTIVE_STALE_MS — prevents
+  // stale-close on normal calls while still closing the popup if the socket
+  // breaks during an active call.
+  const threshold =
+    callStatus.value === 'In progress'
+      ? IN_PROGRESS_STALE_MS
+      : PRE_ANSWER_STATUSES.includes(callStatus.value)
+        ? PRE_ANSWER_STALE_MS
+        : ACTIVE_STALE_MS
   if (Date.now() - lastSocketAt.value <= threshold) return
   toast.info(
     __(
