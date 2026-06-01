@@ -99,6 +99,7 @@
           <BrushCleaningIcon class="h-4 w-4" />
         </template>
       </SidebarLink>
+      <!-- disabled: Help link hidden from sidebar
       <SidebarLink
         v-if="isOnboardingStepsCompleted"
         :label="__('Help')"
@@ -114,6 +115,7 @@
           <HelpIcon class="h-4 w-4" />
         </template>
       </SidebarLink>
+      -->
       <SidebarLink
         :label="isSidebarCollapsed ? __('Expand') : __('Collapse')"
         :isCollapsed="isSidebarCollapsed"
@@ -132,6 +134,7 @@
     </div>
     <Notifications />
     <Settings />
+    <!-- disabled: Help popup hidden
     <HelpModal
       v-if="showHelpModal"
       v-model="showHelpModal"
@@ -143,6 +146,7 @@
       :afterResetAll="() => capture('onboarding_steps_reset')"
       docsLink="https://docs.frappe.io/crm"
     />
+    -->
     <IntermediateStepModal
       v-model="showIntermediateModal"
       :currentStep="currentStep"
