@@ -9,6 +9,7 @@
     :doc="doc"
     :whatsappBox="whatsappBox"
     :modalRef="modalRef"
+    :hasActiveQuote="hasActiveQuote"
   />
   <FadedScrollableDiv class="flex flex-col h-full overflow-y-auto">
     <div
@@ -597,6 +598,11 @@ const quoteRequests = createResource({
   params: { lead: props.docname },
   auto: props.doctype === 'CRM Lead',
   onSuccess: () => nextTick(() => scroll()),
+})
+
+const hasActiveQuote = computed(() => {
+  const quotes = quoteRequests.data || []
+  return quotes.some((q) => q.status === 'Accepted')
 })
 
 // Per-round revision history — parsed server-side from the audit Comments

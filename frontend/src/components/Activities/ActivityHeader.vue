@@ -44,6 +44,7 @@
       variant="solid"
       :label="__('Request Quote')"
       iconLeft="plus"
+      :disabled="hasActiveQuote"
       @click="modalRef.requestQuote(doc?.name)"
     />
     <Button
@@ -99,6 +100,7 @@ const props = defineProps({
   doc: { type: Object, default: () => ({}) },
   modalRef: { type: Object, default: () => ({}) },
   whatsappBox: { type: Object, default: () => ({}) },
+  hasActiveQuote: { type: Boolean, default: false },
 })
 
 const { makeCall } = globalStore()
