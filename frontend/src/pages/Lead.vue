@@ -803,11 +803,6 @@ const createProjectResource = createResource({
     toast.success(__('Project created: {0}', [projectId || __('(pending id)')]))
     reload.value = true
   },
-  onError: (err) => {
-    toast.error(
-      err?.messages?.[0] || err?.message || __('Could not create project.'),
-    )
-  },
 })
 
 function triggerCreateProject() {
@@ -820,7 +815,20 @@ function triggerCreateProject() {
   ) {
     return
   }
-  createProjectResource.submit({ lead: props.leadId })
+  // onError lives in submit's tempOptions (not the resource config) so the
+  // failure toast fires once. frappe-ui spreads only the config into
+  // frappeRequest, which would otherwise invoke a config-level onError twice
+  // (transformResponse + transformError) on top of handleError → 3 toasts.
+  createProjectResource.submit(
+    { lead: props.leadId },
+    {
+      onError: (err) => {
+        toast.error(
+          err?.messages?.[0] || err?.message || __('Could not create project.'),
+        )
+      },
+    },
+  )
 }
 
 // Lock when lead is at C4 (Won) AND lead_status == Won.
