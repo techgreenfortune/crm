@@ -38,7 +38,15 @@ def handle_request(**kwargs):
 
 		call_payload = kwargs
 
+		frappe.logger("exotel").info(
+			f"[Exotel] webhook received | EventType={call_payload.get('EventType')} "
+			f"Status={call_payload.get('Status')} Direction={call_payload.get('Direction')} "
+			f"CallSid={call_payload.get('CallSid')}"
+		)
 		frappe.publish_realtime("exotel_call", call_payload)
+		frappe.logger("exotel").info(
+			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')}"
+		)
 		status = call_payload.get("Status")
 		if status == "free":
 			return

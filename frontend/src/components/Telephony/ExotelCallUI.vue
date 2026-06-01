@@ -798,7 +798,7 @@ function setup() {
   $socket.on('exotel_call', (data) => {
     lastSocketAt.value = Date.now()
     callData.value = data
-    console.log(data)
+    console.log('[exotel] socket event received', data)
 
     callStatus.value = updateStatus(data)
     const { user } = sessionStore()
