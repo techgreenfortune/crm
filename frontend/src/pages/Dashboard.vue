@@ -12,6 +12,18 @@
           @click="dashboardItems.reload"
         />
         <Button
+          v-if="!editing"
+          :label="__('Download Leads')"
+          :iconLeft="LucideDownload"
+          @click="downloadLeads"
+        />
+        <Button
+          v-if="!editing"
+          :label="__('Download Calls')"
+          :iconLeft="LucideDownload"
+          @click="downloadCalls"
+        />
+        <Button
           v-if="!editing && isAdmin()"
           :label="__('Edit')"
           :iconLeft="LucidePenLine"
@@ -138,6 +150,7 @@ import AddChartModal from '@/components/Dashboard/AddChartModal.vue'
 import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
 import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
+import LucideDownload from '~icons/lucide/download'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
@@ -183,6 +196,24 @@ function updateFilter(key: string, value: unknown, callback?: () => void) {
   filters[key] = value
   callback?.()
   dashboardItems.reload()
+}
+
+function buildExportParams() {
+  const params = new URLSearchParams()
+  if (fromDate.value) params.set('from_date', fromDate.value)
+  if (toDate.value) params.set('to_date', toDate.value)
+  if (filters.user) params.set('user', filters.user)
+  return params.toString()
+}
+
+function downloadLeads() {
+  // Browser triggers the download; session cookie authenticates.
+  // Backend gates by role (sales_user_only) and applies manager-vs-IC scoping.
+  window.location.href = `/api/method/crm.api.dashboard.download_lead_export?${buildExportParams()}`
+}
+
+function downloadCalls() {
+  window.location.href = `/api/method/crm.api.dashboard.download_calls_export?${buildExportParams()}`
 }
 
 const options = computed(() => [
