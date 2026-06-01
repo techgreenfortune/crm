@@ -2,7 +2,10 @@
   <div v-if="quotes.length">
     <div v-for="(quote, i) in quotes" :key="quote.name">
       <div
-        class="activity flex cursor-pointer items-center gap-4 rounded p-2.5 duration-300 ease-in-out hover:bg-surface-gray-1"
+        :class="[
+          'activity flex cursor-pointer items-center gap-4 rounded p-2.5 duration-300 ease-in-out',
+          quote.is_superseded ? 'opacity-50' : 'hover:bg-surface-gray-1',
+        ]"
         @click="openQuote(quote)"
       >
         <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
@@ -13,6 +16,13 @@
             <Badge
               :label="__(quote.status)"
               :theme="statusTheme(quote.status)"
+              variant="subtle"
+              size="sm"
+            />
+            <Badge
+              v-if="quote.is_superseded"
+              :label="__('Superseded')"
+              theme="gray"
               variant="subtle"
               size="sm"
             />

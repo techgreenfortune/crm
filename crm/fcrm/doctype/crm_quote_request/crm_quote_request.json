@@ -8,6 +8,7 @@
     "lead",
     "lead_name",
     "lead_owner",
+    "is_superseded",
     "status",
     "requested_by",
     "requested_on",
@@ -50,6 +51,13 @@
       "options": "User",
       "fetch_from": "lead.lead_owner",
       "fetch_if_empty": 1,
+      "hidden": 1
+    },
+    {
+      "fieldname": "is_superseded",
+      "fieldtype": "Check",
+      "label": "Superseded",
+      "read_only": 1,
       "hidden": 1
     },
     {
