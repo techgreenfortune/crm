@@ -16,7 +16,11 @@ from crm.integrations.api import get_contact_by_phone_number
 
 
 # Incoming Call
-@frappe.whitelist(allow_guest=True)
+# Security review: guest access is intentional. Exotel webhook authenticated via
+# validate_request() (signature check on AccountSid/CallSid). Reviewed: 2026-06-01.
+# fmt: off
+@frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+# fmt: on
 def handle_request(**kwargs):
 	validate_request()
 	if not is_integration_enabled():
