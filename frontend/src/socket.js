@@ -15,8 +15,12 @@ export function initSocket() {
     reconnectionAttempts: 5,
   })
   socket.on('connect', () => console.log('[socket] connected', socket.id))
-  socket.on('disconnect', (reason) => console.warn('[socket] disconnected', reason))
-  socket.on('connect_error', (err) => console.error('[socket] connect_error', err.message, url))
+  socket.on('disconnect', (reason) =>
+    console.warn('[socket] disconnected', reason),
+  )
+  socket.on('connect_error', (err) =>
+    console.error('[socket] connect_error', err.message, url),
+  )
   socket.on('refetch_resource', (data) => {
     if (data.cache_key) {
       let resource =
