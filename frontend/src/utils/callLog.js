@@ -68,7 +68,7 @@ export const statusLabelMap = {
   Queued: __('Queued'),
   Canceled: __('Canceled'),
   Ringing: __('Ringing'),
-  'No Answer': __('Missed Call'),
+  'Call Not Answered': __('Missed Call'),
   'In Progress': __('In Progress'),
 }
 
@@ -80,6 +80,6 @@ export const statusColorMap = {
   Queued: 'gray',
   Canceled: 'gray',
   Ringing: 'gray',
-  'No Answer': 'red',
+  'Call Not Answered': 'red',
   'In Progress': 'blue',
 }

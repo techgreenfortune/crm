@@ -251,7 +251,7 @@ def get_call_log_status(call_payload, direction="inbound"):
 		elif status == "busy":
 			return "Ringing"
 		elif status == "no-answer":
-			return "No Answer"
+			return "Call Not Answered"
 		elif status == "failed":
 			return "Failed"
 
@@ -259,7 +259,7 @@ def get_call_log_status(call_payload, direction="inbound"):
 	status = call_payload.get("DialCallStatus") or call_payload.get("Status")
 
 	if call_type == "incomplete" and status == "no-answer":
-		status = "No Answer"
+		status = "Call Not Answered"
 	elif call_type == "client-hangup" and status == "canceled":
 		status = "Canceled"
 	elif call_type == "incomplete" and status == "failed":
