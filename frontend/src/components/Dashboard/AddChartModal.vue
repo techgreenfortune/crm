@@ -98,13 +98,32 @@ const axisCharts = [
   { label: __('Lost Deal Reasons'), value: 'lost_deal_reasons' },
   { label: __('Deals by Territory'), value: 'deals_by_territory' },
   { label: __('Deals by Salesperson'), value: 'deals_by_salesperson' },
+  // IndiFrame lead-centric analytics
+  { label: __('Leads Over Time'), value: 'leads_over_time' },
+  { label: __('Lead Pipeline Funnel'), value: 'lead_pipeline_funnel' },
+  { label: __('Leads by Source (Bar)'), value: 'leads_by_source_axis' },
+  { label: __('Leads by Sub-source (Bar)'), value: 'leads_by_sub_source' },
+  { label: __('Lost Lead Reasons'), value: 'lost_lead_reasons' },
+  {
+    label: __('Lead Spotting Productivity'),
+    value: 'lead_spotting_productivity',
+  },
+  { label: __('Calls per Caller'), value: 'calls_per_caller' },
+  {
+    label: __('Avg C0 → C2 Time per Agent'),
+    value: 'avg_c0_to_c2_time_per_caller',
+  },
+  { label: __('Leads by Geography'), value: 'leads_by_geography' },
 ]
 
 const donutChart = ref('deals_by_stage_donut')
 const donutCharts = [
   { label: __('Deals by Stage'), value: 'deals_by_stage_donut' },
-  { label: __('Leads by Source'), value: 'leads_by_source' },
+  { label: __('Leads by Source (Donut)'), value: 'leads_by_source' },
   { label: __('Deals by Source'), value: 'deals_by_source' },
+  // IndiFrame lead-centric analytics
+  { label: __('C2 Sub-status Breakdown'), value: 'c2_sub_status_breakdown' },
+  { label: __('Call Dispositions'), value: 'call_dispositions' },
 ]
 
 async function addChart() {
