@@ -1213,3 +1213,794 @@ def get_deal_status_change_counts(
 
 	result = query.run(as_dict=True)
 	return result or []
+
+
+# ─────────────────────────────────────────────────────────────────────
+# IndiFrame custom analytics — 10 charts for the lead-centric dashboard
+# (spec §11.1 - §11.5). Each follows the existing chart return shape so
+# the AddChartModal / DashboardItem renderer can consume them unchanged.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _date_window(from_date, to_date):
+	"""Default to current month if either bound is missing."""
+	if not from_date or not to_date:
+		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
+		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
+	return from_date, to_date
+
+
+# ─── 11.1 Lead Generation Performance ────────────────────────────────
+
+
+def get_leads_over_time(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Daily lead creation trend."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT DATE(creation) AS date, COUNT(*) AS leads
+		FROM `tabCRM Lead`
+		WHERE DATE(creation) BETWEEN %(from_date)s AND %(to_date)s
+		      {user_filter}
+		GROUP BY DATE(creation)
+		ORDER BY DATE(creation)
+		""",
+		params,
+		as_dict=True,
+	)
+
+	data = [{"date": frappe.utils.formatdate(r.date, "yyyy-MM-dd"), "leads": r.leads} for r in rows]
+
+	return {
+		"data": data,
+		"title": _("Leads over time"),
+		"subtitle": _("Daily new lead volume"),
+		"xAxis": {"title": _("Date"), "key": "date", "type": "time", "timeGrain": "day"},
+		"yAxis": {"title": _("Leads")},
+		"series": [{"name": "leads", "type": "line", "showDataPoints": True}],
+	}
+
+
+def get_leads_by_sub_source(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""Lead breakdown by custom_sub_source (horizontal bar)."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	CRMLead = DocType("CRM Lead")
+	query = (
+		frappe.qb.from_(CRMLead)
+		.select(IfNull(CRMLead.custom_sub_source, "Unspecified").as_("sub_source"), Count("*").as_("count"))
+		.where(Date(CRMLead.creation).between(from_date, to_date))
+		.groupby(CRMLead.custom_sub_source)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	if user:
+		query = query.where(CRMLead.lead_owner == user)
+
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Leads by sub-source"),
+		"subtitle": _("Marketing channel sub-attribution"),
+		"xAxis": {"title": _("Sub-source"), "key": "sub_source", "type": "category"},
+		"yAxis": {"title": _("Leads")},
+		"swapXY": True,
+		"series": [{"name": "count", "type": "bar", "echartOptions": {"colorBy": "data"}}],
+	}
+
+
+def get_leads_by_source_axis(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""Lead breakdown by source as a horizontal bar chart.
+
+	Bar version of the stock `get_leads_by_source` (which is a donut). Use
+	this one when you want to see the absolute count visually scaled per
+	source — donuts compress the long tail.
+	"""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	CRMLead = DocType("CRM Lead")
+	query = (
+		frappe.qb.from_(CRMLead)
+		.select(IfNull(CRMLead.source, "Unspecified").as_("source"), Count("*").as_("count"))
+		.where(Date(CRMLead.creation).between(from_date, to_date))
+		.groupby(CRMLead.source)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	if user:
+		query = query.where(CRMLead.lead_owner == user)
+
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Leads by source"),
+		"subtitle": _("Lead generation channel — bar view"),
+		"xAxis": {"title": _("Source"), "key": "source", "type": "category"},
+		"yAxis": {"title": _("Leads")},
+		"swapXY": True,
+		"series": [{"name": "count", "type": "bar", "echartOptions": {"colorBy": "data"}}],
+	}
+
+
+def get_lead_spotting_productivity(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""Volume of Lead-Spotting source leads per spotter (lead_owner).
+
+	'Spotter' = the user who currently owns the lead. If your team uses a
+	different attribution (e.g. owner at creation), adapt the lead_owner
+	column accordingly.
+	"""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	# Manager view shows everyone; IC view filters to self via the
+	# get_chart dispatcher (sets user=session_user for ICs).
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND l.lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			COALESCE(u.full_name, l.lead_owner, 'Unassigned')  AS spotter,
+			COUNT(*)                                            AS count
+		FROM `tabCRM Lead` l
+		LEFT JOIN `tabUser` u ON u.name = l.lead_owner
+		WHERE DATE(l.creation) BETWEEN %(from_date)s AND %(to_date)s
+		  AND l.source = 'Lead Spotting'
+		  {user_filter}
+		GROUP BY spotter
+		ORDER BY count DESC
+		LIMIT 20
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"data": rows or [],
+		"title": _("Lead Spotting productivity"),
+		"subtitle": _("Leads sourced from Lead Spotting, per spotter"),
+		"xAxis": {"title": _("Spotter"), "key": "spotter", "type": "category"},
+		"yAxis": {"title": _("Leads")},
+		"swapXY": True,
+		"series": [{"name": "count", "type": "bar"}],
+	}
+
+
+# ─── 11.2 Pipeline Stage Distribution ────────────────────────────────
+
+
+def get_lead_pipeline_funnel(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""Lead-stage funnel.
+
+	Stage order:
+	  C0 → C1 → C2 → C3 → C4 (Won) → C6 (Lost) → C7 (Forwarded)
+	"""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	# How spec stages map to actual CRM Lead Status names.
+	# Order matters — used for funnel ordering on the chart.
+	STAGE_BUCKETS = [
+		("C0 — New Lead", ["C0"]),
+		("C1 — Future Requirement", ["C1"]),
+		("C2 — Active Engagement", ["C2"]),
+		("C3 — Almost Ready", ["C3"]),
+		("C4 — Won", ["C4"]),
+		("C6 — Lost", ["C6"]),
+		("C7 — Forwarded to Fabricator", ["C7"]),
+	]
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT status, COUNT(*) AS count
+		FROM `tabCRM Lead`
+		WHERE DATE(creation) BETWEEN %(from_date)s AND %(to_date)s
+		  AND status IS NOT NULL
+		  {user_filter}
+		GROUP BY status
+		""",
+		params,
+		as_dict=True,
+	)
+	by_status = {r.status: r.count for r in rows}
+
+	data = []
+	for label, statuses in STAGE_BUCKETS:
+		total = sum(by_status.get(s, 0) for s in statuses)
+		data.append({"stage": label, "count": total})
+
+	return {
+		"data": data,
+		"title": _("Lead pipeline funnel"),
+		"subtitle": _("Live distribution across C-stages"),
+		"xAxis": {"title": _("Stage"), "key": "stage", "type": "category"},
+		"yAxis": {"title": _("Leads")},
+		"swapXY": True,
+		"series": [{"name": "count", "type": "bar", "echartOptions": {"colorBy": "data"}}],
+	}
+
+
+def get_c2_sub_status_breakdown(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""For leads currently in C2, distribution by lead_status (engagement)."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT COALESCE(lead_status, 'Unset') AS sub_status, COUNT(*) AS count
+		FROM `tabCRM Lead`
+		WHERE status = 'C2'
+		  AND DATE(creation) BETWEEN %(from_date)s AND %(to_date)s
+		  {user_filter}
+		GROUP BY lead_status
+		ORDER BY count DESC
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"data": rows or [],
+		"title": _("C2 sub-status breakdown"),
+		"subtitle": _("Engagement state for leads in C2"),
+		"categoryColumn": "sub_status",
+		"valueColumn": "count",
+	}
+
+
+# ─── 11.3 Calling Team Productivity ──────────────────────────────────
+
+
+def get_calls_per_caller(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Call volume per caller across all telephony providers."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND c.caller = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			COALESCE(u.full_name, c.caller, 'Unknown')  AS caller,
+			COUNT(*)                                    AS total_calls,
+			SUM(c.duration >= 30)                       AS meaningful_calls,
+			ROUND(SUM(c.duration) / 60, 1)              AS total_minutes
+		FROM `tabCRM Call Log` c
+		LEFT JOIN `tabUser` u ON u.name = c.caller
+		WHERE DATE(c.start_time) BETWEEN %(from_date)s AND %(to_date)s
+		  AND c.caller IS NOT NULL AND c.caller != ''
+		  {user_filter}
+		GROUP BY c.caller
+		ORDER BY total_calls DESC
+		LIMIT 30
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"data": rows or [],
+		"title": _("Calls per caller"),
+		"subtitle": _("Volume + meaningful (≥30s) calls per agent"),
+		"xAxis": {"title": _("Agent"), "key": "caller", "type": "category"},
+		"yAxis": {"title": _("Calls")},
+		"swapXY": True,
+		"series": [
+			{"name": "total_calls", "type": "bar"},
+			{"name": "meaningful_calls", "type": "bar"},
+		],
+	}
+
+
+def get_call_dispositions(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Disposition distribution across all calls in the date window."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND (caller = %(user)s OR receiver = %(user)s)"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT COALESCE(disposition, 'Not Tagged') AS disposition, COUNT(*) AS count
+		FROM `tabCRM Call Log`
+		WHERE DATE(start_time) BETWEEN %(from_date)s AND %(to_date)s
+		  {user_filter}
+		GROUP BY disposition
+		ORDER BY count DESC
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"data": rows or [],
+		"title": _("Call dispositions"),
+		"subtitle": _("Outcome distribution of all calls"),
+		"categoryColumn": "disposition",
+		"valueColumn": "count",
+	}
+
+
+def get_avg_c0_to_c2_time_per_caller(
+	from_date: str | None = None, to_date: str | None = None, user: str | None = None
+):
+	"""Average days from C0 entry → C2 entry, grouped by lead_owner.
+
+	Only counts leads where BOTH custom_c0_entered_on and
+	custom_c2_entered_on are populated (the After Save script set them).
+	Primary effectiveness metric per spec §11.3.
+	"""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND l.lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			COALESCE(u.full_name, l.lead_owner, 'Unassigned')                 AS agent,
+			ROUND(AVG(TIMESTAMPDIFF(HOUR, l.custom_c0_entered_on,
+			                              l.custom_c2_entered_on)) / 24, 1) AS avg_days,
+			COUNT(*)                                                          AS lead_count
+		FROM `tabCRM Lead` l
+		LEFT JOIN `tabUser` u ON u.name = l.lead_owner
+		WHERE l.custom_c0_entered_on IS NOT NULL
+		  AND l.custom_c2_entered_on IS NOT NULL
+		  AND DATE(l.custom_c2_entered_on) BETWEEN %(from_date)s AND %(to_date)s
+		  {user_filter}
+		GROUP BY l.lead_owner
+		HAVING lead_count >= 1
+		ORDER BY avg_days ASC
+		LIMIT 30
+		""",
+		params,
+		as_dict=True,
+	)
+
+	return {
+		"data": rows or [],
+		"title": _("Avg C0 → C2 time per agent"),
+		"subtitle": _("Days a lead spends from C0 to C2, by lead owner (lower is better)"),
+		"xAxis": {"title": _("Agent"), "key": "agent", "type": "category"},
+		"yAxis": {"title": _("Days")},
+		"swapXY": True,
+		"series": [{"name": "avg_days", "type": "bar"}],
+	}
+
+
+# ─── 11.4 Loss Analysis ──────────────────────────────────────────────
+
+
+def get_lost_lead_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Reasons why leads were lost (status = C6), grouped by lost_reason."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	CRMLead = DocType("CRM Lead")
+	query = (
+		frappe.qb.from_(CRMLead)
+		.select(IfNull(CRMLead.lost_reason, "Unspecified").as_("reason"), Count("*").as_("count"))
+		.where((Date(CRMLead.creation).between(from_date, to_date)) & (CRMLead.status == "C6"))
+		.groupby(CRMLead.lost_reason)
+		.orderby(Count("*"), order=frappe.qb.desc)
+	)
+	if user:
+		query = query.where(CRMLead.lead_owner == user)
+
+	return {
+		"data": query.run(as_dict=True) or [],
+		"title": _("Lost lead reasons"),
+		"subtitle": _("Why C6 leads dropped out"),
+		"xAxis": {"title": _("Reason"), "key": "reason", "type": "category"},
+		"yAxis": {"title": _("Count")},
+		"swapXY": True,
+		"series": [{"name": "count", "type": "bar", "echartOptions": {"colorBy": "data"}}],
+	}
+
+
+# ─── 11.5 Geographic Performance ─────────────────────────────────────
+
+
+def get_leads_by_geography(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+	"""Top 20 cities by lead volume, with conversion (Won/total) ratio.
+
+	Note: this is a tabular/bar view of geography. A true heatmap on a
+	map tile layer requires a frontend library (Leaflet) — to be added
+	in a follow-up. The data here is sufficient to drive both.
+	"""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	user_filter = ""
+	params = {"from_date": from_date, "to_date": to_date}
+	if user:
+		user_filter = " AND lead_owner = %(user)s"
+		params["user"] = user
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			COALESCE(NULLIF(TRIM(custom_city), ''), 'Unspecified')  AS city,
+			COALESCE(NULLIF(TRIM(custom_state), ''), '-')           AS state,
+			COUNT(*)                                                AS total_leads,
+			SUM(status = 'C4')                                      AS won_leads,
+			SUM(status = 'C6')                                      AS lost_leads
+		FROM `tabCRM Lead`
+		WHERE DATE(creation) BETWEEN %(from_date)s AND %(to_date)s
+		  {user_filter}
+		GROUP BY city, state
+		ORDER BY total_leads DESC
+		LIMIT 20
+		""",
+		params,
+		as_dict=True,
+	)
+
+	# Compose label "City (State)" so the chart axis reads naturally.
+	for r in rows:
+		r["location"] = f"{r['city']} ({r['state']})" if r["state"] != "-" else r["city"]
+
+	return {
+		"data": rows or [],
+		"title": _("Leads by geography"),
+		"subtitle": _("Top 20 cities — volume, wins, losses"),
+		"xAxis": {"title": _("Location"), "key": "location", "type": "category"},
+		"yAxis": {"title": _("Leads")},
+		"swapXY": True,
+		"series": [
+			{"name": "total_leads", "type": "bar"},
+			{"name": "won_leads", "type": "bar"},
+			{"name": "lost_leads", "type": "bar"},
+		],
+	}
+
+
+@frappe.whitelist()
+@sales_user_only
+def download_lead_export(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+):
+	"""Excel export of leads with linked deal/quote/activity summary.
+
+	Permission model mirrors `get_dashboard`:
+	  - Manager roles (_MANAGER_ROLES) see the whole team; can narrow to one
+	    rep by passing `user`.
+	  - Individual contributors are forced to their own leads (lead_owner =
+	    session user) regardless of any `user` value sent.
+
+	Empty result still returns a headers-only workbook so the browser gets
+	a clean file instead of an error page.
+	"""
+	from frappe.utils.xlsxutils import make_xlsx
+
+	roles = set(frappe.get_roles(frappe.session.user))
+	is_manager = bool(roles & _MANAGER_ROLES)
+
+	conditions = ["l.status IS NOT NULL"]
+	params: dict = {}
+
+	if from_date and to_date:
+		conditions.append("l.creation >= %(from_date)s")
+		conditions.append("l.creation < %(to_date_exclusive)s")
+		params["from_date"] = from_date
+		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
+
+	# "Assigned to" filtering uses Frappe's standard assignment system —
+	# tabToDo rows with reference_type='CRM Lead' and allocated_to=<user>.
+	# This is different from lead_owner (a single denormalised user on the
+	# lead row); a lead can be assigned to multiple users while owned by
+	# only one. The Leads UI's "Assigned To" column reads the same data.
+	if is_manager:
+		if user:
+			conditions.append(
+				"EXISTS (SELECT 1 FROM `tabToDo` t "
+				"WHERE t.reference_type='CRM Lead' "
+				"AND t.reference_name = l.name "
+				"AND t.allocated_to = %(filter_user)s "
+				"AND t.status = 'Open')"
+			)
+			params["filter_user"] = user
+	else:
+		conditions.append(
+			"EXISTS (SELECT 1 FROM `tabToDo` t "
+			"WHERE t.reference_type='CRM Lead' "
+			"AND t.reference_name = l.name "
+			"AND t.allocated_to = %(self_user)s "
+			"AND t.status = 'Open')"
+		)
+		params["self_user"] = frappe.session.user
+
+	where_clause = " AND ".join(conditions)
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			l.name                              AS lead_id,
+			l.lead_name,
+			l.first_name,
+			l.last_name,
+			l.email,
+			l.mobile_no,
+			l.phone,
+			l.status                            AS stage,
+			l.lead_status                       AS engagement,
+			l.source,
+			l.custom_sub_source                 AS sub_source,
+			l.custom_lead_type                  AS lead_type,
+			l.custom_customer_type              AS customer_type,
+			l.lead_owner,
+			l._assign                           AS assigned_to,
+			l.industry,
+			l.territory,
+			l.custom_account                    AS account,
+			l.custom_pincode                    AS pincode,
+			l.custom_city                       AS city,
+			l.custom_state                      AS state,
+			l.custom_tentative_area_sqft        AS area_sqft,
+			l.custom_tentative_value            AS tentative_value,
+			l.custom_utm_source                 AS utm_source,
+			l.custom_utm_medium                 AS utm_medium,
+			l.custom_utm_campaign               AS utm_campaign,
+			l.custom_c0_entered_on,
+			l.custom_c1_entered_on,
+			l.custom_c2_entered_on,
+			l.custom_c4_entered_on,
+			l.custom_c6_entered_on,
+			l.custom_quotation_sent_on,
+			l.creation                          AS created_on,
+			l.modified                          AS last_modified,
+			d.name                              AS deal_id,
+			d.status                            AS deal_status,
+			d.annual_revenue                    AS deal_value,
+			q.name                              AS latest_quote_id,
+			q.status                            AS latest_quote_status,
+			q.quote_value                       AS latest_quote_value,
+			q.creation                          AS latest_quote_at,
+			(SELECT COUNT(*) FROM `tabCRM Quote Request` WHERE lead = l.name)
+				AS total_quotes,
+			(SELECT COUNT(*) FROM `tabCRM AISensy Message`
+				WHERE reference_doctype='CRM Lead' AND reference_name = l.name)
+				AS total_whatsapp,
+			(SELECT COUNT(*) FROM `tabCRM AISensy Message`
+				WHERE reference_doctype='CRM Lead' AND reference_name = l.name
+				AND status='Sent')
+				AS whatsapp_delivered,
+			(SELECT COUNT(*) FROM `tabFCRM Note`
+				WHERE reference_doctype='CRM Lead' AND reference_docname = l.name)
+				AS total_notes,
+			(SELECT COUNT(*) FROM `tabCRM Task`
+				WHERE reference_doctype='CRM Lead' AND reference_docname = l.name)
+				AS total_tasks,
+			COALESCE(call_stats.total_calls, 0)         AS total_calls,
+			COALESCE(call_stats.meaningful_calls, 0)    AS meaningful_calls,
+			COALESCE(call_stats.missed_calls, 0)        AS missed_calls,
+			COALESCE(call_stats.exotel_calls, 0)        AS exotel_calls,
+			COALESCE(call_stats.total_call_minutes, 0)  AS total_call_minutes,
+			call_stats.last_call_at,
+			(SELECT u.full_name
+				FROM `tabCRM Call Log` cl
+				LEFT JOIN `tabUser` u ON u.name = cl.caller
+				WHERE cl.reference_doctype='CRM Lead'
+				  AND cl.reference_docname = l.name
+				ORDER BY cl.start_time DESC LIMIT 1)    AS last_call_agent,
+			(SELECT cl.disposition
+				FROM `tabCRM Call Log` cl
+				WHERE cl.reference_doctype='CRM Lead'
+				  AND cl.reference_docname = l.name
+				ORDER BY cl.start_time DESC LIMIT 1)    AS last_call_disposition
+		FROM `tabCRM Lead` l
+		LEFT JOIN `tabCRM Deal` d
+			ON d.lead = l.name
+		LEFT JOIN `tabCRM Quote Request` q
+			ON q.lead = l.name
+			AND q.creation = (
+				SELECT MAX(creation) FROM `tabCRM Quote Request` WHERE lead = l.name
+			)
+		LEFT JOIN (
+			SELECT
+				reference_docname                       AS lead_name,
+				COUNT(*)                                AS total_calls,
+				SUM(duration >= 30)                     AS meaningful_calls,
+				SUM(status IN ('Failed','No Answer','Busy'))  AS missed_calls,
+				SUM(telephony_medium = 'Exotel')        AS exotel_calls,
+				ROUND(SUM(duration)/60, 1)              AS total_call_minutes,
+				MAX(start_time)                         AS last_call_at
+			FROM `tabCRM Call Log`
+			WHERE reference_doctype = 'CRM Lead'
+			GROUP BY reference_docname
+		) call_stats ON call_stats.lead_name = l.name
+		WHERE {where_clause}
+		ORDER BY l.creation DESC
+		LIMIT 50000
+		""",
+		params,
+		as_dict=True,
+	)
+
+	if rows:
+		headers = list(rows[0].keys())
+		data = [headers] + [[row.get(h) for h in headers] for row in rows]
+	else:
+		# Empty result: emit headers-only workbook so the browser gets a file,
+		# not a JSON error page (download was initiated via window.location).
+		headers = [
+			"lead_id",
+			"lead_name",
+			"stage",
+			"customer_type",
+			"lead_owner",
+			"created_on",
+		]
+		data = [headers]
+
+	xlsx_file = make_xlsx(data, "Leads")
+
+	scope = "team" if (is_manager and not user) else (user or frappe.session.user)
+	frappe.response["filename"] = f"lead_export_{scope}_{frappe.utils.today()}.xlsx"
+	frappe.response["filecontent"] = xlsx_file.getvalue()
+	frappe.response["type"] = "binary"
+
+
+@frappe.whitelist()
+@sales_user_only
+def download_calls_export(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+):
+	"""Excel export of CRM Call Log rows across all telephony providers.
+
+	Permission model:
+	  - Manager roles (_MANAGER_ROLES) see every call; can narrow to one
+	    rep's calls (caller OR receiver) via `user`.
+	  - Individual contributors are forced to their OWN calls — caller or
+	    receiver must equal session user, regardless of any `user` value.
+
+	One row per call. Includes lead context when the call is attached to
+	a CRM Lead. Date filter applies to call start_time.
+	"""
+	from frappe.utils.xlsxutils import make_xlsx
+
+	roles = set(frappe.get_roles(frappe.session.user))
+	is_manager = bool(roles & _MANAGER_ROLES)
+
+	conditions = ["c.start_time IS NOT NULL"]
+	params: dict = {}
+
+	if from_date and to_date:
+		conditions.append("c.start_time >= %(from_date)s")
+		conditions.append("c.start_time < %(to_date_exclusive)s")
+		params["from_date"] = from_date
+		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
+
+	if is_manager:
+		if user:
+			conditions.append("(c.caller = %(filter_user)s OR c.receiver = %(filter_user)s)")
+			params["filter_user"] = user
+	else:
+		# IC sees only calls they participated in (caller or receiver).
+		conditions.append("(c.caller = %(self_user)s OR c.receiver = %(self_user)s)")
+		params["self_user"] = frappe.session.user
+
+	where_clause = " AND ".join(conditions)
+
+	# Backticks on `from`/`to` — they are SQL reserved words and also
+	# happen to be the column names AiSensy chose for CRM Call Log.
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			c.name                              AS call_id,
+			c.id                                AS provider_call_sid,
+			c.telephony_medium                  AS provider,
+			c.type                              AS direction,
+			c.status                            AS call_status,
+			c.`from`                            AS from_number,
+			c.`to`                              AS to_number,
+			c.medium                            AS dialed_via,
+			c.start_time,
+			c.end_time,
+			c.duration                          AS duration_seconds,
+			ROUND(c.duration / 60, 2)           AS duration_minutes,
+			caller_user.full_name               AS caller_name,
+			c.caller                            AS caller_email,
+			receiver_user.full_name             AS receiver_name,
+			c.receiver                          AS receiver_email,
+			c.disposition,
+			c.scheduled_callback_at,
+			n.title                             AS note_title,
+			n.content                           AS note_content,
+			c.recording_url,
+			c.reference_doctype                 AS linked_to,
+			c.reference_docname                 AS linked_record,
+			l.name                              AS lead_id,
+			l.lead_name,
+			l.status                            AS lead_stage,
+			l.lead_status                       AS lead_engagement,
+			l.custom_customer_type              AS customer_type,
+			l.lead_owner,
+			l.source                            AS lead_source,
+			l.custom_city                       AS city,
+			l.custom_state                      AS state,
+			d.name                              AS deal_id,
+			d.status                            AS deal_status,
+			c.creation                          AS logged_on,
+			c.modified                          AS last_modified
+		FROM `tabCRM Call Log` c
+		LEFT JOIN `tabUser` caller_user
+			ON caller_user.name = c.caller
+		LEFT JOIN `tabUser` receiver_user
+			ON receiver_user.name = c.receiver
+		LEFT JOIN `tabFCRM Note` n
+			ON n.name = c.note
+		LEFT JOIN `tabCRM Lead` l
+			ON l.name = c.reference_docname
+			AND c.reference_doctype = 'CRM Lead'
+		LEFT JOIN `tabCRM Deal` d
+			ON d.name = c.reference_docname
+			AND c.reference_doctype = 'CRM Deal'
+		WHERE {where_clause}
+		ORDER BY c.start_time DESC
+		LIMIT 50000
+		""",
+		params,
+		as_dict=True,
+	)
+
+	if rows:
+		headers = list(rows[0].keys())
+		data = [headers] + [[row.get(h) for h in headers] for row in rows]
+	else:
+		headers = [
+			"call_id",
+			"provider",
+			"direction",
+			"call_status",
+			"caller_name",
+			"receiver_name",
+			"duration_seconds",
+			"start_time",
+			"lead_id",
+			"lead_name",
+		]
+		data = [headers]
+
+	xlsx_file = make_xlsx(data, "Calls")
+
+	scope = "team" if (is_manager and not user) else (user or frappe.session.user)
+	frappe.response["filename"] = f"calls_export_{scope}_{frappe.utils.today()}.xlsx"
+	frappe.response["filecontent"] = xlsx_file.getvalue()
+	frappe.response["type"] = "binary"
