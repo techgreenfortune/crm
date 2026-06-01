@@ -60,7 +60,7 @@ def create_demo_call_logs(lead_names, demo_users):
 		},
 		{
 			"type": "Outgoing",
-			"status": "No Answer",
+			"status": "Call Not Answered",
 			"telephony_medium": "Manual",
 			"duration": 0,
 			"from": rep_numbers[owner_1],

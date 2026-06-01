@@ -1,14 +1,16 @@
 <template>
   <LayoutHeader>
     <header
-      class="relative flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2"
+      class="flex h-10.5 items-center justify-between gap-2 py-2.5 pl-2 pr-2"
     >
-      <Breadcrumbs :items="breadcrumbs">
-        <template #prefix="{ item }">
-          <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
-        </template>
-      </Breadcrumbs>
-      <div class="absolute right-0 flex items-center gap-2">
+      <div class="min-w-0 flex-1">
+        <Breadcrumbs :items="breadcrumbs">
+          <template #prefix="{ item }">
+            <Icon v-if="item.icon" :icon="item.icon" class="mr-2 h-4" />
+          </template>
+        </Breadcrumbs>
+      </div>
+      <div v-if="doc.name" class="flex flex-shrink-0 items-center gap-1.5">
         <Dropdown
           v-if="doc"
           :options="
@@ -50,15 +52,6 @@
             </Button>
           </template>
         </Dropdown>
-        <Button
-          v-if="canShowCreateProject"
-          variant="solid"
-          :label="__('Create Project')"
-          iconLeft="briefcase"
-          :loading="createProjectResource.loading"
-          :disabled="!projectFieldsReady"
-          @click="triggerCreateProject"
-        />
       </div>
     </header>
   </LayoutHeader>
@@ -77,7 +70,7 @@
     class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
   >
     <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
-    <div class="flex items-center gap-2">
+    <div class="flex flex-shrink-0 items-center gap-2">
       <CustomActions
         v-if="document._actions?.length"
         :actions="document._actions"
@@ -93,6 +86,15 @@
         @click="showConvertToDealModal = true"
       />
       -->
+      <Button
+        v-if="canShowCreateProject"
+        variant="solid"
+        :label="__('Create Project')"
+        iconLeft="briefcase"
+        :loading="createProjectResource.loading"
+        :disabled="!projectFieldsReady"
+        @click="triggerCreateProject"
+      />
     </div>
   </div>
   <div v-if="doc.name" class="flex h-full overflow-hidden">
@@ -200,7 +202,6 @@ import { statusesStore } from '@/stores/statuses'
 import { sessionStore } from '@/stores/session'
 import { getMeta } from '@/stores/meta'
 import { useDocument } from '@/data/document'
-import { useDoctypeModal } from '@/composables/doctypeModal'
 import { whatsappEnabled, isMobileView } from '@/composables/settings'
 import { useActiveTabManager } from '@/composables/useActiveTabManager'
 import {
@@ -407,37 +408,11 @@ function getParsedSections(_sections) {
     section.columns = section.columns.map((column) => {
       if (!Array.isArray(column?.fields)) return column
       column.fields = column.fields.map((field) => {
-        if (field?.fieldname === 'address') {
-          return {
-            ...field,
-            create: (value, close) => {
-              showAddressModal()
-              close()
-            },
-            edit: (address) => showAddressModal(address),
-          }
-        }
         return field
       })
       return column
     })
     return section
-  })
-}
-
-const { showModal: showDoctypeModal } = useDoctypeModal()
-
-function showAddressModal(_address) {
-  showDoctypeModal({
-    name: _address || null,
-    doctype: 'Address',
-    defaults: { address_type: 'Billing' },
-    callbacks: {
-      afterInsert: (d) => {
-        document.doc.address = d.name
-        document.save.submit()
-      },
-    },
   })
 }
 

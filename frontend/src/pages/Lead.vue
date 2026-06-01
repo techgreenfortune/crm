@@ -445,7 +445,6 @@ import CustomActions from '@/components/CustomActions.vue'
 import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
-import { useDoctypeModal } from '@/composables/doctypeModal'
 // import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
@@ -690,37 +689,11 @@ function getParsedSections(_sections) {
     section.columns = section.columns.map((column) => {
       if (!Array.isArray(column?.fields)) return column
       column.fields = column.fields.map((field) => {
-        if (field?.fieldname === 'address') {
-          return {
-            ...field,
-            create: (value, close) => {
-              showAddressModal()
-              close()
-            },
-            edit: (address) => showAddressModal(address),
-          }
-        }
         return field
       })
       return column
     })
     return section
-  })
-}
-
-const { showModal: showDoctypeModal } = useDoctypeModal()
-
-function showAddressModal(_address) {
-  showDoctypeModal({
-    name: _address || null,
-    doctype: 'Address',
-    defaults: { address_type: 'Billing' },
-    callbacks: {
-      afterInsert: (d) => {
-        document.doc.address = d.name
-        document.save.submit()
-      },
-    },
   })
 }
 

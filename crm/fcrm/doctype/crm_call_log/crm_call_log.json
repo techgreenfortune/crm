@@ -52,7 +52,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Initiated\nRinging\nIn Progress\nCompleted\nFailed\nBusy\nNo Answer\nQueued\nCanceled",
+   "options": "Initiated\nRinging\nIn Progress\nCompleted\nFailed\nBusy\nCall Not Answered\nQueued\nCanceled",
    "reqd": 1
   },
   {
