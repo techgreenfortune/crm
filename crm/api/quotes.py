@@ -59,6 +59,7 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 		fields=[
 			"name",
 			"status",
+			"is_superseded",
 			"quote_value",
 			"quote_margin",
 			"quote_validity",
@@ -100,78 +101,106 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 
 @frappe.whitelist()
 def request_quote(lead: str) -> str:
+	from crm.overrides import crm_lead_permissions
+
 	if not frappe.db.exists("CRM Lead", lead):
 		frappe.throw(_("Lead not found"), frappe.DoesNotExistError)
+
+	lead_doc = frappe.get_doc("CRM Lead", lead, ignore_permissions=True)
+
+	user = frappe.session.user
+	if user != "Administrator":
+		if not crm_lead_permissions.has_permission(lead_doc, "write", user):
+			frappe.throw(_("Not permitted"), frappe.PermissionError)
+
 	if not frappe.has_permission("CRM Quote Request", "create"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	# Stage gate: Request Quote is meaningful only while the lead is still
-	# open. At C4 (Won) the quote fields are frozen and a new QR would just
-	# clutter the history. UI also hides the button at C4 — backend check is
-	# belt-and-suspenders against direct API calls.
-	lead_stage = frappe.db.get_value("CRM Lead", lead, "status")
-	if lead_stage == "C4":
+	# Stage gate: belt-and-suspenders against direct API calls (UI hides button at C4).
+	if lead_doc.status == "C4":
 		frappe.throw(
 			_("Quote requests are not allowed on leads at C4 (Won)."),
 			frappe.ValidationError,
 		)
 
-	existing = frappe.db.get_value(
-		"CRM Quote Request",
-		{"lead": lead, "status": ["!=", "Accepted"]},
-		"name",
-		order_by="creation desc",
-	)
-	if existing:
-		return existing
+	# Mutual-exclusion lock: prevents two rapid concurrent requests from both
+	# passing the guard and each inserting a Pending QR for the same lead.
+	# set_value lacks NX; SETNX needed for atomic test-and-set lock.
+	_lock_key = f"crm:qr_request:{lead}"
+	if not frappe.cache().set(_lock_key, 1, ex=30, nx=True):  # nosemgrep: frappe-cache-breaks-multitenancy
+		frappe.throw(
+			_("A quote request is already being processed for this lead. Try again in a moment."),
+			frappe.ValidationError,
+		)
+	try:
+		existing = frappe.db.get_value(
+			"CRM Quote Request",
+			{"lead": lead, "status": ["!=", "Accepted"]},
+			"name",
+			order_by="creation desc",
+		)
+		if existing:
+			return existing
 
-	lead_doc = frappe.get_doc("CRM Lead", lead)
-	qr = frappe.new_doc("CRM Quote Request")
-	qr.update({"lead": lead, "status": "Pending"})
-	qr.flags.ignore_mandatory = True
-	qr.insert()
+		# Supersede all prior QRs for this lead (they are all Accepted at this
+		# point — the guard above would have returned early otherwise).
+		frappe.db.set_value(
+			"CRM Quote Request",
+			{"lead": lead, "is_superseded": 0},
+			"is_superseded",
+			1,
+			update_modified=False,
+		)
 
-	if not frappe.db.exists(
-		"CRM Task",
-		{
-			"reference_doctype": "CRM Lead",
-			"reference_docname": lead,
-			"task_type": "upload_quote",
-			"status": ["in", ["Todo", "In Progress"]],
-		},
-	):
-		frappe.get_doc(
+		qr = frappe.new_doc("CRM Quote Request")
+		qr.update({"lead": lead, "status": "Pending"})
+		qr.flags.ignore_mandatory = True
+		qr.insert()
+
+		if not frappe.db.exists(
+			"CRM Task",
 			{
-				"doctype": "CRM Task",
-				"task_type": "upload_quote",
-				"title": f"Upload Quote — {lead_doc.lead_name or lead}",
-				"status": "Todo",
-				"priority": "High",
 				"reference_doctype": "CRM Lead",
 				"reference_docname": lead,
-				"description": (
-					f"Quote manually requested for lead {lead_doc.lead_name}. "
-					"Open the Quote Request, attach the quote file, enter Quote Value, "
-					"Margin and Area, then set status to Quote Received."
-				),
+				"task_type": "upload_quote",
+				"status": ["in", ["Todo", "In Progress"]],
+			},
+		):
+			frappe.get_doc(
+				{
+					"doctype": "CRM Task",
+					"task_type": "upload_quote",
+					"title": f"Upload Quote — {lead_doc.lead_name or lead}",
+					"status": "Todo",
+					"priority": "High",
+					"reference_doctype": "CRM Lead",
+					"reference_docname": lead,
+					"quote_request": qr.name,
+					"description": (
+						f"Quote manually requested for lead {lead_doc.lead_name}. "
+						f"Open Quote Request {qr.name}, attach the quote file, enter Quote Value, "
+						"Margin and Area, then set status to Quote Received."
+					),
+				}
+			).insert(ignore_permissions=True)
+
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Comment",
+				"reference_doctype": "CRM Lead",
+				"reference_name": lead,
+				"content": f"[AUTOMATION] Quote Request manually initiated by {frappe.session.user}.",
 			}
 		).insert(ignore_permissions=True)
 
-	frappe.get_doc(
-		{
-			"doctype": "Comment",
-			"comment_type": "Comment",
-			"reference_doctype": "CRM Lead",
-			"reference_name": lead,
-			"content": f"[AUTOMATION] Quote Request manually initiated by {frappe.session.user}.",
-		}
-	).insert(ignore_permissions=True)
+		_notify_estimation_team_on_quote_request(
+			qr_name=qr.name,
+			lead_name=lead,
+			lead_display=lead_doc.lead_name or lead,
+			requester=frappe.session.user,
+		)
 
-	_notify_estimation_team_on_quote_request(
-		qr_name=qr.name,
-		lead_name=lead,
-		lead_display=lead_doc.lead_name or lead,
-		requester=frappe.session.user,
-	)
-
-	return qr.name
+		return qr.name
+	finally:
+		frappe.cache().delete(_lock_key)
