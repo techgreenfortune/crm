@@ -43,31 +43,16 @@ def _permission_query_conditions(user: str | None, doctype: str):
 
 	owner_field = _OWNER_FIELD[doctype]
 	DT = frappe.qb.DocType(doctype)
-	Todo = frappe.qb.DocType("ToDo").as_("_todo")
 
 	if in_tree:
-		# Owner is the user themselves or any member of their subtree
-		q1 = (DT[owner_field] == user) | DT[owner_field].isin(_team_mem_query(user))
-		# Assigned to the user or any member of their subtree by ToDo
-		q2 = DT.name.isin(
-			frappe.qb.from_(Todo)
-			.select(Todo.reference_name)
-			.where(
-				(Todo.reference_type == doctype)
-				& (Todo.status != "Cancelled")
-				& ((Todo.allocated_to == user) | (Todo.allocated_to.isin(_team_mem_query(user))))
-			)
-		)
-		return q1 | q2
+		# Owner is the user themselves or any member of their subtree. Multi-
+		# assignee (ToDo ``_assign``) was retired — ``deal_owner`` is the single
+		# source of truth, so an upstream manager sees a deal iff its owner is in
+		# their CRM Sales Hierarchy subtree.
+		return (DT[owner_field] == user) | DT[owner_field].isin(_team_mem_query(user))
 
-	# Sales User default: own records and records directly assigned to them
-	q1 = DT[owner_field] == user
-	q2 = DT.name.isin(
-		frappe.qb.from_(Todo)
-		.select(Todo.reference_name)
-		.where((Todo.reference_type == doctype) & (Todo.status != "Cancelled") & (Todo.allocated_to == user))
-	)
-	return q1 | q2
+	# Out-of-tree (orphan / leaf) user: own records only.
+	return DT[owner_field] == user
 
 
 def get_lead_permission_query_conditions(user=None):

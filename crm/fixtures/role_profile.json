@@ -101,6 +101,27 @@
  {
   "docstatus": 0,
   "doctype": "Role Profile",
+  "modified": "2026-06-01 00:00:00",
+  "name": "Spotter",
+  "role_profile": "Spotter",
+  "roles": [
+   {
+    "parent": "Spotter",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Spotter",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Spotter"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
   "modified": "2026-05-20 12:00:00",
   "name": "Project Sales Executive",
   "role_profile": "Project Sales Executive",

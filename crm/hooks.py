@@ -163,7 +163,6 @@ doc_events = {
 		"on_update": ["crm.api.contact.on_update"],
 	},
 	"ToDo": {
-		"before_insert": ["crm.overrides.crm_lead_permissions.guard_lead_assignment"],
 		"after_insert": ["crm.api.todo.after_insert"],
 		"on_update": ["crm.api.todo.on_update"],
 	},
@@ -216,6 +215,7 @@ fixtures = [
 					"Jr. Sales Executive",
 					"Sales Coordinator",
 					"Sales Executive",
+					"Spotter",
 					"ASM",
 					"Project Sales Executive",
 					"RSM",

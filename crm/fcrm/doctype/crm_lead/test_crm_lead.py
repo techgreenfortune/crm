@@ -124,7 +124,11 @@ class TestCRMLead(FrappeTestCase):
 		self.assertIn("Lead Owner cannot be same as the Lead Email Address", str(context.exception))
 
 	def test_update_lead_owner(self):
-		"""Test that updating lead owner assigns and shares with the new owner"""
+		"""Updating lead_owner sets the single owner field.
+
+		Multi-assignee + auto-DocShare were retired — lead_owner is now the sole
+		source of truth, so changing it is just a field write (no ToDo/DocShare).
+		"""
 		# Create a lead without owner
 		lead = create_lead(
 			first_name="Owner",
@@ -137,63 +141,17 @@ class TestCRMLead(FrappeTestCase):
 		# Update lead owner
 		lead.lead_owner = "Administrator"
 		lead.save()
-
-		# Verify owner was updated
 		lead.reload()
 		self.assertEqual(lead.lead_owner, "Administrator")
 
-		# Verify agent was assigned
-		assignees = lead.get_assigned_users()
-		self.assertIn("Administrator", assignees)
-		initial_assignees_count = len(assignees)
-
-		# Verify document was shared with agent
-		docshare = frappe.db.exists(
-			"DocShare",
-			{"user": "Administrator", "share_name": lead.name, "share_doctype": "CRM Lead"},
-		)
-		self.assertTrue(docshare)
-
-		# Try to assign the same agent again - should not duplicate
-		lead.assign_agent("Administrator")
-		assignees_after = lead.get_assigned_users()
-		self.assertEqual(len(assignees_after), initial_assignees_count)
-		self.assertIn("Administrator", assignees_after)
-
-		# Share with same agent again - should not duplicate docshare
-		initial_docshares = frappe.get_all(
-			"DocShare",
-			filters={"share_name": lead.name, "share_doctype": "CRM Lead"},
-		)
-		initial_docshare_count = len(initial_docshares)
-		lead.share_with_agent("Administrator")
-		after_docshares = frappe.get_all(
-			"DocShare",
-			filters={"share_name": lead.name, "share_doctype": "CRM Lead"},
-		)
-		self.assertEqual(len(after_docshares), initial_docshare_count)
-
+		# Reassign to another user — the field just updates.
 		lead.lead_owner = "crm.user1@example.com"
 		lead.save()
 		lead.reload()
-
-		# Verify new owner is assigned and shared
 		self.assertEqual(lead.lead_owner, "crm.user1@example.com")
-		new_docshare = frappe.db.exists(
-			"DocShare",
-			{"user": "crm.user1@example.com", "share_name": lead.name, "share_doctype": "CRM Lead"},
-		)
-		self.assertTrue(new_docshare)
-
-		# Verify old owner's share was removed
-		old_docshare = frappe.db.exists(
-			"DocShare",
-			{"user": "Administrator", "share_name": lead.name, "share_doctype": "CRM Lead"},
-		)
-		self.assertFalse(old_docshare)
 
 	def test_lead_creation_with_owner(self):
-		"""Test creating a lead with lead owner assigns agent on insert"""
+		"""Creating a lead with a lead_owner stores the single owner field."""
 		lead = create_lead(
 			first_name="Owned",
 			last_name="Lead",
@@ -203,10 +161,6 @@ class TestCRMLead(FrappeTestCase):
 
 		# Verify lead was created with owner
 		self.assertEqual(lead.lead_owner, "Administrator")
-
-		# Verify agent was assigned during after_insert
-		assignees = lead.get_assigned_users()
-		self.assertIn("Administrator", assignees)
 
 	def test_create_contact_from_lead(self):
 		"""Test creating a contact from lead data"""
@@ -486,26 +440,21 @@ class TestCRMLead(FrappeTestCase):
 		self.assertEqual(deal.annual_revenue, 750000)
 		self.assertEqual(deal.job_title, "CEO")
 
-	def test_assignees_transferred_on_conversion(self):
-		"""Test that additional assignees are transferred from lead to deal on conversion"""
+	def test_owner_transferred_on_conversion(self):
+		"""The single lead_owner carries over to deal_owner on conversion.
+
+		Multi-assignee was retired, so there are no extra assignees to copy —
+		the deal inherits the lead's one owner via lead_deal_map.
+		"""
 		lead = create_lead(
 			first_name="Transfer",
 			lead_owner="Administrator",
 		)
 
-		lead.assign_agent("crm.user1@example.com")
-
-		lead_assignees = lead.get_assigned_users()
-
-		self.assertIn("Administrator", lead_assignees)
-		self.assertIn("crm.user1@example.com", lead_assignees)
-
 		deal_name = lead.convert_to_deal()
 		deal = frappe.get_doc("CRM Deal", deal_name)
 
-		deal_assignees = deal.get_assigned_users()
-		self.assertIn("Administrator", deal_assignees)
-		self.assertIn("crm.user1@example.com", deal_assignees)
+		self.assertEqual(deal.deal_owner, "Administrator")
 
 
 def create_lead(**kwargs):
