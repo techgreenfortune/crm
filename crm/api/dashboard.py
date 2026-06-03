@@ -1230,6 +1230,49 @@ def _date_window(from_date, to_date):
 	return from_date, to_date
 
 
+# Acronyms that should stay fully uppercase in Excel headers instead of
+# title-cased. Add new entries as data shape evolves.
+_HEADER_ACRONYMS = frozenset(
+	{
+		"id",
+		"sid",
+		"url",
+		"utm",
+		"sla",
+		"crm",
+		"sqft",
+		"c0",
+		"c1",
+		"c2",
+		"c3",
+		"c4",
+		"c5",
+		"c6",
+		"c7",
+		"qs",
+	}
+)
+
+
+def _humanize_header(key: str) -> str:
+	"""Convert a snake_case column key to a human-readable Excel header.
+
+	lead_id              -> "Lead ID"
+	custom_c0_entered_on -> "C0 Entered On"   (strips the `custom_` prefix
+	                                           since it's a Frappe naming
+	                                           convention not meaningful
+	                                           to end users)
+	utm_source           -> "UTM Source"
+	provider_call_sid    -> "Provider Call SID"
+	recording_url        -> "Recording URL"
+	"""
+	if key.startswith("custom_"):
+		key = key[len("custom_") :]
+	return " ".join(
+		word.upper() if word.lower() in _HEADER_ACRONYMS else word.capitalize() for word in key.split("_")
+	)
+
+
 # ─── 11.1 Lead Generation Performance ────────────────────────────────
 
 
@@ -1719,12 +1762,29 @@ def download_lead_export(
 		params["from_date"] = from_date
 		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
 
+	# "Assigned to" filtering uses Frappe's standard assignment system —
+	# tabToDo rows with reference_type='CRM Lead' and allocated_to=<user>.
+	# This is different from lead_owner (a single denormalised user on the
+	# lead row); a lead can be assigned to multiple users while owned by
+	# only one. The Leads UI's "Assigned To" column reads the same data.
 	if is_manager:
 		if user:
-			conditions.append("l.lead_owner = %(filter_user)s")
+			conditions.append(
+				"EXISTS (SELECT 1 FROM `tabToDo` t "
+				"WHERE t.reference_type='CRM Lead' "
+				"AND t.reference_name = l.name "
+				"AND t.allocated_to = %(filter_user)s "
+				"AND t.status = 'Open')"
+			)
 			params["filter_user"] = user
 	else:
-		conditions.append("l.lead_owner = %(self_user)s")
+		conditions.append(
+			"EXISTS (SELECT 1 FROM `tabToDo` t "
+			"WHERE t.reference_type='CRM Lead' "
+			"AND t.reference_name = l.name "
+			"AND t.allocated_to = %(self_user)s "
+			"AND t.status = 'Open')"
+		)
 		params["self_user"] = frappe.session.user
 
 	where_clause = " AND ".join(conditions)
@@ -1746,6 +1806,7 @@ def download_lead_export(
 			l.custom_lead_type                  AS lead_type,
 			l.custom_customer_type              AS customer_type,
 			l.lead_owner,
+			l._assign                           AS assigned_to,
 			l.industry,
 			l.territory,
 			l.custom_account                    AS account,
@@ -1834,12 +1895,13 @@ def download_lead_export(
 	)
 
 	if rows:
-		headers = list(rows[0].keys())
-		data = [headers] + [[row.get(h) for h in headers] for row in rows]
+		keys = list(rows[0].keys())
+		headers = [_humanize_header(k) for k in keys]
+		data = [headers] + [[row.get(k) for k in keys] for row in rows]
 	else:
 		# Empty result: emit headers-only workbook so the browser gets a file,
 		# not a JSON error page (download was initiated via window.location).
-		headers = [
+		keys = [
 			"lead_id",
 			"lead_name",
 			"stage",
@@ -1847,7 +1909,7 @@ def download_lead_export(
 			"lead_owner",
 			"created_on",
 		]
-		data = [headers]
+		data = [[_humanize_header(k) for k in keys]]
 
 	xlsx_file = make_xlsx(data, "Leads")
 
@@ -1963,10 +2025,11 @@ def download_calls_export(
 	)
 
 	if rows:
-		headers = list(rows[0].keys())
-		data = [headers] + [[row.get(h) for h in headers] for row in rows]
+		keys = list(rows[0].keys())
+		headers = [_humanize_header(k) for k in keys]
+		data = [headers] + [[row.get(k) for k in keys] for row in rows]
 	else:
-		headers = [
+		keys = [
 			"call_id",
 			"provider",
 			"direction",
@@ -1978,7 +2041,7 @@ def download_calls_export(
 			"lead_id",
 			"lead_name",
 		]
-		data = [headers]
+		data = [[_humanize_header(k) for k in keys]]
 
 	xlsx_file = make_xlsx(data, "Calls")
 
