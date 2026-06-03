@@ -38,7 +38,7 @@ export function useSidebarNavigation({
     try {
       const data = await call('crm.api.settings.get_opsgate_redirect_url')
       if (data?.redirect_url) {
-        window.open(data.redirect_url, '_blank')
+        window.location.href = data.redirect_url
       } else {
         toast.error('OpsGate SSO failed: no redirect URL returned')
       }

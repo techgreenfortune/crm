@@ -102,27 +102,6 @@
   "docstatus": 0,
   "doctype": "Role Profile",
   "modified": "2026-05-20 12:00:00",
-  "name": "Project Sales Executive",
-  "role_profile": "Project Sales Executive",
-  "roles": [
-   {
-    "parent": "Project Sales Executive",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales User"
-   },
-   {
-    "parent": "Project Sales Executive",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Project Sales Executive"
-   }
-  ]
- },
- {
-  "docstatus": 0,
-  "doctype": "Role Profile",
-  "modified": "2026-05-20 12:00:00",
   "name": "RSM",
   "role_profile": "RSM",
   "roles": [
@@ -131,27 +110,6 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "RSM"
-   }
-  ]
- },
- {
-  "docstatus": 0,
-  "doctype": "Role Profile",
-  "modified": "2026-05-20 12:00:00",
-  "name": "Marketing",
-  "role_profile": "Marketing",
-  "roles": [
-   {
-    "parent": "Marketing",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Sales User"
-   },
-   {
-    "parent": "Marketing",
-    "parentfield": "roles",
-    "parenttype": "Role Profile",
-    "role": "Marketing"
    }
   ]
  },
@@ -218,6 +176,48 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "ASM"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-20 12:00:00",
+  "name": "Project Sales Executive",
+  "role_profile": "Project Sales Executive",
+  "roles": [
+   {
+    "parent": "Project Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Project Sales Executive",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Project Sales Executive"
+   }
+  ]
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Role Profile",
+  "modified": "2026-05-20 12:00:00",
+  "name": "Marketing",
+  "role_profile": "Marketing",
+  "roles": [
+   {
+    "parent": "Marketing",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
+   },
+   {
+    "parent": "Marketing",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Marketing"
    }
   ]
  }
