@@ -67,7 +67,7 @@ defineProps({
 
 const { settings, brand } = getSettings()
 const { logout } = sessionStore()
-const { getUser, hasDeskAccess } = usersStore()
+const { getUser, hasDeskAccess, isAdmin } = usersStore()
 
 const user = computed(() => getUser() || {})
 
@@ -87,7 +87,7 @@ const dropdownItems = computed(() => {
   items.forEach((item) => {
     if (item.hidden) return
     if (item.name1 === 'about') return
-    if (item.name1 === 'app_selector' && !hasDeskAccess()) return
+    if (item.name1 === 'app_selector' && !isAdmin()) return
     if (item.type !== 'Separator') {
       _dropdownItems[_dropdownItems.length - 1].items.push(
         dropdownItemObj(item),
