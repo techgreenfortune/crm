@@ -120,6 +120,14 @@
    "delete": 0,
    "read": 1,
    "report": 1,
+   "role": "Spotter",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "read": 1,
+   "report": 1,
    "role": "ASM",
    "write": 1
   },

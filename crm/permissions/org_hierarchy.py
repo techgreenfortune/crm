@@ -43,31 +43,28 @@ def _permission_query_conditions(user: str | None, doctype: str):
 
 	owner_field = _OWNER_FIELD[doctype]
 	DT = frappe.qb.DocType(doctype)
-	Todo = frappe.qb.DocType("ToDo").as_("_todo")
+	TD = frappe.qb.DocType("ToDo")
 
 	if in_tree:
-		# Owner is the user themselves or any member of their subtree
-		q1 = (DT[owner_field] == user) | DT[owner_field].isin(_team_mem_query(user))
-		# Assigned to the user or any member of their subtree by ToDo
-		q2 = DT.name.isin(
-			frappe.qb.from_(Todo)
-			.select(Todo.reference_name)
-			.where(
-				(Todo.reference_type == doctype)
-				& (Todo.status != "Cancelled")
-				& ((Todo.allocated_to == user) | (Todo.allocated_to.isin(_team_mem_query(user))))
-			)
+		team_q = _team_mem_query(user)
+		todo_q = (
+			frappe.qb.from_(TD)
+			.select(TD.reference_name)
+			.where(TD.reference_type == doctype)
+			.where(TD.status == "Open")
+			.where((TD.allocated_to == user) | TD.allocated_to.isin(team_q))
 		)
-		return q1 | q2
+		return (DT[owner_field] == user) | DT[owner_field].isin(team_q) | DT.name.isin(todo_q)
 
-	# Sales User default: own records and records directly assigned to them
-	q1 = DT[owner_field] == user
-	q2 = DT.name.isin(
-		frappe.qb.from_(Todo)
-		.select(Todo.reference_name)
-		.where((Todo.reference_type == doctype) & (Todo.status != "Cancelled") & (Todo.allocated_to == user))
+	# Out-of-tree (orphan / leaf) user: own records or those assigned via Open ToDo.
+	todo_q = (
+		frappe.qb.from_(TD)
+		.select(TD.reference_name)
+		.where(TD.reference_type == doctype)
+		.where(TD.allocated_to == user)
+		.where(TD.status == "Open")
 	)
-	return q1 | q2
+	return (DT[owner_field] == user) | DT.name.isin(todo_q)
 
 
 def get_lead_permission_query_conditions(user=None):

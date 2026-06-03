@@ -608,7 +608,6 @@ const articles = ref([
       { name: 'comment', title: __('Comment') },
       { name: 'data', title: __('Data') },
       { name: 'service-level-agreement', title: __('Service Level Agreement') },
-      { name: 'assignment-rule', title: __('Assignment Rule') },
       { name: 'notification', title: __('Notification') },
     ],
   },

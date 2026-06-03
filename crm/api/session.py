@@ -75,11 +75,9 @@ def get_users():
 
 
 def _resolve_allowed_users(crm_users: list, user: str) -> list:
-	"""Return the subset of crm_users the session user may assign to.
+	"""Return the subset of crm_users the session user may set as lead_owner.
 
-	Shared by ``get_assignable_users`` and ``search_assignable_users`` — the two
-	callers have identical filtering logic; they differ only in post-filter steps
-	(text search / self-exclusion).
+	Used by ``search_assignable_users`` to scope the CRM Lead owner picker.
 
 	Tier-1 (Sales Head / Sales Coordinator / System Manager) see everyone.
 	Pool roles (B2F Team / Estimation Team) see nothing — they receive leads but
@@ -87,7 +85,7 @@ def _resolve_allowed_users(crm_users: list, user: str) -> list:
 	A dual-role user (Marketing + B2F Team) retains the broader access from
 	Marketing. ASM/RSM are filtered to their hierarchy subtree + direct upline;
 	orphan ASM/RSM (no hierarchy node) bypass the filter to match the backend skip
-	in ``crm_lead_permissions.guard_lead_assignment``.
+	in ``CRMLead._check_write_permission`` (via ``allowed_assignees``).
 	"""
 	if user == "Administrator":
 		return crm_users
@@ -118,25 +116,6 @@ def _resolve_allowed_users(crm_users: list, user: str) -> list:
 
 
 @frappe.whitelist()
-def get_assignable_users():
-	"""Return the list of CRM users the session user may assign CRM Leads to.
-
-	UX-only helper for the assignee pickers in AssignToBody / AssignmentModal —
-	the backend enforcement lives in ``crm_lead_permissions.guard_lead_assignment``
-	(ToDo) and ``CRMLead._check_write_permission`` (lead_owner). Filtering the
-	picker keeps users from choosing an option that would then throw.
-
-	Returns the *full* CRM users list for Administrator, tier-1 roles, and roles
-	without a tree to restrict to (everyone except ASM/RSM). ASM/RSM with a
-	hierarchy node get only their downstream subtree + direct upline; orphan
-	ASM/RSM bypass the filter to match the backend skip.
-	"""
-	get_session_role_flags()
-	_, crm_users = get_users()
-	return _resolve_allowed_users(crm_users, frappe.session.user)
-
-
-@frappe.whitelist()
 def search_assignable_users(
 	txt: str = "",
 	doctype: str = "User",
@@ -145,16 +124,18 @@ def search_assignable_users(
 	**kwargs,
 ):
 	"""Drop-in replacement for frappe.desk.search.search_link for the User
-	doctype in the CRM assign-to picker.
+	doctype in the CRM Lead owner picker.
 
 	Frappe restricts non-admin users to reading only their own User record via
 	search_link (User doctype permission query); this endpoint works entirely
 	from the frappe.qb-based crm_users list (no document-level permission gate)
-	so every CRM role can search the full set of assignable users.
+	so every CRM role can search the set of users they may set as lead_owner.
 
 	Parameters mirror search_link so the CRM Link component can swap in this
 	URL without changing the params it sends (``doctype`` and ``filters`` are
 	accepted but ignored here — filtering is done server-side by role/tree).
+	The session user IS included — a user can claim a lead by setting themselves
+	as owner.
 
 	Returns the same ``[{label, value, description}]`` format as search_link.
 	"""
@@ -163,9 +144,6 @@ def search_assignable_users(
 	_, crm_users = get_users()
 
 	allowed = _resolve_allowed_users(crm_users, user)
-
-	# Exclude session user — mirrors the hideMe:true flag in AssignToBody
-	allowed = [u for u in allowed if u.name != user]
 
 	# Text search against full_name and email (case-insensitive)
 	txt_lower = (txt or "").lower().strip()
@@ -193,12 +171,12 @@ def search_crm_users(
 
 	Used for doctypes that have no tree-scoped assignment rule (e.g. CRM Deal).
 	Parameters mirror search_link so Link.vue can swap in this URL unchanged.
+	The session user IS included — they can set themselves as owner.
 	"""
 	get_session_role_flags()
-	user = frappe.session.user
 	_, crm_users = get_users()
 
-	allowed = [u for u in crm_users if u.name != user]
+	allowed = list(crm_users)
 
 	txt_lower = (txt or "").lower().strip()
 	if txt_lower:

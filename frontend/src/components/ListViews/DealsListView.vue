@@ -44,26 +44,7 @@
     >
       <ListRowItem :item="item" :align="column.align" class="overflow-hidden">
         <template #prefix>
-          <div
-            v-if="column.key === '_assign'"
-            class="flex items-center truncate"
-          >
-            <MultipleAvatar
-              :avatars="item"
-              size="sm"
-              @click="
-                (event) =>
-                  emit('applyFilter', {
-                    event,
-                    idx,
-                    column,
-                    item,
-                    firstColumn: columns[0],
-                  })
-              "
-            />
-          </div>
-          <div v-else-if="column.key === 'status'">
+          <div v-if="column.key === 'status'">
             <IndicatorIcon :class="item.color" />
           </div>
           <div v-else-if="column.key === 'organization'">
@@ -218,7 +199,6 @@
 
 <script setup>
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
-import MultipleAvatar from '@/components/MultipleAvatar.vue'
 import IndicatorIcon from '@/components/Icons/IndicatorIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import RatingInput from '@/components/Controls/RatingInput.vue'

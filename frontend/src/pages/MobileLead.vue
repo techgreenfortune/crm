@@ -69,7 +69,7 @@
     v-if="doc.name"
     class="flex h-12 items-center justify-between gap-2 border-b px-3 py-2.5"
   >
-    <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
+    <AssignTo doctype="CRM Lead" :docname="leadId" />
     <div class="flex flex-shrink-0 items-center gap-2">
       <CustomActions
         v-if="document._actions?.length"
@@ -238,14 +238,8 @@ const errorTitle = ref('')
 const errorMessage = ref('')
 const showDeleteLinkedDocModal = ref(false)
 
-const {
-  triggerOnChange,
-  triggerOnRender,
-  assignees,
-  document,
-  scripts,
-  error,
-} = useDocument('CRM Lead', props.leadId)
+const { triggerOnChange, triggerOnRender, document, scripts, error } =
+  useDocument('CRM Lead', props.leadId)
 
 const doc = computed(() => document.doc || {})
 
@@ -342,29 +336,9 @@ const tabs = computed(() => {
       icon: ActivityIcon,
     },
     {
-      name: 'Emails',
-      label: __('Emails'),
-      icon: EmailIcon,
-    },
-    {
-      name: 'Comments',
-      label: __('Comments'),
-      icon: CommentIcon,
-    },
-    {
       name: 'Data',
       label: __('Data'),
       icon: DetailsIcon,
-    },
-    {
-      name: 'Calls',
-      label: __('Calls'),
-      icon: PhoneIcon,
-    },
-    {
-      name: 'Tasks',
-      label: __('Tasks'),
-      icon: TaskIcon,
     },
     {
       name: 'Quotes',
@@ -372,9 +346,9 @@ const tabs = computed(() => {
       icon: DocumentIcon,
     },
     {
-      name: 'Notes',
-      label: __('Notes'),
-      icon: NoteIcon,
+      name: 'Calls',
+      label: __('Calls'),
+      icon: PhoneIcon,
     },
     {
       name: 'Attachments',
@@ -382,10 +356,30 @@ const tabs = computed(() => {
       icon: AttachmentIcon,
     },
     {
+      name: 'Comments',
+      label: __('Comments'),
+      icon: CommentIcon,
+    },
+    {
+      name: 'Tasks',
+      label: __('Tasks'),
+      icon: TaskIcon,
+    },
+    {
+      name: 'Notes',
+      label: __('Notes'),
+      icon: NoteIcon,
+    },
+    {
       name: 'WhatsApp',
       label: __('WhatsApp'),
       icon: WhatsAppIcon,
       condition: () => whatsappEnabled.value,
+    },
+    {
+      name: 'Emails',
+      label: __('Emails'),
+      icon: EmailIcon,
     },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
@@ -586,9 +580,5 @@ function beforeStatusChange(data) {
     })
   }
 }
-function reloadAssignees(data) {
-  if (Object.hasOwn(data ?? {}, 'lead_owner')) {
-    assignees.reload()
-  }
-}
+function reloadAssignees(_data) {}
 </script>
