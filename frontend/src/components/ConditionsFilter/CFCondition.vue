@@ -310,13 +310,6 @@ function getOperators() {
       ],
     )
   }
-  if (fieldname === '_assign') {
-    options = [
-      { label: 'Like', value: 'like' },
-      { label: 'Not Like', value: 'not like' },
-      { label: 'Is', value: 'is' },
-    ]
-  }
   if (typeNumber.includes(fieldtype)) {
     options.push(
       ...[

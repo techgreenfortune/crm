@@ -3,7 +3,6 @@
 
 import frappe
 from frappe import _
-from frappe.desk.form.assign_to import add as assign
 from frappe.model.document import Document
 from frappe.utils import has_gravatar, validate_email_address
 
@@ -85,28 +84,15 @@ _QUOTE_LEAD_FIELDS = frozenset(
 
 
 def _is_unassigned(snapshot) -> bool:
-	"""Return True when a CRM Lead snapshot has neither ``lead_owner`` nor any
-	Frappe assignment (``_assign`` is null / "[]" / empty list).
+	"""Return True when a CRM Lead snapshot has no ``lead_owner``.
 
 	Used by ``CRMLead._check_write_permission`` to grant Calling Team / JSE
 	full write on truly unassigned leads (claim + edit + route). The moment
-	the lead picks up an owner or an assignment, the caller's scope shrinks
-	to the non-owner fallback (status / lost flow only).
+	the lead picks up an owner, the caller's scope shrinks to the non-owner
+	fallback (status / lost flow only). ``lead_owner`` is the single source of
+	truth for ownership — multi-assignee (``_assign``) was retired.
 	"""
-	if not snapshot:
-		return False
-	if snapshot.get("lead_owner"):
-		return False
-	raw = snapshot.get("_assign") or ""
-	if not raw or raw == "[]":
-		return True
-	try:
-		import json
-
-		return not json.loads(raw)
-	except (ValueError, TypeError):
-		# Malformed _assign — treat as unassigned defensively.
-		return True
+	return bool(snapshot) and not snapshot.get("lead_owner")
 
 
 class CRMLead(Document):
@@ -202,9 +188,6 @@ class CRMLead(Document):
 		# Freeze runs LAST — once a lead is already at Won, quote fields can't
 		# be edited (sync above is the only way to set them).
 		self._freeze_quote_fields_at_won()
-		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
-			self.share_with_agent(self.lead_owner)
-			self.assign_agent(self.lead_owner)
 		if self.has_value_changed("status"):
 			add_status_change_log(self)
 
@@ -216,12 +199,6 @@ class CRMLead(Document):
 				"lead_owner",
 				self.lead_owner or "",
 			)
-
-	def after_insert(self):
-		if self.lead_owner:
-			if self.lead_owner != frappe.session.user:
-				self.share_with_agent(self.lead_owner)
-			self.assign_agent(self.lead_owner)
 
 	def before_save(self):
 		self.apply_sla()
@@ -352,7 +329,10 @@ class CRMLead(Document):
 			return
 		user_roles = set(frappe.get_roles(user))
 		# Tier-1 full RW bypass — Sales Head / Sales Coordinator / System Manager
-		# may edit anything.
+		# may edit anything. Management is NOT here: it's tier-1 for *visibility*
+		# (sees every lead) but read-only via its doctype permission, so a write
+		# never reaches this guard — and we don't want to grant a latent
+		# field-lock bypass if it ever gained write docperm.
 		if user_roles & {"System Manager", "Sales Head", "Sales Coordinator"}:
 			return
 
@@ -406,10 +386,10 @@ class CRMLead(Document):
 			return
 
 		# Calling Team / Jr. Sales Executive — full write on a lead while it is
-		# unassigned (no lead_owner AND no Frappe `_assign`). This lets the
-		# caller claim, edit, set lead_owner, hand off in one save. Once `old`
-		# already carries an owner or assignment, the caller falls through to
-		# the non-owner fallback below: only fields in `_NON_OWNER_EDITABLE`
+		# unassigned (no lead_owner). This lets the caller claim, edit, set
+		# lead_owner, hand off in one save. Once `old` already carries an owner,
+		# the caller falls through to the non-owner fallback below: only fields
+		# in `_NON_OWNER_EDITABLE`
 		# (status + lost-flow + fabricator-routing) can change. That's by
 		# design — the caller can still manually move C0 → C1 (or whatever the
 		# Stage Transition server script allows for Cold/Reactivated leads),
@@ -577,51 +557,6 @@ class CRMLead(Document):
 						"Contact a System Manager to unlock."
 					),
 					title=_("Lead Won"),
-				)
-
-	def assign_agent(self, agent):
-		if not agent:
-			return
-
-		assignees = self.get_assigned_users()
-		if assignees:
-			for assignee in assignees:
-				if agent == assignee:
-					# the agent is already set as an assignee
-					return
-
-		assign({"assign_to": [agent], "doctype": "CRM Lead", "name": self.name}, ignore_permissions=True)
-
-	def share_with_agent(self, agent):
-		if not agent:
-			return
-
-		docshares = frappe.get_all(
-			"DocShare",
-			filters={"share_name": self.name, "share_doctype": self.doctype},
-			fields=["name", "user"],
-		)
-
-		shared_with = [d.user for d in docshares] + [agent]
-
-		for user in shared_with:
-			if user == agent and not frappe.db.exists(
-				"DocShare",
-				{"user": agent, "share_name": self.name, "share_doctype": self.doctype},
-			):
-				frappe.share.add_docshare(
-					self.doctype,
-					self.name,
-					agent,
-					write=1,
-					flags={"ignore_share_permission": True},
-				)
-			elif user != agent:
-				frappe.share.remove(
-					self.doctype,
-					self.name,
-					user,
-					flags={"ignore_share_permission": True, "ignore_permissions": True},
 				)
 
 	def create_contact(self, existing_contact=None, throw=True):
@@ -802,10 +737,8 @@ class CRMLead(Document):
 
 		new_deal.insert(ignore_permissions=True)
 
-		for user in self.get_assigned_users():
-			if user and user != new_deal.deal_owner:
-				new_deal.assign_agent(user)
-
+		# ``deal_owner`` is mapped from ``lead_owner`` above (lead_deal_map), so
+		# the new deal already carries the single owner — no further assignment.
 		return new_deal.name
 
 	def set_sla(self):
@@ -875,9 +808,10 @@ class CRMLead(Document):
 				"width": "11rem",
 			},
 			{
-				"label": "Assigned To",
-				"type": "Text",
-				"key": "_assign",
+				"label": "Lead Owner",
+				"type": "Link",
+				"options": "User",
+				"key": "lead_owner",
 				"width": "10rem",
 			},
 			{
@@ -901,7 +835,6 @@ class CRMLead(Document):
 			"first_response_time",
 			"first_responded_on",
 			"modified",
-			"_assign",
 			"image",
 		]
 		return {"columns": columns, "rows": rows}
@@ -911,7 +844,7 @@ class CRMLead(Document):
 		return {
 			"column_field": "status",
 			"title_field": "lead_name",
-			"kanban_fields": '["organization", "email", "mobile_no", "_assign", "modified"]',
+			"kanban_fields": '["organization", "email", "mobile_no", "lead_owner", "modified"]',
 		}
 
 

@@ -281,14 +281,6 @@ function getOperators(fieldtype, fieldname) {
       ],
     )
   }
-  if (fieldname === '_assign') {
-    // TODO: make equals and not equals work
-    options = [
-      { label: __('Like'), value: 'like' },
-      { label: __('Not like'), value: 'not like' },
-      { label: __('Is'), value: 'is' },
-    ]
-  }
   if (typeNumber.includes(fieldtype)) {
     options.push(
       ...[
