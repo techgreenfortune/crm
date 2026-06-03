@@ -20,7 +20,6 @@ export const standardFieldsMeta = [
     fieldtype: 'Link',
     options: 'User',
   },
-  { label: 'Assigned To', fieldtype: 'Text', fieldname: '_assign' },
   {
     label: 'Owner',
     fieldtype: 'Link',

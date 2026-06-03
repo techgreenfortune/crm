@@ -49,7 +49,6 @@ def after_install(force=False):
 	create_default_manager_dashboard(force)
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
-	add_default_crm_lead_assignment_rules()
 	frappe.db.commit()
 
 
@@ -698,37 +697,3 @@ def create_assignment_rule_custom_fields():
 		)
 
 		frappe.clear_cache(doctype="Assignment Rule")
-
-
-def add_default_crm_lead_assignment_rules():
-	"""Seed B2F-on-C7 and ASM-on-C2 rules. Idempotent — admin's `users` roster and `disabled` flag are never overwritten."""
-	rules = [
-		{
-			"name": "B2F Assignment on C7",
-			"description": "Assign C7 leads to B2F Team members",
-			"assign_condition": 'status == "C7"',
-			"priority": 1,
-		},
-		{
-			"name": "ASM Assignment on C2",
-			"description": "Assign C2 leads to Area Sales Manager — enable in Phase 2",
-			"assign_condition": 'doc.status == "C2" and doc.custom_lead_type',
-			"priority": 2,
-		},
-	]
-	days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-	for rule in rules:
-		if frappe.db.exists("Assignment Rule", rule["name"]):
-			continue
-		doc = frappe.new_doc("Assignment Rule")
-		doc.name = rule["name"]
-		doc.document_type = "CRM Lead"
-		doc.description = rule["description"]
-		doc.assign_condition = rule["assign_condition"]
-		doc.priority = rule["priority"]
-		doc.rule = "Round Robin"
-		doc.disabled = 1
-		for day in days:
-			doc.append("assignment_days", {"day": day})
-		doc.insert()

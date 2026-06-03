@@ -58,6 +58,13 @@
    "delete": 0,
    "read": 1,
    "report": 1,
+   "role": "Spotter"
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "read": 1,
+   "report": 1,
    "role": "ASM"
   },
   {

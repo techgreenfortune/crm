@@ -6,14 +6,6 @@
     :selectedValues="selectedValues"
     @reload="reload"
   />
-  <AssignmentModal
-    v-if="showAssignmentModal"
-    v-model="showAssignmentModal"
-    v-model:assignees="bulkAssignees"
-    :docs="selectedValues"
-    :doctype="doctype"
-    @reload="reload"
-  />
   <DeleteLinkedDocModal
     v-if="showDeleteDocModal.showLinkedDocsModal"
     v-model="showDeleteDocModal.showLinkedDocsModal"
@@ -32,10 +24,8 @@
 
 <script setup>
 import EditValueModal from '@/components/Modals/EditValueModal.vue'
-import AssignmentModal from '@/components/Modals/AssignmentModal.vue'
 import { setupListCustomizations } from '@/utils'
 import { globalStore } from '@/stores/global'
-import { useTelemetry } from 'frappe-ui/frappe'
 import { call, toast } from 'frappe-ui'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -57,7 +47,6 @@ const list = defineModel({ type: Object })
 const router = useRouter()
 
 const { $dialog, $socket } = globalStore()
-const { capture } = useTelemetry()
 
 const showEditModal = ref(false)
 const selectedValues = ref([])
@@ -122,45 +111,6 @@ function deleteValues(selections, unselectAll) {
   }
 }
 
-const showAssignmentModal = ref(false)
-const bulkAssignees = ref([])
-
-function assignValues(selections, unselectAll) {
-  showAssignmentModal.value = true
-  selectedValues.value = selections
-  unselectAllAction.value = unselectAll
-}
-
-function clearAssignments(selections, unselectAll) {
-  $dialog({
-    title: __('Clear Assignment'),
-    message: __('Are you sure you want to clear assignment for {0} item(s)?', [
-      selections.size,
-    ]),
-    variant: 'solid',
-    theme: 'red',
-    actions: [
-      {
-        label: __('Clear Assignment'),
-        variant: 'solid',
-        theme: 'red',
-        onClick: (close) => {
-          capture('bulk_clear_assignment')
-          call('frappe.desk.form.assign_to.remove_multiple', {
-            doctype: props.doctype,
-            names: JSON.stringify(Array.from(selections)),
-            ignore_permissions: true,
-          }).then(() => {
-            toast.success(__('Assignment Cleared Successfully'))
-            reload(unselectAll)
-            close()
-          })
-        },
-      },
-    ],
-  })
-}
-
 const customBulkActions = ref([])
 const customListActions = ref([])
 
@@ -178,17 +128,6 @@ function bulkActions(selections, unselectAll) {
     actions.push({
       label: __('Delete'),
       onClick: () => deleteValues(selections, unselectAll),
-    })
-  }
-
-  if (!props.options.hideAssign) {
-    actions.push({
-      label: __('Assign To'),
-      onClick: () => assignValues(selections, unselectAll),
-    })
-    actions.push({
-      label: __('Clear Assignment'),
-      onClick: () => clearAssignments(selections, unselectAll),
     })
   }
 

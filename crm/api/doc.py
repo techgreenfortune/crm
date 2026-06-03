@@ -3,7 +3,6 @@ import json
 import frappe
 from frappe import _
 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
-from frappe.desk.form.assign_to import set_status
 from frappe.model import no_value_fields
 from frappe.model.document import get_controller
 from frappe.utils import make_filter_tuple
@@ -587,25 +586,21 @@ def get_records_based_on_order(doctype, rows, filters, page_length, order):
 
 
 @frappe.whitelist()
-def remove_assignments(doctype: str, name: str, assignees: str | list, ignore_permissions: bool = False):
-	assignees = frappe.parse_json(assignees)
-
-	if not assignees:
-		return
-
-	for assign_to in assignees:
-		set_status(
-			doctype,
-			name,
-			todo=None,
-			assign_to=assign_to,
-			status="Cancelled",
-			ignore_permissions=ignore_permissions,
-		)
-
-
-@frappe.whitelist()
 def get_assigned_users(doctype: str, name: str | int, default_assigned_to: str | None = None):
+	"""Return the single owner of a CRM Lead / CRM Deal as a 0-or-1 element list
+	(``lead_owner`` / ``deal_owner``).
+
+	Multi-assignee was retired — the owner field is the single source of truth.
+	Other doctypes (e.g. CRM Task) still use Frappe ToDo assignment, so fall
+	back to the ToDo table for those.
+	"""
+	owner_field = {"CRM Lead": "lead_owner", "CRM Deal": "deal_owner"}.get(doctype)
+	if owner_field:
+		owner = frappe.db.get_value(doctype, name, owner_field)
+		if owner:
+			return [owner]
+		return [default_assigned_to] if default_assigned_to else []
+
 	assigned_users = frappe.get_all(
 		"ToDo",
 		fields=["allocated_to"],

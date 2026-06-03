@@ -5,14 +5,9 @@ from crm.fcrm.doctype.crm_notification.crm_notification import notify_user
 
 
 def after_insert(doc, method):
-	if doc.reference_type in ["CRM Lead", "CRM Deal"] and doc.reference_name and doc.allocated_to:
-		fieldname = "lead_owner" if doc.reference_type == "CRM Lead" else "deal_owner"
-		owner = frappe.db.get_value(doc.reference_type, doc.reference_name, fieldname)
-		if not owner:
-			frappe.db.set_value(
-				doc.reference_type, doc.reference_name, fieldname, doc.allocated_to, update_modified=False
-			)
-
+	# Lead/Deal ownership is a single ``lead_owner``/``deal_owner`` field set
+	# directly — no ToDo-driven owner sync. CRM Task still uses ToDo assignment,
+	# so notify its assignee here.
 	if doc.reference_type in ["CRM Lead", "CRM Deal", "CRM Task"] and doc.reference_name and doc.allocated_to:
 		notify_assigned_user(doc)
 

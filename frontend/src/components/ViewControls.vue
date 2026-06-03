@@ -1294,17 +1294,6 @@ function applyFilter({ event, idx, column, item, firstColumn }) {
     delete filters[column.key]
   }
 
-  if (column.key == '_assign') {
-    if (item.length > 1) {
-      let target = event.target.closest('.user-avatar')
-      if (target) {
-        let name = target.getAttribute('data-name')
-        filters['_assign'] = ['LIKE', `%${name}%`]
-      }
-    } else {
-      filters['_assign'] = ['LIKE', `%${item[0].name}%`]
-    }
-  }
   updateFilter(filters)
 }
 

@@ -4,13 +4,12 @@ Every role-aware piece of the system reads from this module:
 
 - ``crm/api/session.py`` imports ``ROLE_PRIORITY`` to decide which role label
   to display when a user has multiple roles.
-- ``crm/overrides/crm_lead_permissions.py`` imports the access-matrix sets
-  (``TIER1_FULL_RW``, ``TIER1_READ_ONLY``, ``FIELD_GATED_RW``, ``STAGE_LOCKED``,
-  ``OWNER_SCOPE_ROLES``) to gate ``has_permission`` and
-  ``get_permission_query_conditions`` for CRM Lead. ``NO_C7_ROLES`` and
-  ``UNASSIGNED_VISIBLE_ROLES`` are conceptual groupings whose members are
-  matched by name in the gates (Calling Team gets special unassigned-pool
-  visibility; JSE doesn't).
+- ``crm/overrides/crm_lead_permissions.py`` imports ``TIER1_FULL_RW`` (full-RW
+  bypass), ``FIELD_GATED_RW`` + ``OWNER_SCOPE_ROLES`` (the Management
+  read-only write-override set), and ``STAGE_LOCKED`` / ``QUOTE_SCOPE_ROLES``
+  (roles barred from creating leads). Lead *visibility* is pure-hierarchy
+  (``downstream_users`` over CRM Sales Hierarchy), not matrix-driven — Calling
+  Team additionally owns the ownerless new-lead inbox.
 - The frontend (``frontend/src/stores/users.js``) fetches a JSON-serializable
   subset via :func:`get_hierarchy_role_config` to power ``isManager`` /
   ``isSalesUser`` and the Sales Hierarchy tree's ``canDrop`` rule.
@@ -37,6 +36,7 @@ ROLE_RANK: dict[str, int] = {
 	"ASM": 3,
 	"Sales Executive": 4,
 	"Project Sales Executive": 4,
+	"Spotter": 4,
 	"Jr. Sales Executive": 4,
 	"Management": 4,
 	"Marketing": 4,
@@ -60,16 +60,22 @@ ROLE_PRIORITY: tuple[str, ...] = (
 	"RSM",
 	"Sales Executive",
 	"Project Sales Executive",
+	"Spotter",
 	"Calling Team",
 	"Jr. Sales Executive",
 	"B2F Team",
 	"Estimation Team",
 )
 
-# Access-matrix sets for the CRM Lead 13-role policy. See the docstring in
+# Access-matrix sets for the CRM Lead 14-role policy. See the docstring in
 # ``crm/overrides/crm_lead_permissions.py`` for the full matrix.
-TIER1_FULL_RW: frozenset[str] = frozenset({"System Manager", "Sales Head", "Sales Coordinator"})
-TIER1_READ_ONLY: frozenset[str] = frozenset({"Management"})
+# Tier-1 = full-visibility roles (empty permission-query filter, see every lead
+# incl. ownerless). System Manager / Sales Head / Sales Coordinator are full
+# read-write. Management is also here for VISIBILITY (promoted from the old
+# "read-only across assigned leads" to "sees every lead" on 2026-06-01), but it
+# stays READ-ONLY via its CRM Lead/Deal doctype permission (write=0) — the
+# docperm, not this set, is what blocks Management writes.
+TIER1_FULL_RW: frozenset[str] = frozenset({"System Manager", "Sales Head", "Sales Coordinator", "Management"})
 FIELD_GATED_RW: frozenset[str] = frozenset({"Marketing", "B2F Team"})
 STAGE_LOCKED: dict[str, frozenset[str]] = {
 	"B2F Team": frozenset({"C7"}),
@@ -78,15 +84,6 @@ STAGE_LOCKED: dict[str, frozenset[str]] = {
 # Roles whose lead visibility is gated on an active CRM Quote Request rather
 # than a fixed stage. "Active" = Pending / Quote Received / Revision Requested.
 QUOTE_SCOPE_ROLES: frozenset[str] = frozenset({"Estimation Team"})
-NO_C7_ROLES: frozenset[str] = frozenset({"Calling Team", "Jr. Sales Executive"})
-
-# Roles permitted to view leads with no ``lead_owner`` (the unassigned pool).
-# Tier-1 full-RW already see every lead; Calling Team owns the unassigned
-# inbox because they create + first-touch new leads. Every other role
-# (Management, Marketing, B2F, Estimation, JSE, SE/PSE/ASM/RSM) sees only
-# assigned leads. Owner-scoped roles are unaffected — their query already
-# filters by ``lead_owner``, which naturally excludes unassigned rows.
-UNASSIGNED_VISIBLE_ROLES: frozenset[str] = TIER1_FULL_RW | frozenset({"Calling Team"})
 
 # Owner-scoped roles. ``scope`` is ``"self"`` (owner = user) or ``"downstream"``
 # (owner in the user's CRM Sales Hierarchy subtree). ``lead_type`` restricts the
@@ -94,13 +91,18 @@ UNASSIGNED_VISIBLE_ROLES: frozenset[str] = TIER1_FULL_RW | frozenset({"Calling T
 OWNER_SCOPE_ROLES: dict[str, dict] = {
 	"Sales Executive": {"scope": "self", "lead_type": "Retail"},
 	"Project Sales Executive": {"scope": "self", "lead_type": "Projects"},
+	# Spotter — SE-peer with no lead-type lock: own/assigned leads of any type.
+	"Spotter": {"scope": "self", "lead_type": None},
+	# Jr. Sales Executive — own leads only (no broad pool access), any type.
+	"Jr. Sales Executive": {"scope": "self", "lead_type": None},
 	"ASM": {"scope": "downstream", "lead_type": None},
 	"RSM": {"scope": "downstream", "lead_type": None},
 }
 
-# Downstream-scoped roles — subject to the tree-scoped assignment rule
-# (``crm.overrides.crm_lead_permissions.guard_lead_assignment``). Derived from
-# OWNER_SCOPE_ROLES so adding a new downstream role is a one-line change above.
+# Downstream-scoped roles — subject to the tree-scoped reassignment guard
+# (``CRMLead._check_write_permission`` via ``allowed_assignees``) and used by
+# ``crm.api.session._resolve_allowed_users`` to scope the owner picker. Derived
+# from OWNER_SCOPE_ROLES so adding a new downstream role is a one-line change.
 DOWNSTREAM_SCOPE_ROLES: frozenset[str] = frozenset(
 	r for r, cfg in OWNER_SCOPE_ROLES.items() if cfg["scope"] == "downstream"
 )
@@ -120,8 +122,9 @@ REVIEWER_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
 # below them. Used by ``crm.api.user.update_user_role`` to block demoting a
 # user with active hierarchy responsibility (root node or has direct reports)
 # to a non-managerial profile. System Manager is in the set too but never
-# reaches the gate — it's handled out-of-band in update_user_role.
-MANAGERIAL_ROLES: frozenset[str] = TIER1_FULL_RW | TIER1_READ_ONLY | DOWNSTREAM_SCOPE_ROLES
+# reaches the gate — it's handled out-of-band in update_user_role. (Management
+# is included via TIER1_FULL_RW.)
+MANAGERIAL_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
 
 
 @frappe.whitelist()

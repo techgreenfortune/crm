@@ -116,15 +116,16 @@ class TestCRMDeal(FrappeTestCase):
 		self.assertEqual(deal.phone, "")
 
 	def test_deal_owner_assignment(self):
-		"""Test that deal owner is assigned on creation"""
+		"""deal_owner is stored as the single owner field on creation."""
 		deal = create_test_deal(organization="Owner Test Org", deal_owner="Administrator")
-
-		# Verify deal owner is assigned
-		assignees = deal.get_assigned_users()
-		self.assertIn("Administrator", assignees)
+		self.assertEqual(deal.deal_owner, "Administrator")
 
 	def test_update_deal_owner(self):
-		"""Test updating deal owner assigns and shares with new owner"""
+		"""Updating deal_owner is a single-field write (no ToDo/DocShare).
+
+		Multi-assignee + auto-DocShare were retired — deal_owner is the sole
+		source of truth.
+		"""
 		# Create deal without owner
 		deal = create_test_deal(organization="Update Owner Org")
 		self.assertFalse(deal.deal_owner)
@@ -132,24 +133,8 @@ class TestCRMDeal(FrappeTestCase):
 		# Update deal owner
 		deal.deal_owner = "Administrator"
 		deal.save()
-
-		# Verify assignment and share
 		deal.reload()
 		self.assertEqual(deal.deal_owner, "Administrator")
-		assignees = deal.get_assigned_users()
-		self.assertIn("Administrator", assignees)
-
-		docshare = frappe.db.exists(
-			"DocShare",
-			{"user": "Administrator", "share_name": deal.name, "share_doctype": "CRM Deal"},
-		)
-		self.assertTrue(docshare)
-
-		# Try to assign same agent again - should not duplicate
-		initial_count = len(assignees)
-		deal.assign_agent("Administrator")
-		assignees_after = deal.get_assigned_users()
-		self.assertEqual(len(assignees_after), initial_count)
 
 	def test_add_contact_api(self):
 		"""Test add_contact API function"""
