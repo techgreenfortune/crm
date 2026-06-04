@@ -4,19 +4,27 @@
       <div
         class="activity flex cursor-pointer gap-6 rounded p-2.5 duration-300 ease-in-out hover:bg-surface-gray-1"
         @click="
-          task.task_type === 'upload_quote' || task.task_type === 'review_quote'
+          isQuoteTaskType(task.task_type)
             ? modalRef.showQuoteRequest(
                 task.reference_docname,
-                task.task_type === 'upload_quote'
-                  ? __('Upload Quote')
-                  : __('Review Quote'),
+                quoteTaskTitle(task.task_type),
+                task.quote_request || null,
               )
             : modalRef.showTask(task)
         "
       >
         <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
-          <div class="font-medium text-ink-gray-9 truncate">
-            {{ task.title }}
+          <div class="flex items-center gap-2">
+            <span class="font-medium text-ink-gray-9 truncate">{{
+              task.title
+            }}</span>
+            <Badge
+              v-if="['Done', 'Canceled'].includes(task.status)"
+              :label="__(task.status)"
+              theme="gray"
+              variant="subtle"
+              size="sm"
+            />
           </div>
           <div class="flex gap-1.5 text-ink-gray-8">
             <div class="flex items-center gap-1.5">
@@ -47,23 +55,15 @@
         </div>
         <div class="flex items-center gap-1">
           <Button
-            v-if="
-              task.task_type === 'upload_quote' ||
-              task.task_type === 'review_quote'
-            "
-            :label="
-              task.task_type === 'upload_quote'
-                ? __('Upload Quote')
-                : __('Review Quote')
-            "
+            v-if="isQuoteTaskType(task.task_type)"
+            :label="quoteTaskTitle(task.task_type)"
             variant="subtle"
             size="sm"
             @click.stop="
               modalRef.showQuoteRequest(
                 task.reference_docname,
-                task.task_type === 'upload_quote'
-                  ? __('Upload Quote')
-                  : __('Review Quote'),
+                quoteTaskTitle(task.task_type),
+                task.quote_request || null,
               )
             "
           />
@@ -130,9 +130,13 @@ import TaskPriorityIcon from '@/components/Icons/TaskPriorityIcon.vue'
 import DotIcon from '@/components/Icons/DotIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { formatDate, taskStatusOptions } from '@/utils'
+import {
+  isQuoteTaskType,
+  quoteTaskTitle,
+} from '@/composables/quoteRequestModal'
 import { usersStore } from '@/stores/users'
 import { globalStore } from '@/stores/global'
-import { Tooltip, Dropdown, Button } from 'frappe-ui'
+import { Tooltip, Dropdown, Button, Badge } from 'frappe-ui'
 
 defineProps({
   tasks: { type: Array, default: () => [] },

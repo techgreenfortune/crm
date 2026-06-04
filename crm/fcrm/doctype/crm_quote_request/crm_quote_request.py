@@ -1,7 +1,7 @@
 import frappe
 from frappe.model.document import Document
 
-from crm.permissions.role_config import TIER1_FULL_RW
+from crm.permissions.role_config import REVIEWER_ROLES, TIER1_FULL_RW
 
 # Estimation Team uploads quotes for any lead (including closed ones), so they
 # bypass the lead-scoped filter on top of the tier-1 bypasses.
@@ -48,4 +48,44 @@ def get_permission_query_conditions(user=None):
 
 
 class CRMQuoteRequest(Document):
-	pass
+	def validate(self):
+		self._guard_status_transition()
+		self._validate_mandatory_revision_notes()
+
+	def _guard_status_transition(self):
+		"""Block Estimation Team (and any non-reviewer) from accepting or requesting revision.
+
+		The form script hides the status dropdown for Estimation Team, but a direct
+		frappe.client.set_value call would bypass that. This server-side gate mirrors
+		the form script's canReview logic: lead_owner or REVIEWER_ROLES only.
+		"""
+		old_doc = self.get_doc_before_save()
+		if old_doc is None or old_doc.status == self.status:
+			return
+		if self.status not in ("Accepted", "Revision Requested"):
+			return
+
+		user = frappe.session.user
+		if user == "Administrator":
+			return
+
+		lead_owner = frappe.db.get_value("CRM Lead", self.lead, "lead_owner")
+		if user == lead_owner:
+			return
+
+		user_roles = set(frappe.get_roles(user))
+		if not (user_roles & REVIEWER_ROLES):
+			frappe.throw(
+				frappe._(
+					"Only the Lead Owner or an authorized manager can Accept or Request Revision on a quote."
+				),
+				frappe.PermissionError,
+			)
+
+	def _validate_mandatory_revision_notes(self):
+		if self.status == "Revision Requested":
+			if not (self.revision_notes or "").strip():
+				frappe.throw(
+					frappe._("Revision Notes are required when requesting a revision."),
+					title=frappe._("Revision Notes Required"),
+				)
