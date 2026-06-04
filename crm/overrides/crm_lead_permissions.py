@@ -50,8 +50,21 @@ from crm.permissions.role_config import (
 _ASSIGNED_ONLY_SQL = "(`tabCRM Lead`.lead_owner IS NOT NULL AND `tabCRM Lead`.lead_owner != '')"
 
 # Quote Request statuses that keep an Estimation-pool lead visible — i.e. work
-# is still open. Once a quote is Accepted (terminal) the lead drops off.
+# is still open. Once a QR reaches _TERMINAL_QR_STATUS the lead drops off.
 _ACTIVE_QR_STATUSES = ("Pending", "Quote Received", "Revision Requested")
+_TERMINAL_QR_STATUS = "Accepted"
+
+
+def _estimation_qr_gate(lead_name: str) -> bool:
+	"""True when a lead has at least one active QR and no accepted QR.
+
+	Single round-trip replacing the previous two frappe.db.exists calls.
+	The SQL equivalent lives in get_permission_query_conditions (Estimation block).
+	Both must stay in lockstep — update _ACTIVE_QR_STATUSES / _TERMINAL_QR_STATUS
+	to change the gate for both paths at once.
+	"""
+	statuses = set(frappe.db.get_all("CRM Quote Request", filters={"lead": lead_name}, pluck="status"))
+	return bool(statuses & set(_ACTIVE_QR_STATUSES)) and _TERMINAL_QR_STATUS not in statuses
 
 
 def has_permission(doc, ptype, user):
@@ -67,8 +80,8 @@ def has_permission(doc, ptype, user):
 	    ``_check_write_permission``).
 	  - B2F Team (pool) → all assigned C7 leads.
 	  - Estimation Team (pool) → all assigned leads with an active Quote Request
-	    (Pending / Quote Received / Revision Requested — i.e. until one is
-	    Accepted).
+	    (Pending / Quote Received / Revision Requested) and no Accepted QR
+	    (Accepted is terminal).
 	  - Owner-scoped (SE = own Retail, PSE = own Projects, Spotter/JSE = own any
 	    type, ASM/RSM = own + downstream subtree any type).
 
@@ -133,12 +146,11 @@ def has_permission(doc, ptype, user):
 	if status in pool_stages and not is_unassigned:
 		return True
 
-	# Estimation Team (pool) — all assigned leads with an active QR.
+	# Estimation Team (pool) — all assigned leads with an active QR and no Accepted QR.
+	# Accepted is terminal; the UI disables re-requesting once any QR is Accepted.
+	# SQL mirror: get_permission_query_conditions Estimation block.
 	if roles & QUOTE_SCOPE_ROLES and not is_unassigned:
-		if frappe.db.exists(
-			"CRM Quote Request",
-			{"lead": name, "status": ["in", list(_ACTIVE_QR_STATUSES)]},
-		):
+		if _estimation_qr_gate(name):
 			return True
 
 	# Owner-scoped roles (SE/PSE type-locked; Spotter/JSE any-type self;
@@ -193,7 +205,8 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		stages_sql = ",".join(esc(s) for s in sorted(pool_stages))
 		clauses.append(f"(`tabCRM Lead`.status IN ({stages_sql}) AND {_ASSIGNED_ONLY_SQL})")
 
-	# Estimation Team (pool) — assigned leads with an active QR.
+	# Estimation Team (pool) — assigned leads with an active QR and no accepted QR.
+	# Python mirror: _estimation_qr_gate(). Both driven by _ACTIVE_QR_STATUSES / _TERMINAL_QR_STATUS.
 	if roles & QUOTE_SCOPE_ROLES:
 		qr_statuses_sql = ",".join(esc(s) for s in _ACTIVE_QR_STATUSES)
 		active_qr_sql = (
@@ -201,7 +214,12 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 			"WHERE `tabCRM Quote Request`.lead = `tabCRM Lead`.name "
 			f"AND `tabCRM Quote Request`.status IN ({qr_statuses_sql}))"
 		)
-		clauses.append(f"({active_qr_sql} AND {_ASSIGNED_ONLY_SQL})")
+		no_accepted_qr_sql = (
+			"NOT EXISTS (SELECT 1 FROM `tabCRM Quote Request` "
+			"WHERE `tabCRM Quote Request`.lead = `tabCRM Lead`.name "
+			f"AND `tabCRM Quote Request`.status = {esc(_TERMINAL_QR_STATUS)})"
+		)
+		clauses.append(f"({active_qr_sql} AND {no_accepted_qr_sql} AND {_ASSIGNED_ONLY_SQL})")
 
 	# Owner-scoped roles — one clause each, type-locked for SE/PSE.
 	downstream: set[str] | None = None
