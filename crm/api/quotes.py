@@ -173,6 +173,7 @@ def request_quote(lead: str) -> str:
 					"title": f"Upload Quote — {lead_doc.lead_name or lead}",
 					"status": "Todo",
 					"priority": "High",
+					"due_date": frappe.utils.add_days(frappe.utils.today(), 2),
 					"reference_doctype": "CRM Lead",
 					"reference_docname": lead,
 					"quote_request": qr.name,

@@ -12,6 +12,7 @@
     "status",
     "requested_by",
     "requested_on",
+    "prepared_by",
     "column_break_1",
     "quote_file",
     "quote_value",
@@ -81,6 +82,12 @@
       "fieldtype": "Date",
       "label": "Requested On",
       "read_only": 1
+    },
+    {
+      "fieldname": "prepared_by",
+      "fieldtype": "Table",
+      "label": "Prepared By",
+      "options": "CRM Quote Preparer"
     },
     {
       "fieldname": "column_break_1",
