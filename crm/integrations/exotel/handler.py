@@ -47,9 +47,10 @@ def handle_request(**kwargs):
 			f"Status={call_payload.get('Status')} Direction={call_payload.get('Direction')} "
 			f"CallSid={call_payload.get('CallSid')}"
 		)
-		frappe.publish_realtime("exotel_call", call_payload)
+		agent_email = call_payload.get("AgentEmail")
+		frappe.publish_realtime("exotel_call", call_payload, user=agent_email or None)
 		frappe.logger("exotel").info(
-			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')}"
+			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} AgentEmail={agent_email}"
 		)
 		status = call_payload.get("Status")
 		if status == "free":
