@@ -458,7 +458,7 @@ const isSavingDisposition = ref(false)
 
 const lastSocketAt = ref(Date.now())
 let staleCheckTimer = null
-const PRE_ANSWER_STALE_MS = 30 * 1000
+const PRE_ANSWER_STALE_MS = 90 * 1000
 const ACTIVE_STALE_MS = 60 * 1000
 const IN_PROGRESS_STALE_MS = 30 * 60 * 1000
 const STALE_CHECK_INTERVAL_MS = 10 * 1000
