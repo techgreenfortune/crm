@@ -194,6 +194,9 @@ doc_events = {
 	"CRM Task": {
 		"before_save": ["crm.fcrm.doctype.crm_task.crm_task.validate_write_permission"],
 	},
+	"CRM Quote Request": {
+		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
+	},
 }
 
 # Fixtures

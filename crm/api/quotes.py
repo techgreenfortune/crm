@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 
+from crm.integrations.brevo.quote_emails import fire_quote_requested
 from crm.utils import notify_role_users
 
 
@@ -29,6 +30,7 @@ def _notify_estimation_team_on_quote_request(
 		document_name=qr_name,
 		skip_user=requester,
 	)
+	fire_quote_requested(qr_name)
 
 
 @frappe.whitelist()
