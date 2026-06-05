@@ -795,6 +795,7 @@ function makeOutgoingCall(number, context) {
 function setup() {
   dispositionsResource.fetch()
   restorePopupState()
+  $socket.off('exotel_call')
   $socket.on('exotel_call', (data) => {
     lastSocketAt.value = Date.now()
     callData.value = data
@@ -804,6 +805,7 @@ function setup() {
     const { user } = sessionStore()
 
     if (!showCallPopup.value && !showSmallCallPopup.value) {
+      if (callTerminated.value) return
       if (data.AgentEmail && data.AgentEmail == (user || user.value)) {
         // Incoming call
         phoneNumber.value = data.CallFrom || data.From
