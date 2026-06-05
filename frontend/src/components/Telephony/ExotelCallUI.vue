@@ -458,7 +458,7 @@ const isSavingDisposition = ref(false)
 
 const lastSocketAt = ref(Date.now())
 let staleCheckTimer = null
-const PRE_ANSWER_STALE_MS = 30 * 1000
+const PRE_ANSWER_STALE_MS = 90 * 1000
 const ACTIVE_STALE_MS = 60 * 1000
 const IN_PROGRESS_STALE_MS = 30 * 60 * 1000
 const STALE_CHECK_INTERVAL_MS = 10 * 1000
@@ -795,6 +795,7 @@ function makeOutgoingCall(number, context) {
 function setup() {
   dispositionsResource.fetch()
   restorePopupState()
+  $socket.off('exotel_call')
   $socket.on('exotel_call', (data) => {
     lastSocketAt.value = Date.now()
     callData.value = data
@@ -804,6 +805,7 @@ function setup() {
     const { user } = sessionStore()
 
     if (!showCallPopup.value && !showSmallCallPopup.value) {
+      if (callTerminated.value) return
       if (data.AgentEmail && data.AgentEmail == (user || user.value)) {
         // Incoming call
         phoneNumber.value = data.CallFrom || data.From
