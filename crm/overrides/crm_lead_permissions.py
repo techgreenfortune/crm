@@ -1,84 +1,98 @@
-"""CRM Lead permissions for the 13-role IndiFrame access matrix.
+"""CRM Lead permissions — pure-hierarchy visibility + per-role write locks.
 
 Implements:
 - ``has_permission`` hook (single-doc gate).
 - ``get_permission_query_conditions`` (list-level filter; wired in hooks.py).
-- ``downstream_users`` helper for ASM/RSM scoping. Reads from the
-  ``CRM Sales Hierarchy`` NestedSet doctype (adopted from upstream PR #2120
-  while keeping our 13-role matrix as the policy layer).
+- ``downstream_users`` helper — reads the ``CRM Sales Hierarchy`` NestedSet
+  (adopted from upstream PR #2120) to expand a user into their subtree.
+- ``allowed_assignees`` — the ASM/RSM reassign guard used by
+  ``CRMLead._check_write_permission``.
 
-Access matrix:
+Visibility (read):
 
-- Admin / System Manager / Sales Head / Sales Coordinator: full RW, incl. unassigned
-- Calling Team: all non-C7 leads, incl. unassigned
-- Management: read-only across assigned leads
-- Marketing: read all assigned + write (field-level lock in CRMLead.validate())
-- B2F Team: C7 assigned only + field-locked writes
-- Estimation Team: assigned leads with an active (Pending / Quote Received / Revision Requested) Quote Request
-- Jr. Sales Executive: all non-C7 assigned leads (no unassigned pool access)
-- Sales Executive: own leads, ``custom_lead_type == 'Retail'`` only
-- Project Sales Executive: own leads, ``custom_lead_type == 'Projects'`` only
-- ASM / RSM: own + downstream-chain leads, any lead type
+- Admin / System Manager / Sales Head / Sales Coordinator (``TIER1_FULL_RW``):
+  every lead, including ownerless.
+- Calling Team: all non-C7 leads incl. ownerless — the new-lead inbox.
+- Everyone else: a lead is visible iff its ``lead_owner`` is the user OR a
+  member of the user's CRM Sales Hierarchy subtree (``downstream_users``).
+  A lead owned by someone outside the viewer's tree — or with no owner — is
+  invisible. So an orphan-owned lead is seen only by its owner + admin, and
+  upstream managers see every lead owned by anyone below them.
 
-The Retail/Projects split applies only to the leaf-level Sales Executive /
-Project Sales Executive roles. Managers (ASM / RSM) see every lead owned by
-anyone in their downstream chain regardless of lead type — so a lead assigned
-to a Sales Executive (Retail) and an Engineer-PSE under the same ASM are both
-visible to that ASM and to the RSM above them.
+Write locks (layered on top — these survive the read model):
 
-Unassigned leads (``lead_owner`` is NULL/empty) are visible only to
-``UNASSIGNED_VISIBLE_ROLES`` — Tier-1 full-RW plus Calling Team. Every other
-role sees only leads with an owner.
+- Management (without a writable role) is read-only.
+- Marketing / B2F field whitelists + the ASM/RSM cross-team reassign guard
+  are enforced in ``CRMLead._check_write_permission``.
+- STAGE_LOCKED / QUOTE_SCOPE roles cannot create leads.
 
-Multi-role users get the union of allow-clauses. The list-level query and the
-single-doc gate must stay consistent — both call the same role-tier helpers.
+The list-level query and the single-doc gate must stay consistent — both use
+``downstream_users`` and encode the same Calling-Team / owner-scope rules.
 
 Onboarding: invite the user via Settings → Invite Users, then add them to the
-Sales Hierarchy tree at Settings → Sales Hierarchy if they participate in
-ASM/RSM downstream scoping. Cache invalidates on every hierarchy save.
+Sales Hierarchy tree at Settings → Sales Hierarchy so their leads roll up to
+their managers. Cache invalidates on every hierarchy save.
 """
 
 import frappe
 from frappe import _
 
 from crm.permissions.role_config import (
-	DOWNSTREAM_SCOPE_ROLES,
-	FIELD_GATED_RW,
 	OWNER_SCOPE_ROLES,
 	QUOTE_SCOPE_ROLES,
 	STAGE_LOCKED,
 	TIER1_FULL_RW,
-	TIER1_READ_ONLY,
 )
 
-# SQL fragment for "the lead has an owner" — used to gate non-tier-1,
-# non-Calling-Team roles out of the unassigned pool.
+# SQL fragment for "the lead has an owner" — the pool/broad-read roles
+# (Marketing / B2F / Estimation) see only ASSIGNED leads; ownerless leads stay
+# tier-1 + Calling-Team only.
 _ASSIGNED_ONLY_SQL = "(`tabCRM Lead`.lead_owner IS NOT NULL AND `tabCRM Lead`.lead_owner != '')"
 
-# Quote Request statuses that mean Estimation Team still has work to do on the lead.
+# Quote Request statuses that keep an Estimation-pool lead visible — i.e. work
+# is still open. Once a QR reaches _TERMINAL_QR_STATUS the lead drops off.
 _ACTIVE_QR_STATUSES = ("Pending", "Quote Received", "Revision Requested")
+_TERMINAL_QR_STATUS = "Accepted"
+
+
+def _estimation_qr_gate(lead_name: str) -> bool:
+	"""True when a lead has at least one active QR and no accepted QR.
+
+	Single round-trip replacing the previous two frappe.db.exists calls.
+	The SQL equivalent lives in get_permission_query_conditions (Estimation block).
+	Both must stay in lockstep — update _ACTIVE_QR_STATUSES / _TERMINAL_QR_STATUS
+	to change the gate for both paths at once.
+	"""
+	statuses = set(frappe.db.get_all("CRM Quote Request", filters={"lead": lead_name}, pluck="status"))
+	return bool(statuses & set(_ACTIVE_QR_STATUSES)) and _TERMINAL_QR_STATUS not in statuses
 
 
 def has_permission(doc, ptype, user):
-	"""Single-doc gate for the CRM Lead 13-role access matrix.
+	"""Single-doc gate for CRM Lead. Visibility is the UNION of every gate the
+	user's roles unlock — the same set of clauses :func:`get_permission_query_conditions`
+	OR's together, so the two stay in lockstep (round-trip tested).
 
-	The matching list-level filter is :func:`get_permission_query_conditions`
-	(wired via ``permission_query_conditions`` in hooks.py). Both must apply
-	the same rules so that ``/api/resource/CRM Lead/<name>`` can't reach a
-	doc that the list view filtered out.
+	Gates:
+	  - Administrator / ``TIER1_FULL_RW`` (System Manager, Sales Head, Sales
+	    Coordinator, Management) → every lead, full read-write.
+	  - Calling Team → all non-C7 leads incl. ownerless (new-lead inbox).
+	  - Marketing → all assigned leads (writes field-locked in
+	    ``_check_write_permission``).
+	  - B2F Team (pool) → all assigned C7 leads.
+	  - Estimation Team (pool) → all assigned leads with an active Quote Request
+	    (Pending / Quote Received / Revision Requested) and no Accepted QR
+	    (Accepted is terminal).
+	  - Owner-scoped (SE = own Retail, PSE = own Projects, Spotter/JSE = own any
+	    type, ASM/RSM = own + downstream subtree any type).
 
-	Note: Frappe's share grant is OR'd with this hook — if the lead is shared
-	with the user (auto-share on assignment, manual share), they see it even
-	if this hook returns False. The list query is the hard exclusion.
+	Ownerless leads are visible only to tier-1 + Calling Team. Reassignment
+	targets are validated separately by the write guard. Frappe's share grant is
+	OR'd with this hook by the framework.
 	"""
 	if user == "Administrator":
 		return True
 
 	roles = set(frappe.get_roles(user))
-	if "System Manager" in roles:
-		return True
-
-	# Tier-1 full-RW (Sales Head / Sales Coordinator) — see every lead.
 	if roles & TIER1_FULL_RW:
 		return True
 
@@ -96,40 +110,35 @@ def has_permission(doc, ptype, user):
 	if not doc or isinstance(doc, str):
 		return True
 
-	status = getattr(doc, "status", None)
-	owner = getattr(doc, "lead_owner", None)
-	lead_type = getattr(doc, "custom_lead_type", None)
+	# Base visibility on the PERSISTED owner/status/type for an existing doc, not
+	# the in-memory values. A pending ``lead_owner`` change (reassignment) is
+	# validated separately by the write guard in CRMLead._check_write_permission;
+	# if we used the in-memory new owner here, an owner handing a lead UP to their
+	# manager would lose write access mid-save (the new owner is outside their
+	# subtree) and Frappe would block the very save that performs the handoff.
+	name = getattr(doc, "name", None)
+	persisted = (
+		frappe.db.get_value("CRM Lead", name, ["lead_owner", "status", "custom_lead_type"], as_dict=True)
+		if name
+		else None
+	)
+	if persisted:
+		owner, status, lead_type = persisted.lead_owner, persisted.status, persisted.custom_lead_type
+	else:
+		owner = getattr(doc, "lead_owner", None)
+		status = getattr(doc, "status", None)
+		lead_type = getattr(doc, "custom_lead_type", None)
 	is_unassigned = not owner
 
-	# Calling Team — read+write non-C7 leads, INCLUDING unassigned. Owns the
-	# new-lead inbox.
+	# Calling Team — new-lead inbox: all non-C7 leads incl. ownerless.
 	if "Calling Team" in roles and status != "C7":
 		return True
 
-	# Management is read-only on assigned leads — unless the user ALSO carries
-	# a writable role (Marketing / B2F / an owner-scoped role / a stage pool /
-	# JSE). In that case the writable role wins via the union below. Unassigned
-	# leads are gated out regardless.
-	if roles & TIER1_READ_ONLY and not (
-		roles & (FIELD_GATED_RW | set(OWNER_SCOPE_ROLES) | set(STAGE_LOCKED) | {"Jr. Sales Executive"})
-	):
-		return ptype == "read" and not is_unassigned
-
-	# Marketing: read-all assigned + writes pass here (field-level locks in
-	# CRMLead._check_write_permission).
+	# Marketing — read all assigned leads (write field-locked in validate).
 	if "Marketing" in roles and not is_unassigned:
 		return True
 
-	# Quote-scoped roles (Estimation Team) — assigned leads with an active QR.
-	if roles & QUOTE_SCOPE_ROLES and not is_unassigned:
-		active_qr = frappe.db.exists(
-			"CRM Quote Request",
-			{"lead": doc.name, "status": ["in", list(_ACTIVE_QR_STATUSES)]},
-		)
-		if active_qr:
-			return True
-
-	# Stage-locked pool roles — assigned leads only.
+	# B2F Team (pool) — all assigned leads at a stage-locked status (C7).
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
 		if role in roles:
@@ -137,14 +146,15 @@ def has_permission(doc, ptype, user):
 	if status in pool_stages and not is_unassigned:
 		return True
 
-	# Jr. Sales Executive — non-C7 assigned leads. (Calling Team is handled
-	# above with broader access incl. unassigned.)
-	if "Jr. Sales Executive" in roles and status != "C7" and not is_unassigned:
-		return True
+	# Estimation Team (pool) — all assigned leads with an active QR and no Accepted QR.
+	# Accepted is terminal; the UI disables re-requesting once any QR is Accepted.
+	# SQL mirror: get_permission_query_conditions Estimation block.
+	if roles & QUOTE_SCOPE_ROLES and not is_unassigned:
+		if _estimation_qr_gate(name):
+			return True
 
-	# Owner-scoped roles. SE/PSE are also lead-type-scoped (Retail / Projects);
-	# ASM/RSM see any lead type within their downstream chain. Unassigned leads
-	# are naturally excluded because owner != user / not in downstream set.
+	# Owner-scoped roles (SE/PSE type-locked; Spotter/JSE any-type self;
+	# ASM/RSM any-type downstream subtree).
 	for role, rule in OWNER_SCOPE_ROLES.items():
 		if role not in roles:
 			continue
@@ -159,96 +169,79 @@ def has_permission(doc, ptype, user):
 
 
 def get_permission_query_conditions(user: str | None = None) -> str:
-	"""List-level filter for CRM Lead.
+	"""List-level filter for CRM Lead — the SQL union mirroring :func:`has_permission`.
 
-	Wired via ``permission_query_conditions["CRM Lead"]`` in hooks.py. Returns
-	a SQL WHERE clause (or empty string for "no filter"). Mirrors the rules
-	in :func:`has_permission` exactly — the two gates must agree.
-
-	Replaces the legacy "CRM Lead — Permission Query" Server Script, which
-	failed under safe_exec because ``frappe.get_attr`` is not exposed in the
-	RestrictedPython sandbox (blocking every ASM/RSM list view).
+	Wired via ``permission_query_conditions["CRM Lead"]`` in hooks.py. Returns a
+	SQL WHERE clause (or "" for "no filter"). Builds one clause per gate the
+	user's roles unlock and OR's them, so it agrees with the single-doc gate
+	(round-trip tested). Replaces the legacy "CRM Lead — Permission Query" Server
+	Script, which failed under safe_exec (``frappe.get_attr`` not whitelisted).
 	"""
 	user = user or frappe.session.user
 	if user == "Administrator":
 		return ""
 
 	roles = set(frappe.get_roles(user))
-
-	# Tier-1 full-RW — see every lead including unassigned.
 	if roles & TIER1_FULL_RW:
 		return ""
 
-	# Calling Team — non-C7 leads, INCLUDING unassigned (the new-lead inbox).
+	esc = frappe.db.escape
+	clauses: list[str] = []
+
+	# Calling Team — new-lead inbox: all non-C7 leads incl. ownerless.
 	if "Calling Team" in roles:
-		return "(`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL)"
+		clauses.append("(`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL)")
 
-	# Every other role below sees only ASSIGNED leads (lead_owner present).
-	# Unassigned-pool visibility is restricted to UNASSIGNED_VISIBLE_ROLES,
-	# which is Tier-1 full-RW + Calling Team (both handled above).
+	# Marketing — all assigned leads.
+	if "Marketing" in roles:
+		clauses.append(_ASSIGNED_ONLY_SQL)
 
-	# Read-all roles (Management read-only, Marketing) — assigned only.
-	if roles & (TIER1_READ_ONLY | {"Marketing"}):
-		return _ASSIGNED_ONLY_SQL
-
-	# Stage-locked pools (B2F = C7) — assigned only.
+	# B2F Team (pool) — assigned leads at a stage-locked status (C7).
 	pool_stages: set[str] = set()
 	for role, stages in STAGE_LOCKED.items():
 		if role in roles:
 			pool_stages |= stages
 	if pool_stages:
-		stages_sql = ",".join(f"'{s}'" for s in sorted(pool_stages))
-		return f"(`tabCRM Lead`.status IN ({stages_sql}) AND {_ASSIGNED_ONLY_SQL})"
+		stages_sql = ",".join(esc(s) for s in sorted(pool_stages))
+		clauses.append(f"(`tabCRM Lead`.status IN ({stages_sql}) AND {_ASSIGNED_ONLY_SQL})")
 
-	# Quote-scoped roles (Estimation Team) — assigned leads with an active QR.
+	# Estimation Team (pool) — assigned leads with an active QR and no accepted QR.
+	# Python mirror: _estimation_qr_gate(). Both driven by _ACTIVE_QR_STATUSES / _TERMINAL_QR_STATUS.
 	if roles & QUOTE_SCOPE_ROLES:
-		_qr_statuses_sql = ",".join(f"'{s}'" for s in _ACTIVE_QR_STATUSES)
+		qr_statuses_sql = ",".join(esc(s) for s in _ACTIVE_QR_STATUSES)
 		active_qr_sql = (
 			"EXISTS (SELECT 1 FROM `tabCRM Quote Request` "
 			"WHERE `tabCRM Quote Request`.lead = `tabCRM Lead`.name "
-			f"AND `tabCRM Quote Request`.status IN ({_qr_statuses_sql}))"
+			f"AND `tabCRM Quote Request`.status IN ({qr_statuses_sql}))"
 		)
-		return f"({active_qr_sql} AND {_ASSIGNED_ONLY_SQL})"
+		no_accepted_qr_sql = (
+			"NOT EXISTS (SELECT 1 FROM `tabCRM Quote Request` "
+			"WHERE `tabCRM Quote Request`.lead = `tabCRM Lead`.name "
+			f"AND `tabCRM Quote Request`.status = {esc(_TERMINAL_QR_STATUS)})"
+		)
+		clauses.append(f"({active_qr_sql} AND {no_accepted_qr_sql} AND {_ASSIGNED_ONLY_SQL})")
 
-	# Jr. Sales Executive — non-C7 assigned only.
-	if "Jr. Sales Executive" in roles:
-		return f"((`tabCRM Lead`.status != 'C7' OR `tabCRM Lead`.status IS NULL) AND {_ASSIGNED_ONLY_SQL})"
-
-	# Owner-scoped roles. Build one clause per role the user holds; OR them.
-	esc = frappe.db.escape
-	clauses: list[str] = []
+	# Owner-scoped roles — one clause each, type-locked for SE/PSE.
+	downstream: set[str] | None = None
 	for role, rule in OWNER_SCOPE_ROLES.items():
 		if role not in roles:
 			continue
 		if rule["scope"] == "self":
 			owner_clause = f"`tabCRM Lead`.lead_owner = {esc(user)}"
 		else:  # downstream
-			downstream = downstream_users(user)
+			if downstream is None:
+				downstream = downstream_users(user)
 			in_list = ",".join(esc(u) for u in sorted(downstream)) or esc(user)
 			owner_clause = f"`tabCRM Lead`.lead_owner IN ({in_list})"
 		if rule["lead_type"]:
-			clauses.append(f"(`tabCRM Lead`.custom_lead_type = '{rule['lead_type']}' AND {owner_clause})")
+			clauses.append(f"(`tabCRM Lead`.custom_lead_type = {esc(rule['lead_type'])} AND {owner_clause})")
 		else:
 			clauses.append(f"({owner_clause})")
 
-	# DocShare fallback: a lead explicitly shared with the user (e.g. via the
-	# AssignTo button, which calls frappe.assign_to.add and auto-creates a
-	# DocShare) must appear in their list view even if lead_owner is outside
-	# their tree scope. This mirrors the share-OR behaviour that has_permission
-	# already relies on from the Frappe framework.
-	docshare_sql = (
-		f"EXISTS (SELECT 1 FROM `tabDocShare` "
-		f"WHERE `tabDocShare`.share_doctype = 'CRM Lead' "
-		f"AND `tabDocShare`.share_name = `tabCRM Lead`.name "
-		f"AND `tabDocShare`.user = {esc(user)} "
-		f"AND `tabDocShare`.`read` = 1)"
-	)
-
 	if not clauses:
-		# No owner-scope rule applies, but an explicit share grant should still
-		# surface the lead (mirrors has_permission share-OR).
-		return f"({docshare_sql})"
-	return "(" + " OR ".join(clauses) + f" OR {docshare_sql})"
+		# No role grants any visibility — see nothing.
+		return "1=0"
+	return "(" + " OR ".join(clauses) + ")"
 
 
 def downstream_users(user: str) -> set[str]:
@@ -294,7 +287,7 @@ def bust_downstream_users_cache(doc=None, method=None):
 
 
 # ----------------------------------------------------------------------------
-# Tree-scoped lead assignment guard (ASM / RSM)
+# Tree-scoped lead reassignment guard (ASM / RSM)
 # ----------------------------------------------------------------------------
 #
 # Restricts who an ASM/RSM placed in CRM Sales Hierarchy may hand a lead to:
@@ -303,21 +296,15 @@ def bust_downstream_users_cache(doc=None, method=None):
 # isn't blocked. Tier-1 (System Manager / Sales Head / Sales Coordinator)
 # bypass too — they keep cross-team transfer rights.
 #
-# Enforced in two places that must stay in sync:
-#   - CRMLead._check_write_permission (lead_owner field change)
-#   - guard_lead_assignment (ToDo before_insert; covers _assign + bulk paths)
+# Enforced in ``CRMLead._check_write_permission`` on a ``lead_owner`` change.
+# (The legacy ToDo ``before_insert`` guard was retired with multi-assignee —
+# lead ownership is now a single ``lead_owner`` field, so the field-change path
+# is the only assignment vector.)
 # ----------------------------------------------------------------------------
-
-# Roles subject to the tree-scoped assignment rule come from role_config's
-# OWNER_SCOPE_ROLES (`scope == "downstream"`). Tier-1 (TIER1_FULL_RW) bypass
-# the guard — they keep cross-team transfer rights. SE/PSE are self-scope
-# leaves; JSE / Calling Team are pool-based — none of them have a meaningful
-# "tree" to restrict to, so they're excluded by virtue of not being in
-# DOWNSTREAM_SCOPE_ROLES.
 
 
 def allowed_assignees(user: str) -> set[str] | None:
-	"""Return users ``user`` may assign CRM Leads to: downstream subtree
+	"""Return users ``user`` may set as ``lead_owner``: downstream subtree
 	plus direct upline (1 step). Returns ``None`` if ``user`` has no node
 	in ``CRM Sales Hierarchy`` — caller skips the check (orphan / newly
 	onboarded)."""
@@ -335,52 +322,3 @@ def allowed_assignees(user: str) -> set[str] | None:
 		if parent_user:
 			allowed.add(parent_user)
 	return allowed
-
-
-def guard_lead_assignment(doc, method=None):
-	"""ToDo ``before_insert`` hook — blocks an ASM/RSM from creating an
-	``_assign`` ToDo against a CRM Lead for a user outside their tree.
-	Covers both the single (``assign_to.add``) and bulk
-	(``assign_to.add_multiple``) flows since both create ToDo rows under
-	the hood. Mirrors the ``lead_owner``-change guard in CRMLead."""
-	if getattr(doc, "reference_type", None) != "CRM Lead":
-		return
-	user = frappe.session.user
-	if user == "Administrator" or frappe.flags.get("ignore_permissions"):
-		return
-	roles = set(frappe.get_roles(user))
-	if roles & TIER1_FULL_RW:
-		return
-
-	# Mirror _resolve_allowed_users priority order so the backend guard and the
-	# frontend picker are always consistent:
-	#   1. DOWNSTREAM roles → hierarchy check (co-held pool role doesn't block)
-	#   2. All CRM roles are pool roles → blocked
-	#   3. Otherwise (SE/PSE/Marketing/Calling/etc.) → unrestricted, skip check
-	if roles & DOWNSTREAM_SCOPE_ROLES:
-		allowed = allowed_assignees(user)
-		if allowed is None:
-			# Orphan / newly-onboarded — skip the check.
-			return
-		allocated_to = getattr(doc, "allocated_to", None)
-		if allocated_to and allocated_to not in allowed:
-			frappe.throw(
-				_(
-					"You can only assign leads to users in your team (your reports "
-					"or your manager). {0} is outside your tree — escalate to Sales "
-					"Head for cross-team transfers."
-				).format(allocated_to),
-				frappe.PermissionError,
-				title=_("Out-of-tree Assignment Blocked"),
-			)
-		return
-
-	from crm.permissions.role_config import ASSIGN_BLOCKED_ROLES, ROLE_RANK
-
-	unblocked = roles & (frozenset(ROLE_RANK) - ASSIGN_BLOCKED_ROLES)
-	if not unblocked:
-		frappe.throw(
-			_("Your role does not allow assigning CRM Leads."),
-			frappe.PermissionError,
-			title=_("Assignment Blocked"),
-		)

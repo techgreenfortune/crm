@@ -54,7 +54,6 @@ import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import EmailTemplateIcon from '@/components/Icons/EmailTemplateIcon.vue'
 import SettingsIcon from '@/components/Icons/SettingsIcon.vue'
-import SettingsIcon2 from '@/components/Icons/SettingsIcon2.vue'
 import Users from '@/components/Settings/Users.vue'
 import Hierarchy from '@/components/Settings/Hierarchy/Hierarchy.vue'
 import InviteUserPage from '@/components/Settings/InviteUserPage.vue'
@@ -83,7 +82,6 @@ import {
 } from '@/composables/settings'
 import { Dialog, Avatar } from 'frappe-ui'
 import { ref, markRaw, computed, watch, h } from 'vue'
-import AssignmentRulePage from './AssignmentRules/AssignmentRulePage.vue'
 
 const { isManager, getUser } = usersStore()
 
@@ -176,17 +174,6 @@ const tabs = computed(() => {
           component: markRaw(EmailTemplatePage),
         },
       ],
-    },
-    {
-      label: __('Automation & Rules'),
-      items: [
-        {
-          label: __('Assignment Rules'),
-          icon: markRaw(h(SettingsIcon2, { class: 'rotate-90' })),
-          component: markRaw(AssignmentRulePage),
-        },
-      ],
-      condition: () => isManager(),
     },
     {
       label: __('Customization'),

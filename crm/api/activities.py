@@ -488,6 +488,9 @@ def get_linked_calls(name: str):
 				"priority",
 				"status",
 				"modified",
+				"creation",
+				"reference_docname",
+				"quote_request",
 			],
 		)
 		user = frappe.session.user
@@ -548,6 +551,7 @@ def get_linked_tasks(name: str):
 			"modified",
 			"creation",
 			"reference_docname",
+			"quote_request",
 		],
 	)
 	if tasks:
@@ -616,12 +620,13 @@ def is_translatable(doctype: str) -> bool:
 def get_quote_revisions(lead: str) -> list[dict]:
 	"""Return per-round quote-upload history for the lead.
 
-	The Quote Request flow uses one QR per lead (status flips through Pending →
-	Quote Received → Revision Requested → Quote Received → Accepted). Each
-	`→ Quote Received` transition writes an `[AUTOMATION] Quote uploaded — …`
-	Comment and each `→ Revision Requested` transition writes an
-	`[AUTOMATION] Quote revision requested: …` Comment on the parent CRM Lead.
-	We parse both to reconstruct the full revision history.
+	Each revision cycle creates a new CRM Quote Request (the old one is marked
+	is_superseded). Each `→ Quote Received` transition writes an
+	`[AUTOMATION] Quote uploaded — …` Comment and each `→ Revision Requested`
+	transition writes an `[AUTOMATION] Quote revision requested: …` Comment on
+	the parent CRM Lead. We parse both to reconstruct the full revision history
+	and attribute each round to its QR by matching upload-comment timestamps
+	against QR creation timestamps.
 
 	Returned shape (one entry per round, oldest first):
 	    [
@@ -640,13 +645,15 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	if not frappe.has_permission("CRM Lead", "read", lead):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	qrs = frappe.get_all(
+	# Fetch QRs with creation timestamp, oldest first, so we can attribute each
+	# upload round to the QR that was active when the comment was written.
+	qr_data = frappe.get_all(
 		"CRM Quote Request",
 		filters={"lead": lead},
-		fields=["name"],
-		pluck="name",
+		fields=["name", "creation"],
+		order_by="creation asc",
 	)
-	if not qrs:
+	if not qr_data:
 		return []
 
 	all_comments = frappe.get_all(
@@ -674,10 +681,18 @@ def get_quote_revisions(lead: str) -> list[dict]:
 				if next_upload_time is None or rc["creation"] < next_upload_time:
 					revision_after = _extract_revision_notes(rc["content"])
 					break
+
+		# Match this upload comment to the QR that was created most recently
+		# before (or at) the comment timestamp — works for single and multi-QR leads.
+		qr_name = None
+		for qr in qr_data:
+			if qr["creation"] <= c["creation"]:
+				qr_name = qr["name"]
+
 		revisions.append(
 			{
 				"round": round_idx,
-				"quote_request": qrs[0] if len(qrs) == 1 else None,
+				"quote_request": qr_name,
 				"value": _extract_currency(c["content"], "Value: "),
 				"margin": _extract_currency(c["content"], "Margin: ", trailing="%"),
 				"file_url": _extract_file_url(c["content"]),

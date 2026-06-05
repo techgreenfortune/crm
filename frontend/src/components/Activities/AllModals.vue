@@ -44,17 +44,36 @@ async function requestQuote(leadName) {
   }
 }
 
-async function showQuoteRequest(leadName, title = 'Quote Request') {
-  const rows = await call('frappe.client.get_list', {
-    doctype: 'CRM Quote Request',
-    filters: { lead: leadName },
-    fields: ['name'],
-    order_by: 'creation desc',
-    limit: 1,
-  })
-  if (!rows?.length) return
+async function showQuoteRequest(
+  leadName,
+  title = 'Quote Request',
+  qrName = null,
+) {
+  let resolvedName = qrName
+  if (resolvedName) {
+    // Verify QR belongs to this lead — guards stale FK from corrupted task data
+    const verified = await call('frappe.client.get_value', {
+      doctype: 'CRM Quote Request',
+      filters: { name: resolvedName, lead: leadName },
+      fieldname: 'name',
+    })
+    if (!verified) {
+      toast.error(__('This task is not linked to a valid Quote Request.'))
+      return
+    }
+  } else {
+    const rows = await call('frappe.client.get_list', {
+      doctype: 'CRM Quote Request',
+      filters: { lead: leadName, is_superseded: 0 },
+      fields: ['name'],
+      order_by: 'creation desc',
+      limit: 1,
+    })
+    if (!rows?.length) return
+    resolvedName = rows[0].name
+  }
   showModal({
-    name: rows[0].name,
+    name: resolvedName,
     doctype: 'CRM Quote Request',
     customTitle: title,
     callbacks: {

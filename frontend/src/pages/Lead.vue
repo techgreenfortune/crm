@@ -16,7 +16,7 @@
         v-if="document.actions?.length"
         :actions="document.actions"
       />
-      <AssignTo v-model="assignees.data" doctype="CRM Lead" :docname="leadId" />
+      <AssignTo doctype="CRM Lead" :docname="leadId" />
       <Dropdown
         v-if="doc && document.statuses"
         :options="statuses"
@@ -511,7 +511,6 @@ const showFilesUploader = ref(false)
 const {
   triggerOnChange,
   triggerOnRender,
-  assignees,
   permissions,
   document,
   scripts,
@@ -617,29 +616,9 @@ const tabs = computed(() => {
       icon: ActivityIcon,
     },
     {
-      name: 'Emails',
-      label: __('Emails'),
-      icon: EmailIcon,
-    },
-    {
-      name: 'Comments',
-      label: __('Comments'),
-      icon: CommentIcon,
-    },
-    {
       name: 'Data',
       label: __('Data'),
       icon: DetailsIcon,
-    },
-    {
-      name: 'Calls',
-      label: __('Calls'),
-      icon: PhoneIcon,
-    },
-    {
-      name: 'Tasks',
-      label: __('Tasks'),
-      icon: TaskIcon,
     },
     {
       name: 'Quotes',
@@ -647,14 +626,29 @@ const tabs = computed(() => {
       icon: DocumentIcon,
     },
     {
-      name: 'Notes',
-      label: __('Notes'),
-      icon: NoteIcon,
+      name: 'Calls',
+      label: __('Calls'),
+      icon: PhoneIcon,
     },
     {
       name: 'Attachments',
       label: __('Attachments'),
       icon: AttachmentIcon,
+    },
+    {
+      name: 'Comments',
+      label: __('Comments'),
+      icon: CommentIcon,
+    },
+    {
+      name: 'Tasks',
+      label: __('Tasks'),
+      icon: TaskIcon,
+    },
+    {
+      name: 'Notes',
+      label: __('Notes'),
+      icon: NoteIcon,
     },
     {
       name: 'WhatsApp',
@@ -667,6 +661,11 @@ const tabs = computed(() => {
       label: __('WhatsApp (AISensy)'),
       icon: WhatsAppIcon,
       condition: () => aisensyEnabled.value,
+    },
+    {
+      name: 'Emails',
+      label: __('Emails'),
+      icon: EmailIcon,
     },
   ]
   return tabOptions.filter((tab) => (tab.condition ? tab.condition() : true))
@@ -959,9 +958,6 @@ function beforeStatusChange(data) {
 }
 
 function reloadResources(data) {
-  if (Object.hasOwn(data ?? {}, 'lead_owner')) {
-    assignees.reload()
-  }
   if (
     Object.hasOwn(data ?? {}, 'status') &&
     getLeadStatus(data.status).type != 'Lost'
@@ -975,12 +971,11 @@ function reloadResources(data) {
 // Child modals (Task / QR / Note) save through `AllModals.vue`, where they
 // can't reach back into this page's resources to trigger a refresh. Provide a
 // single function that pulls every dependent resource — the lead doc itself,
-// assignees, side-panel sections, the activities feed, and the quotes list —
+// side-panel sections, the activities feed, and the quotes list —
 // so the UI reflects server-side side effects (e.g. Script 5's db.set_value
 // advancing the lead to C3 on Accept) without a manual page reload.
 function reloadAfterChildModal() {
   document.reload?.()
-  assignees.reload?.()
   sections.reload?.()
   activities.value?.all_activities?.reload?.()
   activities.value?.quoteRequests?.reload?.()

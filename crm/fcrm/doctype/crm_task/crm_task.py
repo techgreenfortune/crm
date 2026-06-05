@@ -32,16 +32,17 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	- ``Administrator`` and privileged-task roles (``TIER1_FULL_RW``):
 	  see everything.
 	- Everyone else:
-	  - Tasks assigned to them, OR
-	  - Tasks where the parent ``CRM Lead`` is theirs (lead_owner = user, or
-	    lead has no owner, or _assign mentions them).
+	  - Tasks assigned to them (``assigned_to``), OR
+	  - Tasks whose parent ``CRM Lead`` they can see under the pure-hierarchy
+	    rule (lead_owner = user, or owned by a subtree member for ASM/RSM).
 	  - If the user holds any pool roles (Calling Team / Estimation Team /
 	    B2F Team), they additionally see unassigned tasks of that pool's
 	    task_type. A multi-pool user sees the union of all their pools.
 
 	Replaces the "CRM Task — Permission Query" Server Script on 2026-05-22.
 	The role→task_type mapping is derived from POOL_TASK_ROLES so adding a new
-	pool task type only requires updating the one dict.
+	pool task type only requires updating the one dict. Multi-assignee
+	(``_assign``) was retired — task/lead access follows the single owner field.
 	"""
 	user = user or frappe.session.user
 	if user == "Administrator":
@@ -53,11 +54,15 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 
 	esc = frappe.db.escape
 	escaped_user = esc(user)
-	# _assign is JSON like '["alice@example.com"]'; match on '%"<user>"%' to
-	# avoid prefix collisions (e.g. ali@... matching alice@...). frappe.db.escape
-	# wraps the literal in quotes, so the produced SQL is well-formed. Safe
-	# from injection because emails cannot contain a raw double quote.
-	assign_like = esc('%"' + user + '"%')
+
+	# Parent-lead owners the user may see: themselves + (for ASM/RSM) their
+	# CRM Sales Hierarchy subtree — mirrors CRM Lead visibility.
+	owners = {user}
+	if roles & {"ASM", "RSM"}:
+		from crm.overrides.crm_lead_permissions import downstream_users
+
+		owners |= downstream_users(user)
+	owners_in = ", ".join(esc(u) for u in sorted(owners))
 
 	base = f"""(
 		`tabCRM Task`.assigned_to = {escaped_user}
@@ -66,12 +71,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 			AND EXISTS (
 				SELECT 1 FROM `tabCRM Lead`
 				WHERE `tabCRM Lead`.name = `tabCRM Task`.reference_docname
-				AND (
-					`tabCRM Lead`.lead_owner = {escaped_user}
-					OR `tabCRM Lead`.lead_owner IS NULL
-					OR `tabCRM Lead`.lead_owner = ''
-					OR `tabCRM Lead`._assign LIKE {assign_like}
-				)
+				AND `tabCRM Lead`.lead_owner IN ({owners_in})
 			)
 		)
 	)"""

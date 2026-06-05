@@ -201,7 +201,7 @@ import { getMeta } from '@/stores/meta'
 import { usersStore } from '@/stores/users'
 import { formatDate, timeAgo } from '@/utils'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
-import { Tooltip, Avatar, TextEditor, Dropdown, call } from 'frappe-ui'
+import { Tooltip, Avatar, TextEditor, Dropdown, call, toast } from 'frappe-ui'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -335,22 +335,30 @@ const taskCallbacks = {
   },
 }
 
-function showTask(name) {
-  const task = rows.value?.find((r) => r.name === name)
-  if (task && isQuoteTaskType(task.task_type)) {
-    openQuoteRequest(
-      task.quote_request,
-      quoteTaskTitle(task.task_type),
-      taskCallbacks,
-    )
-    return
+async function showTask(name) {
+  try {
+    const task = rows.value?.find((r) => r.name === name)
+    if (task && isQuoteTaskType(task.task_type)) {
+      let qrName = task.quote_request
+      if (!qrName) {
+        qrName = await call('frappe.client.get_value', {
+          doctype: 'CRM Task',
+          filters: name,
+          fieldname: 'quote_request',
+        })
+      }
+      openQuoteRequest(qrName, quoteTaskTitle(task.task_type), taskCallbacks)
+      return
+    }
+    showModal({
+      name,
+      doctype: 'CRM Task',
+      title: 'Task',
+      callbacks: taskCallbacks,
+    })
+  } catch (err) {
+    toast.error(err?.message || __('Could not open task.'))
   }
-  showModal({
-    name,
-    doctype: 'CRM Task',
-    title: 'Task',
-    callbacks: taskCallbacks,
-  })
 }
 
 function createTask(column) {
@@ -406,7 +414,7 @@ const openTaskFromURL = () => {
   const taskName = searchParams.get('open')
 
   if (taskName && rows.value?.length) {
-    showTask(parseInt(taskName))
+    showTask(taskName)
     searchParams.delete('open')
     window.history.replaceState(null, '', window.location.pathname)
   }

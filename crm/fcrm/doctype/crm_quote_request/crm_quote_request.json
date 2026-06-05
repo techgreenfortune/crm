@@ -12,6 +12,7 @@
     "status",
     "requested_by",
     "requested_on",
+    "prepared_by",
     "column_break_1",
     "quote_file",
     "quote_value",
@@ -81,6 +82,12 @@
       "fieldtype": "Date",
       "label": "Requested On",
       "read_only": 1
+    },
+    {
+      "fieldname": "prepared_by",
+      "fieldtype": "Table",
+      "label": "Prepared By",
+      "options": "CRM Quote Preparer"
     },
     {
       "fieldname": "column_break_1",
@@ -202,6 +209,14 @@
       "write": 1
     },
     {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Spotter",
+      "write": 1
+    },
+    {
       "create": 0,
       "delete": 0,
       "read": 1,
@@ -269,6 +284,11 @@
     {
       "permlevel": 1,
       "read": 1,
+      "role": "Spotter"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
       "role": "Sales Coordinator"
     },
     {
@@ -314,6 +334,12 @@
       "read": 1,
       "write": 1,
       "role": "Sales Executive"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Spotter"
     },
     {
       "permlevel": 2,
