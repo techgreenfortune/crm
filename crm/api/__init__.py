@@ -55,18 +55,32 @@ def check_app_permission():
 	if frappe.session.user == "Administrator":
 		return True
 
-	allowed_modules = []
-
-	if is_frappe_version("15"):
-		allowed_modules = frappe.config.get_modules_from_all_apps_for_user()
-	elif is_frappe_version("16", above=True):
-		from frappe.utils.modules import get_modules_from_all_apps_for_user
+	# ``get_modules_from_all_apps_for_user`` moved between Frappe versions. On
+	# v15 it lives in the ``frappe.config`` submodule, which is NOT auto-attached
+	# to the ``frappe`` package — ``frappe.config.x`` without an explicit import
+	# raises ``AttributeError: module 'frappe' has no attribute 'config'`` and
+	# hard-blocks every non-admin from the CRM app. Import the submodule
+	# explicitly, and never let a lookup failure deny access outright.
+	try:
+		if is_frappe_version("15"):
+			from frappe.config import get_modules_from_all_apps_for_user
+		else:
+			from frappe.utils.modules import get_modules_from_all_apps_for_user
 
 		allowed_modules = get_modules_from_all_apps_for_user()
+	except Exception:
+		# Module-profile lookup is unavailable on this build — fall back to the
+		# role check below rather than locking everyone out.
+		frappe.log_error(
+			title="check_app_permission: module lookup failed",
+			message=frappe.get_traceback(),
+		)
+		allowed_modules = None
 
-	allowed_modules = [x["module_name"] for x in allowed_modules]
-	if "FCRM" not in allowed_modules:
-		return False
+	if allowed_modules is not None:
+		allowed_modules = [x["module_name"] for x in allowed_modules]
+		if "FCRM" not in allowed_modules:
+			return False
 
 	roles = frappe.get_roles()
 	# Sales User still bundled in lower-tier role profiles; the custom roles
