@@ -41,23 +41,24 @@ def handle_request(**kwargs):
 			return
 
 		call_payload = kwargs
+		agent_email = call_payload.get("AgentEmail")
 
 		frappe.logger("exotel").info(
 			f"[Exotel] webhook received | EventType={call_payload.get('EventType')} "
 			f"Status={call_payload.get('Status')} Direction={call_payload.get('Direction')} "
 			f"CallSid={call_payload.get('CallSid')}"
 		)
-		agent_email = call_payload.get("AgentEmail")
-		frappe.publish_realtime("exotel_call", call_payload, user=agent_email or None)
-		frappe.logger("exotel").info(
-			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} AgentEmail={agent_email}"
-		)
+
+		# Skip "free" status (agent available) before any side-effects.
 		status = call_payload.get("Status")
 		if status == "free":
 			return
 
 		if call_log := get_call_log(call_payload):
-			update_call_log(call_payload, call_log=call_log)
+			try:
+				update_call_log(call_payload, call_log=call_log)
+			except Exception:
+				frappe.log_error(title="Error while updating call log")
 		else:
 			create_call_log(
 				call_id=call_payload.get("CallSid"),
@@ -66,6 +67,15 @@ def handle_request(**kwargs):
 				medium=call_payload.get("To"),
 				status=get_call_log_status(call_payload),
 				agent=call_payload.get("AgentEmail"),
+			)
+
+		# Publish realtime AFTER DB commit so the call log exists when the
+		# frontend acts on the event. Guard: only publish when agent is known
+		# — user=None would broadcast to every connected session.
+		if agent_email:
+			frappe.publish_realtime("exotel_call", call_payload, user=agent_email)
+			frappe.logger("exotel").info(
+				f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} AgentEmail={agent_email}"
 			)
 	except Exception:
 		request_log.status = "Failed"
@@ -130,6 +140,8 @@ def make_a_call(
 	except requests.exceptions.HTTPError:
 		if exc := response.json().get("RestException"):
 			frappe.throw(exc.get("Message"), title=_("Exotel Exception"))
+		else:
+			frappe.throw(_("Exotel call failed — check Error Log for details"), title=_("Exotel Error"))
 	else:
 		res = response.json()
 		call_payload = res.get("Call", {})
@@ -145,9 +157,9 @@ def make_a_call(
 			reference_docname=reference_docname,
 		)
 
-	call_details = response.json().get("Call", {})
-	call_details["CallSid"] = call_details.get("Sid", "")
-	return call_details
+		call_details = res.get("Call", {})
+		call_details["CallSid"] = call_details.get("Sid", "")
+		return call_details
 
 
 def get_exotel_endpoint(action=None, version="v1"):
@@ -282,35 +294,32 @@ def get_call_log_status(call_payload, direction="inbound"):
 	elif status == "busy":
 		status = "Ringing"
 
-	return status
+	return status or "Ringing"
 
 
-def update_call_log(call_payload, status="Ringing", call_log=None):
+def update_call_log(call_payload, call_log=None):
 	direction = call_payload.get("Direction")
 	call_log = call_log or get_call_log(call_payload)
 	status = get_call_log_status(call_payload, direction)
-	try:
-		if call_log:
-			call_log.status = status
-			# resetting this because call might be redirected to other number
-			call_log.to = call_payload.get("DialWhomNumber") or call_payload.get("To")
-			call_log.duration = (
-				call_payload.get("DialCallDuration") or call_payload.get("ConversationDuration") or 0
-			)
+	if call_log:
+		call_log.status = status
+		# resetting this because call might be redirected to other number
+		call_log.to = call_payload.get("DialWhomNumber") or call_payload.get("To")
+		call_log.duration = (
+			call_payload.get("DialCallDuration") or call_payload.get("ConversationDuration") or 0
+		)
 
-			call_log.recording_url = (
-				call_payload.get("RecordingUrl") if call_payload.get("RecordingUrl") else ""
-			)
+		# Only set recording_url when Exotel provides one — never overwrite
+		# an existing URL with an empty string from an intermediate event.
+		if call_payload.get("RecordingUrl"):
+			call_log.recording_url = call_payload.get("RecordingUrl")
 
-			call_log.start_time = call_payload.get("StartTime")
-			call_log.end_time = call_payload.get("EndTime")
+		call_log.start_time = call_payload.get("StartTime")
+		call_log.end_time = call_payload.get("EndTime")
 
-			if direction == "incoming" and call_payload.get("AgentEmail"):
-				call_log.receiver = call_payload.get("AgentEmail")
+		if direction == "incoming" and call_payload.get("AgentEmail"):
+			call_log.receiver = call_payload.get("AgentEmail")
 
-			call_log.save(ignore_permissions=True)
-			frappe.db.commit()
-			return call_log
-	except Exception:
-		frappe.log_error(title="Error while updating call record")
+		call_log.save(ignore_permissions=True)
 		frappe.db.commit()
+		return call_log

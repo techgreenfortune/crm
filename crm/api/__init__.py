@@ -5,6 +5,7 @@ from frappe.core.api.file import get_max_file_size
 from frappe.translate import get_all_translations
 from frappe.utils import cstr, split_emails, validate_email_address
 
+from crm.permissions.role_config import ROLE_RANK
 from crm.utils import is_frappe_version
 
 
@@ -69,24 +70,12 @@ def check_app_permission():
 		return False
 
 	roles = frappe.get_roles()
-	# Sales User still bundled in lower-tier role profiles; the custom roles
-	# cover the full CRM matrix after Sales Manager retirement (2026-05-25).
-	allowed_roles = {
-		"System Manager",
-		"Sales User",
-		"B2F Team",
-		"Calling Team",
-		"Jr. Sales Executive",
-		"Sales Head",
-		"Sales Coordinator",
-		"Sales Executive",
-		"ASM",
-		"Project Sales Executive",
-		"RSM",
-		"Marketing",
-		"Management",
-		"Estimation Team",
-	}
+	# Every CRM role lands on the SPA. Derive from ROLE_RANK (the canonical
+	# 14-role map in role_config, incl. System Manager) so this never drifts
+	# when a role is added/renamed there. "Sales User" is the base Frappe role
+	# still bundled in lower-tier role profiles — it lives outside role_config,
+	# so add it explicitly.
+	allowed_roles = set(ROLE_RANK) | {"Sales User"}
 	if any(role in allowed_roles for role in roles):
 		return True
 

@@ -150,6 +150,7 @@ has_permission = {
 override_doctype_class = {
 	"Contact": "crm.overrides.contact.CustomContact",
 	"Email Template": "crm.overrides.email_template.CustomEmailTemplate",
+	"User": "crm.overrides.user.CustomUser",
 }
 
 # Document Events
@@ -249,7 +250,10 @@ fixtures = [
 # ---------------
 
 scheduler_events = {
-	"daily_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_daily"],
+	"daily_long": [
+		"crm.lead_syncing.background_sync.sync_leads_from_sources_daily",
+		"crm.api.retry_engine.advance_retry_sequence",
+	],
 	"hourly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_hourly"],
 	"monthly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_monthly"],
 	"cron": {

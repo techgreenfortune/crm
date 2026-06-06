@@ -247,6 +247,35 @@ class CRMTask(Document):
 	def after_insert(self):
 		self.assign_to()
 
+	def after_save(self):
+		self._record_pool_claim_trail()
+
+	def _record_pool_claim_trail(self):
+		if self.is_new():
+			return
+		old = self.get_doc_before_save()
+		old_assignee = old.assigned_to if old else None
+		new_assignee = self.assigned_to
+
+		if (
+			self.task_type == "upload_quote"
+			and not old_assignee
+			and new_assignee
+			and self.reference_doctype == "CRM Lead"
+		):
+			try:
+				frappe.get_doc(
+					{
+						"doctype": "Comment",
+						"comment_type": "Comment",
+						"reference_doctype": "CRM Lead",
+						"reference_name": self.reference_docname,
+						"content": f"[AUTOMATION] Upload Quote task claimed by {new_assignee}.",
+					}
+				).insert(ignore_permissions=True)
+			except Exception:
+				pass
+
 	def validate(self):
 		if self.is_new() or not self.assigned_to:
 			return
