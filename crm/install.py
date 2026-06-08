@@ -581,7 +581,7 @@ def add_default_lost_reasons():
 
 def add_default_quick_filters():
 	quick_filters = {
-		"CRM Lead": ["lead_name", "mobile_no", "lead_status", "status", "source"],
+		"CRM Lead": ["lead_name", "email", "lead_status", "status", "source"],
 		"CRM Deal": ["organization", "status", "probability", "email"],
 		"Contact": ["status", "email_id", "phone"],
 		"CRM Organization": ["organization_name", "no_of_employees", "territory", "industry"],
