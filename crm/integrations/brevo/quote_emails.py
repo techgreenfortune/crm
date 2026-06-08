@@ -152,9 +152,12 @@ def _params_quote_received(qr_doc) -> dict:
 def _params_revision_requested(qr_doc) -> dict:
 	# Fields requested: Quotation Value, Quotation Sft, Quantity, Quotation Number,
 	# Quotation File, revision remarks
+	owner = qr_doc.get("lead_owner")
+	sales_user_name = (frappe.db.get_value("User", owner, "full_name") if owner else "") or ""
 	return {
 		**_lead_fields(qr_doc),
 		"qr_id": qr_doc.name,
+		"sales_user_name": sales_user_name,
 		"quote_value": qr_doc.get("quote_value") or 0,
 		"quote_sft": qr_doc.get("quote_sq_ft") or 0,
 		"quantity": qr_doc.get("total_quantity") or 0,
@@ -402,3 +405,6 @@ def on_quote_request_update(doc, method=None) -> None:
 			title="Brevo Quote Email — on_update dispatch failed",
 			message=frappe.get_traceback(),
 		)
+
+
+order order value = 359412.19
