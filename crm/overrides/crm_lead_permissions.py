@@ -14,10 +14,12 @@ Visibility (read):
   every lead, including ownerless.
 - Calling Team: all non-C7 leads incl. ownerless — the new-lead inbox.
 - Everyone else: a lead is visible iff its ``lead_owner`` is the user OR a
-  member of the user's CRM Sales Hierarchy subtree (``downstream_users``).
+  member of the user's CRM Sales Hierarchy subtree (``downstream_users``) OR
+  the user's direct manager (1 level up — ``upstream_user``, any lead_type).
   A lead owned by someone outside the viewer's tree — or with no owner — is
-  invisible. So an orphan-owned lead is seen only by its owner + admin, and
-  upstream managers see every lead owned by anyone below them.
+  invisible. So an orphan-owned lead is seen only by its owner + admin,
+  upstream managers see every lead owned by anyone below them, and an
+  owner-scoped user additionally sees the leads owned by their direct manager.
 
 Write locks (layered on top — these survive the read model):
 
@@ -165,6 +167,14 @@ def has_permission(doc, ptype, user):
 		if rule["scope"] == "downstream" and owner in downstream_users(user):
 			return True
 
+	# One-up read: an owner-scoped user may also read leads owned by their
+	# direct manager (1 level up in CRM Sales Hierarchy), any lead_type.
+	# SQL mirror: get_permission_query_conditions one-up clause.
+	if roles & set(OWNER_SCOPE_ROLES):
+		mgr = upstream_user(user)
+		if mgr and owner == mgr:
+			return True
+
 	return False
 
 
@@ -238,6 +248,13 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		else:
 			clauses.append(f"({owner_clause})")
 
+	# One-up read — leads owned by the user's direct manager (1 level up), any
+	# lead_type. Python mirror: has_permission one-up gate.
+	if roles & set(OWNER_SCOPE_ROLES):
+		mgr = upstream_user(user)
+		if mgr:
+			clauses.append(f"`tabCRM Lead`.lead_owner = {esc(mgr)}")
+
 	if not clauses:
 		# No role grants any visibility — see nothing.
 		return "1=0"
@@ -303,17 +320,25 @@ def bust_downstream_users_cache(doc=None, method=None):
 # ----------------------------------------------------------------------------
 
 
+def upstream_user(user: str) -> str | None:
+	"""Return the direct manager's user (1 level up) for ``user`` in
+	CRM Sales Hierarchy, or ``None`` if the user has no node or no manager.
+
+	Two cheap lookups — no cache (unlike :func:`downstream_users`, which expands
+	a whole subtree). Used by the one-up read gates and by
+	:func:`allowed_assignees`."""
+	node = frappe.db.get_value("CRM Sales Hierarchy", {"user": user}, ["reports_to"], as_dict=True)
+	if not node or not node.reports_to:
+		return None
+	return frappe.db.get_value("CRM Sales Hierarchy", node.reports_to, "user")
+
+
 def allowed_assignees(user: str) -> set[str] | None:
 	"""Return users ``user`` may set as ``lead_owner``: downstream subtree
 	plus direct upline (1 step). Returns ``None`` if ``user`` has no node
 	in ``CRM Sales Hierarchy`` — caller skips the check (orphan / newly
 	onboarded)."""
-	node = frappe.db.get_value(
-		"CRM Sales Hierarchy",
-		{"user": user},
-		["name", "reports_to"],
-		as_dict=True,
-	)
+	node = frappe.db.get_value("CRM Sales Hierarchy", {"user": user}, ["reports_to"], as_dict=True)
 	if not node:
 		return None
 	allowed = set(downstream_users(user))
