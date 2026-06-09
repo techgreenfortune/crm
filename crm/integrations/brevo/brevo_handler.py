@@ -59,6 +59,7 @@ def send_template_email(
 	sender_email=None,
 	sender_name=None,
 	attachments=None,
+	cc=None,
 ):
 	"""Send a Brevo transactional email rendered from a template ID + params.
 
@@ -68,6 +69,8 @@ def send_template_email(
 	``attachments``: optional list of dicts with shape
 	``[{"name": "file.pdf", "content": "<base64-string>"}, ...]``.  Brevo
 	supports up to ~10MB total per request.
+
+	``cc``: optional list of CC email addresses.  Strings or None are tolerated.
 	"""
 	settings = get_brevo_settings()
 	api_key = settings.get_password("api_key")
@@ -77,6 +80,8 @@ def send_template_email(
 
 	if isinstance(recipients, str):
 		recipients = [recipients]
+	if isinstance(cc, str):
+		cc = [cc]
 
 	payload = {
 		"sender": {"name": _sender_name, "email": _sender_email},
@@ -84,6 +89,11 @@ def send_template_email(
 		"templateId": int(template_id),
 		"params": params or {},
 	}
+
+	if cc:
+		cc_list = [{"email": c} for c in cc if c]
+		if cc_list:
+			payload["cc"] = cc_list
 
 	if attachments:
 		payload["attachment"] = attachments
