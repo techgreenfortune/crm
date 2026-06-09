@@ -324,9 +324,12 @@ class CRMLead(Document):
 					self.flags.auto_cold_flip = True
 				self.lead_status = "Active"
 
-			# Terminal C-stages force engagement to Active.
-			if new_status in ("C4", "C6") and self.lead_status != "Active":
+			# C4 (Won path) stays Active until project handoff flips to Won.
+			if new_status == "C4" and self.lead_status != "Active":
 				self.lead_status = "Active"
+			# C6 (Lost) — archive so Lost leads don't pollute Active queries.
+			elif new_status == "C6" and self.lead_status != "Archived":
+				self.lead_status = "Archived"
 
 			new_lead_status = self.lead_status
 			status_changed = bool(old_status) and old_status != new_status
@@ -494,11 +497,17 @@ class CRMLead(Document):
 			"Reactivated",
 		)
 		if (status_changed or lead_status_changed) and was_retry_active and not is_retry_active:
-			frappe.enqueue("crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True)
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
 		elif lead_status_changed and new_lead_status == "Archived":
-			frappe.enqueue("crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True)
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
 		elif lead_status_changed and old_lead_status == "Cold-Unresponsive" and new_lead_status == "Active":
-			frappe.enqueue("crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True)
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
 
 		if status_changed:
 			if new_status == "C1" and self.email:

@@ -198,6 +198,15 @@ doc_events = {
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
 	},
+	"Notification": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
+	},
+	"Form Script": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
+	},
+	"Assignment Rule": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
+	},
 }
 
 # Fixtures

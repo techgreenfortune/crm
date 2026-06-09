@@ -67,6 +67,11 @@ class CRMQuoteRequest(Document):
 
 	def after_save(self):
 		self._sync_tentative_value_to_lead()
+		if self.has_value_changed("status") and self.status == "Quote Received":
+			try:
+				frappe.get_doc("Notification", "Quote Received — Review & Share").send(self)
+			except Exception:
+				frappe.log_error(title="Quote Received notification failed", message=frappe.get_traceback())
 
 	def _check_superseded(self):
 		if self.is_superseded:
