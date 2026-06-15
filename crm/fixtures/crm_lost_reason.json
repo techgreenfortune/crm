@@ -83,14 +83,6 @@
   "description": null,
   "docstatus": 0,
   "doctype": "CRM Lost Reason",
-  "lost_reason": "Requirement Cancelled",
-  "modified": "2026-05-04 18:20:58.035839",
-  "name": "Requirement Cancelled"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
   "lost_reason": "Went with Local Fabricator",
   "modified": "2026-05-04 18:20:58.037019",
   "name": "Went with Local Fabricator"
@@ -123,8 +115,24 @@
   "description": null,
   "docstatus": 0,
   "doctype": "CRM Lost Reason",
+  "lost_reason": "Invalid /out of service",
+  "modified": "2026-06-12 13:31:29.911925",
+  "name": "Invalid /out of service"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
   "lost_reason": "Junk",
   "modified": "2026-05-12 00:00:00",
   "name": "Junk"
+ },
+ {
+  "description": null,
+  "docstatus": 0,
+  "doctype": "CRM Lost Reason",
+  "lost_reason": "Requirement Cancelled",
+  "modified": "2026-05-04 18:20:58.035839",
+  "name": "Requirement Cancelled"
  }
 ]

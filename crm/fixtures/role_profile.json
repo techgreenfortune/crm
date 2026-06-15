@@ -188,7 +188,7 @@
  {
   "docstatus": 0,
   "doctype": "Role Profile",
-  "modified": "2026-05-20 12:00:00",
+  "modified": "2026-06-08 12:02:20.379794",
   "name": "ASM",
   "role_profile": "ASM",
   "roles": [
@@ -197,6 +197,12 @@
     "parentfield": "roles",
     "parenttype": "Role Profile",
     "role": "ASM"
+   },
+   {
+    "parent": "ASM",
+    "parentfield": "roles",
+    "parenttype": "Role Profile",
+    "role": "Sales User"
    }
   ]
  },
