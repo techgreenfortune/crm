@@ -1,14 +1,25 @@
 [
  {
-  "color": "blue",
+  "color": "violet",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
-  "lead_status": "C1",
+  "lead_status": "C7",
   "modified": "2026-05-19 00:00:00",
-  "name": "C1",
-  "position": 2,
-  "stage_label": "C1 — Future Requirement",
-  "type": "Open"
+  "name": "C7",
+  "position": 6,
+  "stage_label": "C7 — Forwarded to Fabricator",
+  "type": "On Hold"
+ },
+ {
+  "color": "green",
+  "docstatus": 0,
+  "doctype": "CRM Lead Status",
+  "lead_status": "C4",
+  "modified": "2026-05-19 00:00:00",
+  "name": "C4",
+  "position": 4,
+  "stage_label": "C4 — Won (Advance Payment Made)",
+  "type": "Won"
  },
  {
   "color": "red",
@@ -22,17 +33,6 @@
   "type": "Lost"
  },
  {
-  "color": "violet",
-  "docstatus": 0,
-  "doctype": "CRM Lead Status",
-  "lead_status": "C7",
-  "modified": "2026-05-19 00:00:00",
-  "name": "C7",
-  "position": 6,
-  "stage_label": "C7 — Forwarded to Fabricator",
-  "type": "On Hold"
- },
- {
   "color": "orange",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
@@ -44,15 +44,15 @@
   "type": "Ongoing"
  },
  {
-  "color": "green",
+  "color": "blue",
   "docstatus": 0,
   "doctype": "CRM Lead Status",
-  "lead_status": "C4",
+  "lead_status": "C1",
   "modified": "2026-05-19 00:00:00",
-  "name": "C4",
-  "position": 4,
-  "stage_label": "C4 — Won (Advance Payment Made)",
-  "type": "Won"
+  "name": "C1",
+  "position": 2,
+  "stage_label": "C1 — Future Requirement",
+  "type": "Open"
  },
  {
   "color": "gray",

@@ -34,6 +34,7 @@ ROLE_RANK: dict[str, int] = {
 	"Sales Coordinator": 1,
 	"RSM": 2,
 	"ASM": 3,
+	"Dealer": 3,
 	"Sales Executive": 4,
 	"Project Sales Executive": 4,
 	"Spotter": 4,
@@ -58,6 +59,7 @@ ROLE_PRIORITY: tuple[str, ...] = (
 	"Marketing",
 	"ASM",
 	"RSM",
+	"Dealer",
 	"Sales Executive",
 	"Project Sales Executive",
 	"Spotter",
@@ -95,6 +97,10 @@ OWNER_SCOPE_ROLES: dict[str, dict] = {
 	"Spotter": {"scope": "self", "lead_type": None},
 	# Jr. Sales Executive — own leads only (no broad pool access), any type.
 	"Jr. Sales Executive": {"scope": "self", "lead_type": None},
+	# Dealer — ASM-equivalent downstream visibility, any lead_type. Channel
+	# identity comes from the role assignment, not custom_lead_type. The
+	# OpsGate handoff layer detects dealer-owned leads via this role.
+	"Dealer": {"scope": "downstream", "lead_type": None},
 	"ASM": {"scope": "downstream", "lead_type": None},
 	"RSM": {"scope": "downstream", "lead_type": None},
 }
