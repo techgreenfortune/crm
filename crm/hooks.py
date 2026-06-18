@@ -193,6 +193,13 @@ doc_events = {
 	},
 	"CRM Task": {
 		"before_save": ["crm.fcrm.doctype.crm_task.crm_task.validate_write_permission"],
+		# on_update fires for BOTH inserts and updates in Frappe's lifecycle,
+		# so this single hook covers task creation AND task editing.  Do NOT
+		# add after_insert here — it would double-fire the reminder for new
+		# tasks (Frappe calls after_insert THEN on_update during insert; the
+		# reminder_sent flag set by the first call is not always honored
+		# in-memory by the second within the same save cycle).
+		"on_update": ["crm.api.tasks.send_due_today_reminder"],
 	},
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
@@ -258,6 +265,13 @@ scheduler_events = {
 		"*/15 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
 	},
 }
+
+# Task reminder daily-catch-up cron lives in a Server Script (Scheduler Event)
+# named "CRM Task — Daily Due-Today Reminder Batch" so admins can change the
+# schedule from the desk without a deploy.  See script body documented in
+# CRM_GUIDE.md.  ``send_due_today_reminders_batch`` is kept in crm/api/tasks.py
+# as a callable utility for ad-hoc admin use (bench execute), but is NOT
+# auto-fired from this file.
 
 # Testing
 # -------

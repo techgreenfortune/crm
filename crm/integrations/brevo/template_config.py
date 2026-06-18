@@ -22,8 +22,18 @@ Adding a new trigger
 # Brevo template IDs.  Find these in Brevo → Transactional → Email Templates.
 # Set to 0 to disable a trigger.
 BREVO_TEMPLATES: dict[str, int] = {
+	# Quote Request workflow
 	"quote_requested": 154,
 	"quote_received": 155,
 	"revision_requested": 156,
 	"quote_accepted": 157,
+	# Task workflow
+	"task_reminder": 158,  #  design template in Brevo and fill in the ID
+}
+
+# Static CC addresses merged into each trigger's recipient list at send time.
+# Use this for fixed stakeholders (regional sales heads, compliance, etc.) who
+# should be copied regardless of who the dynamic recipient resolver returns.
+STATIC_CCS: dict[str, list[str]] = {
+	"quote_received": ["salesao@indiframe.com"],
 }
