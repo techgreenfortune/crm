@@ -150,7 +150,6 @@ has_permission = {
 override_doctype_class = {
 	"Contact": "crm.overrides.contact.CustomContact",
 	"Email Template": "crm.overrides.email_template.CustomEmailTemplate",
-	"User": "crm.overrides.user.CustomUser",
 }
 
 # Document Events
@@ -159,6 +158,8 @@ override_doctype_class = {
 
 doc_events = {
 	"Contact": {
+		"before_insert": ["crm.overrides.contact.prevent_user_contact_sync"],
+		"before_save": ["crm.overrides.contact.prevent_user_contact_sync"],
 		"validate": ["crm.api.contact.validate"],
 		"after_insert": ["crm.api.contact.after_insert"],
 		"on_update": ["crm.api.contact.on_update"],

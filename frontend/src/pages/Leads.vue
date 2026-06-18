@@ -452,7 +452,7 @@ function parseRows(rows, columns = []) {
         _rows[row] = website(lead.website)
       } else if (row == 'status') {
         _rows[row] = {
-          label: lead.status,
+          label: getLeadStatus(lead.status)?.stage_label || lead.status,
           color: getLeadStatus(lead.status)?.color,
         }
       } else if (row == 'lead_status') {

@@ -182,6 +182,23 @@ def get_quick_filters(doctype: str, cached: bool = True):
 		fields = [field for field in meta.fields if field.in_standard_filter]
 
 	for field in fields:
+		if doctype == "CRM Lead" and field.get("fieldname") == "status":
+			statuses = frappe.get_all(
+				"CRM Lead Status",
+				fields=["name", "stage_label"],
+				order_by="position asc",
+			)
+			options = [{"label": "", "value": ""}] + [
+				{"label": s.stage_label or s.name, "value": s.name}
+				for s in statuses
+			]
+			quick_filters.append({
+				"label": _("C-Stage"),
+				"fieldname": "status",
+				"fieldtype": "Select",
+				"options": options,
+			})
+			continue
 		options = field.get("options")
 		if field.get("fieldtype") == "Select" and options and isinstance(options, str):
 			options = options.split("\n")

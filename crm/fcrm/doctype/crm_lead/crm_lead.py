@@ -422,13 +422,18 @@ class CRMLead(Document):
 			return
 		if not self.mobile_no:
 			return
+		if self.is_new():
+			return
+		if not self.has_value_changed("mobile_no"):
+			return
 
-		try:
-			parsed = parse_phone_number(self.mobile_no)
-			if parsed and parsed.get("success") and parsed.get("is_valid"):
-				self.mobile_no = parsed["formats"]["E164"]
-		except Exception:
-			pass
+		parsed = parse_phone_number(self.mobile_no)
+		if not parsed or not parsed.get("success") or not parsed.get("is_valid"):
+			frappe.throw(
+				_("{0} is not a valid mobile number").format(self.mobile_no),
+				title=_("Invalid Mobile Number"),
+			)
+		self.mobile_no = parsed["formats"]["E164"]
 
 		existing = frappe.db.get_value(
 			"CRM Lead",
@@ -1202,6 +1207,12 @@ class CRMLead(Document):
 				"type": "Data",
 				"key": "lead_name",
 				"width": "12rem",
+			},
+			{
+				"label": "Lead ID",
+				"type": "Data",
+				"key": "name",
+				"width": "14rem",
 			},
 			{
 				"label": "Organization",

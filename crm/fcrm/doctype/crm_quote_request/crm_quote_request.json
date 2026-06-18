@@ -23,8 +23,8 @@
     "quote_number",
     "section_break_1",
     "estimation_remarks",
-    "revision_notes",
-    "revision_images"
+    "notes",
+    "images"
   ],
   "fields": [
     {
@@ -156,20 +156,17 @@
       "permlevel": 1
     },
     {
-      "fieldname": "revision_notes",
+      "fieldname": "notes",
       "fieldtype": "Small Text",
-      "label": "Revision Notes",
-      "depends_on": "eval:doc.status != 'Pending'",
-      "mandatory_depends_on": "eval:doc.status == 'Revision Requested'",
+      "label": "Notes",
       "permlevel": 2
     },
     {
-      "fieldname": "revision_images",
+      "fieldname": "images",
       "fieldtype": "Table",
-      "label": "Revision Images",
+      "label": "Images",
       "options": "CRM Quote Revision Image",
-      "depends_on": "eval:doc.status != 'Pending'",
-      "description": "Photos or markups attached when requesting a revision.",
+      "description": "Reference photos or markups for this quote request.",
       "permlevel": 2
     }
   ],

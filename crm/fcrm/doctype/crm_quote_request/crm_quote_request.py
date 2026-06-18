@@ -60,12 +60,20 @@ class CRMQuoteRequest(Document):
 
 	def validate(self):
 		self._guard_status_transition()
-		self._validate_mandatory_revision_notes()
+		if (
+			self.status == "Revision Requested"
+			and not (self.notes or "").strip()
+		):
+			frappe.throw(
+				_("Notes are required when requesting a revision."),
+				title=_("Notes Required"),
+			)
 
 	def before_save(self):
+		self._guard_estimation_team_on_received()
 		self._record_transition_trail()
 
-	def after_save(self):
+	def on_update(self):
 		self._sync_tentative_value_to_lead()
 		if self.has_value_changed("status") and self.status == "Quote Received":
 			try:
@@ -102,6 +110,23 @@ class CRMQuoteRequest(Document):
 		if not self.total_quantity or self.total_quantity <= 0:
 			frappe.throw(_("Total Quantity must be greater than 0."), title=_("Total Quantity Required"))
 
+	def _guard_estimation_team_on_received(self):
+		"""Freeze the QR for Estimation Team once status = Quote Received."""
+		old = self.get_doc_before_save()
+		if old is None:
+			return
+		if old.status != "Quote Received":
+			return
+		user = frappe.session.user
+		if user == "Administrator":
+			return
+		roles = set(frappe.get_roles(user))
+		if "Estimation Team" in roles and not (roles & TIER1_FULL_RW):
+			frappe.throw(
+				_("The quote has already been submitted. Estimation Team cannot edit it further."),
+				frappe.PermissionError,
+			)
+
 	def _record_transition_trail(self):
 		old = self.get_doc_before_save()
 		old_status = old.status if old else None
@@ -127,13 +152,13 @@ class CRMQuoteRequest(Document):
 			content = f"[AUTOMATION] Quote uploaded — {meta}{file_link}"
 		elif new_status == "Revision Requested":
 			now = frappe.utils.now_datetime()
-			for row in self.revision_images or []:
+			for row in self.images or []:
 				if not row.uploaded_by:
 					row.uploaded_by = frappe.session.user
 				if not row.uploaded_on:
 					row.uploaded_on = now
-			reason = self.revision_notes or "(no reason provided)"
-			img_count = len(self.revision_images or [])
+			reason = self.notes or "(no reason provided)"
+			img_count = len(self.images or [])
 			suffix = f" ({img_count} image(s) attached)" if img_count else ""
 			content = f"[AUTOMATION] Quote revision requested: {reason}{suffix}"
 		else:
@@ -204,7 +229,7 @@ class CRMQuoteRequest(Document):
 					_("Could not create a new Quote Request for the revision round. Please try again.")
 				)
 			self.is_superseded = 1
-			reason = self.revision_notes or "(no reason provided)"
+			reason = self.notes or "(no reason provided)"
 			try:
 				if not frappe.db.exists(
 					"CRM Task",
@@ -237,6 +262,42 @@ class CRMQuoteRequest(Document):
 					message=f"Failed to create upload_quote task for revision on {self.name}",
 					title="Quote Revision Task Creation Failed",
 				)
+
+			if self.images and self.lead:
+				for row in self.images:
+					if not row.image:
+						continue
+					already_mirrored = frappe.db.exists(
+						"File",
+						{
+							"attached_to_doctype": "CRM Lead",
+							"attached_to_name": self.lead,
+							"file_url": row.image,
+						},
+					)
+					if already_mirrored:
+						continue
+					qr_file = frappe.db.get_value(
+						"File",
+						{
+							"attached_to_doctype": "CRM Quote Request",
+							"attached_to_name": self.name,
+							"file_url": row.image,
+						},
+						"name",
+					)
+					if qr_file:
+						try:
+							frappe.get_doc("File", qr_file).create_attachment_copy(
+								attached_to_doctype="CRM Lead",
+								attached_to_name=self.lead,
+								ignore_permissions=True,
+							)
+						except Exception:
+							frappe.log_error(
+								message=f"Failed to mirror image {row.image} from QR {self.name} to lead {self.lead}",
+								title="Revision image mirror to Lead failed",
+							)
 
 	def _sync_tentative_value_to_lead(self):
 		old = self.get_doc_before_save()
@@ -355,11 +416,3 @@ class CRMQuoteRequest(Document):
 				),
 				frappe.PermissionError,
 			)
-
-	def _validate_mandatory_revision_notes(self):
-		if self.status == "Revision Requested":
-			if not (self.revision_notes or "").strip():
-				frappe.throw(
-					frappe._("Revision Notes are required when requesting a revision."),
-					title=frappe._("Revision Notes Required"),
-				)

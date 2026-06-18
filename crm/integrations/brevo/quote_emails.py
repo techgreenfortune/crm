@@ -163,7 +163,7 @@ def _params_revision_requested(qr_doc) -> dict:
 		"quantity": qr_doc.get("total_quantity") or 0,
 		"quote_number": qr_doc.get("quote_number") or "",
 		"quote_file": "Attached",
-		"revision_remarks": qr_doc.get("revision_notes") or "",
+		"revision_remarks": qr_doc.get("notes") or "",
 	}
 
 

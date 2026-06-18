@@ -35,11 +35,11 @@ def _notify_estimation_team_on_quote_request(
 
 @frappe.whitelist()
 def list_lead_quote_requests(lead: str) -> list[dict]:
-	"""Return QR cards for a lead with the revision-image count for each.
+	"""Return QR cards for a lead with the image URLs for each.
 
 	Mirrors the fields the Quotes-tab card needs (name, status, value, margin,
-	file, validity, external quote number, area), plus a derived `images_count`
-	from the `revision_images` child table — which `frappe.client.get_list`
+	file, validity, external quote number, area), plus a derived ``images``
+	list from the ``images`` child table — which ``frappe.client.get_list``
 	cannot aggregate.
 
 	Permission model: gated on Quote Request read (NOT Lead read). Estimation
@@ -71,7 +71,7 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 			"requested_on",
 			"requested_by",
 			"modified",
-			"revision_notes",
+			"notes",
 		],
 		order_by="modified desc",
 		limit=50,
@@ -90,19 +90,16 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 		fields=["parent", "image"],
 		order_by="idx asc",
 	)
-	counts: dict[str, int] = {}
 	image_map: dict[str, list[str]] = {}
 	for row in image_rows:
-		counts[row["parent"]] = counts.get(row["parent"], 0) + 1
 		image_map.setdefault(row["parent"], []).append(row["image"])
 	for q in qrs:
-		q["images_count"] = counts.get(q["name"], 0)
-		q["revision_images"] = image_map.get(q["name"], [])
+		q["images"] = image_map.get(q["name"], [])
 	return qrs
 
 
 @frappe.whitelist()
-def request_quote(lead: str) -> str:
+def request_quote(lead: str, notes: str = "", images: list | None = None) -> str:
 	from crm.overrides import crm_lead_permissions
 
 	if not frappe.db.exists("CRM Lead", lead):
@@ -154,8 +151,22 @@ def request_quote(lead: str) -> str:
 			update_modified=False,
 		)
 
+		# Pre-fill estimation fields from current lead values as reference for estimation team.
+		lead_vals = frappe.db.get_value(
+			"CRM Lead",
+			lead,
+			["custom_tentative_value", "custom_tentative_area_sqft", "custom_final_margin"],
+			as_dict=True,
+		) or {}
+
 		qr = frappe.new_doc("CRM Quote Request")
 		qr.update({"lead": lead, "status": "Pending"})
+		qr.notes = notes or ""
+		qr.quote_value = lead_vals.get("custom_tentative_value") or 0
+		qr.quote_sq_ft = lead_vals.get("custom_tentative_area_sqft") or 0
+		qr.quote_margin = lead_vals.get("custom_final_margin") or 0
+		for url in images or []:
+			qr.append("images", {"image": url})
 		qr.flags.ignore_mandatory = True
 		qr.insert()
 
@@ -168,6 +179,7 @@ def request_quote(lead: str) -> str:
 				"status": ["in", ["Todo", "In Progress"]],
 			},
 		):
+			notes_snippet = f" Notes: {notes}." if notes else ""
 			frappe.get_doc(
 				{
 					"doctype": "CRM Task",
@@ -180,7 +192,7 @@ def request_quote(lead: str) -> str:
 					"reference_docname": lead,
 					"quote_request": qr.name,
 					"description": (
-						f"Quote manually requested for lead {lead_doc.lead_name}. "
+						f"Quote requested for lead {lead_doc.lead_name}.{notes_snippet} "
 						f"Open Quote Request {qr.name}, attach the quote file, enter Quote Value, "
 						"Margin and Area, then set status to Quote Received."
 					),
