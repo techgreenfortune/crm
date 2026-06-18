@@ -40,7 +40,12 @@ async function requestQuote(leadName) {
   if (existing) {
     openQuoteModal(existing.name)
   } else {
-    _showQuoteModal({ name: '', leadName, leadDoc: props.doc, onUpdated: onQuoteUpdated })
+    _showQuoteModal({
+      name: '',
+      leadName,
+      leadDoc: props.doc,
+      onUpdated: onQuoteUpdated,
+    })
   }
 }
 
@@ -86,7 +91,6 @@ async function showQuoteRequest(
   }
   openQuoteModal(resolvedName)
 }
-
 
 // Tasks
 function showTask(task) {

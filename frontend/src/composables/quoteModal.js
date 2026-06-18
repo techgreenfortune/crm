@@ -6,7 +6,12 @@ const leadName = ref('')
 const leadDoc = ref(null)
 const onUpdated = ref(null)
 
-function showQuoteModal({ name = '', leadName: _ln = '', leadDoc: _ld = null, onUpdated: _onUpdated = null } = {}) {
+function showQuoteModal({
+  name = '',
+  leadName: _ln = '',
+  leadDoc: _ld = null,
+  onUpdated: _onUpdated = null,
+} = {}) {
   qrName.value = name
   leadName.value = _ln
   leadDoc.value = _ld

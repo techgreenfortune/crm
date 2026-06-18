@@ -60,10 +60,7 @@ class CRMQuoteRequest(Document):
 
 	def validate(self):
 		self._guard_status_transition()
-		if (
-			self.status == "Revision Requested"
-			and not (self.notes or "").strip()
-		):
+		if self.status == "Revision Requested" and not (self.notes or "").strip():
 			frappe.throw(
 				_("Notes are required when requesting a revision."),
 				title=_("Notes Required"),

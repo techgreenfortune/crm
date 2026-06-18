@@ -9,7 +9,7 @@ from crm.integrations.api import get_contact_by_phone_number
 from crm.utils import seconds_to_duration
 
 
-class CRMCallLog(Document):
+class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -56,7 +56,8 @@ class CRMCallLog(Document):
 	def before_save(self):
 		self._validate_disposition()
 
-	def after_save(self):
+	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
+		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
 		self._run_disposition_stage_move()
 		self._trigger_no_answer_retry()
 

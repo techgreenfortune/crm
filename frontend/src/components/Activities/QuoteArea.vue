@@ -7,7 +7,9 @@
     >
       <div class="flex flex-1 flex-col gap-1.5 text-base truncate">
         <div class="flex items-center gap-2">
-          <span class="font-medium text-ink-gray-9 truncate">{{ quote.name }}</span>
+          <span class="font-medium text-ink-gray-9 truncate">{{
+            quote.name
+          }}</span>
           <Badge
             :label="__(quote.status)"
             :theme="statusTheme(quote.status)"
@@ -16,11 +18,21 @@
           />
         </div>
         <div class="flex flex-wrap gap-3 text-sm text-ink-gray-6">
-          <span v-if="quote.quote_value">₹{{ formatCurrency(quote.quote_value) }}</span>
-          <span v-if="quote.quote_margin">{{ quote.quote_margin }}% margin</span>
-          <span v-if="quote.quote_sq_ft">{{ formatCurrency(quote.quote_sq_ft) }} sqft</span>
-          <span v-if="quote.quote_number">{{ __('Ref:') }} {{ quote.quote_number }}</span>
-          <span v-if="quote.requested_on">{{ formatDate(quote.requested_on, 'D MMM YYYY') }}</span>
+          <span v-if="quote.quote_value"
+            >₹{{ formatCurrency(quote.quote_value) }}</span
+          >
+          <span v-if="quote.quote_margin"
+            >{{ quote.quote_margin }}% margin</span
+          >
+          <span v-if="quote.quote_sq_ft"
+            >{{ formatCurrency(quote.quote_sq_ft) }} sqft</span
+          >
+          <span v-if="quote.quote_number"
+            >{{ __('Ref:') }} {{ quote.quote_number }}</span
+          >
+          <span v-if="quote.requested_on">{{
+            formatDate(quote.requested_on, 'D MMM YYYY')
+          }}</span>
         </div>
       </div>
       <div class="flex items-center gap-1">
@@ -42,7 +54,11 @@
 
     <!-- Revisions section -->
     <div v-if="quote.supersededQuotes?.length" class="ml-2 mt-1">
-      <Button variant="ghost" size="sm" @click.stop="showRevisions = !showRevisions">
+      <Button
+        variant="ghost"
+        size="sm"
+        @click.stop="showRevisions = !showRevisions"
+      >
         <template #prefix>
           <FeatherIcon
             :name="showRevisions ? 'chevron-down' : 'chevron-right'"
@@ -97,7 +113,10 @@
           <div v-if="qr.notes" class="pl-2 text-xs text-ink-gray-5 italic">
             {{ __('Revision: {0}', [qr.notes]) }}
           </div>
-          <div v-if="qr.images?.length" class="pl-2 mt-0.5 flex flex-wrap gap-1.5">
+          <div
+            v-if="qr.images?.length"
+            class="pl-2 mt-0.5 flex flex-wrap gap-1.5"
+          >
             <img
               v-for="(img, imgIdx) in qr.images"
               :key="imgIdx"

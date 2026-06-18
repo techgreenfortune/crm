@@ -189,15 +189,16 @@ def get_quick_filters(doctype: str, cached: bool = True):
 				order_by="position asc",
 			)
 			options = [{"label": "", "value": ""}] + [
-				{"label": s.stage_label or s.name, "value": s.name}
-				for s in statuses
+				{"label": s.stage_label or s.name, "value": s.name} for s in statuses
 			]
-			quick_filters.append({
-				"label": _("C-Stage"),
-				"fieldname": "status",
-				"fieldtype": "Select",
-				"options": options,
-			})
+			quick_filters.append(
+				{
+					"label": _("C-Stage"),
+					"fieldname": "status",
+					"fieldtype": "Select",
+					"options": options,
+				}
+			)
 			continue
 		options = field.get("options")
 		if field.get("fieldtype") == "Select" and options and isinstance(options, str):

@@ -141,7 +141,7 @@ def _is_unassigned(snapshot) -> bool:
 	return bool(snapshot) and not snapshot.get("lead_owner")
 
 
-class CRMLead(Document):
+class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -242,7 +242,8 @@ class CRMLead(Document):
 				self.lead_owner or "",
 			)
 
-	def after_save(self):
+	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
+		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
 		self._run_stage_side_effects()
 
 	def before_save(self):

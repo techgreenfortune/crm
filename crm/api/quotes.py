@@ -152,12 +152,15 @@ def request_quote(lead: str, notes: str = "", images: list | None = None) -> str
 		)
 
 		# Pre-fill estimation fields from current lead values as reference for estimation team.
-		lead_vals = frappe.db.get_value(
-			"CRM Lead",
-			lead,
-			["custom_tentative_value", "custom_tentative_area_sqft", "custom_final_margin"],
-			as_dict=True,
-		) or {}
+		lead_vals = (
+			frappe.db.get_value(
+				"CRM Lead",
+				lead,
+				["custom_tentative_value", "custom_tentative_area_sqft", "custom_final_margin"],
+				as_dict=True,
+			)
+			or {}
+		)
 
 		qr = frappe.new_doc("CRM Quote Request")
 		qr.update({"lead": lead, "status": "Pending"})

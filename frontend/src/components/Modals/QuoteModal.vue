@@ -21,19 +21,26 @@
         <!-- Non-estimation users: status/notes/images TOP then estimation fields -->
         <template v-if="!isEstimationTeam">
           <div v-if="canEditOwner" class="mb-4">
-            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">{{ __('Status') }}</div>
+            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+              {{ __('Status') }}
+            </div>
             <FormControl
               type="select"
               v-model="localStatus"
               :options="[
                 { label: __('Select action...'), value: '' },
-                { label: __('Revision Requested'), value: 'Revision Requested' },
+                {
+                  label: __('Revision Requested'),
+                  value: 'Revision Requested',
+                },
                 { label: __('Accepted'), value: 'Accepted' },
               ]"
             />
           </div>
           <div class="mb-4">
-            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">{{ __('Notes from Lead Owner') }}</div>
+            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+              {{ __('Notes from Lead Owner') }}
+            </div>
             <textarea
               v-if="isNewMode || canEditOwner"
               v-model="localNotes"
@@ -41,21 +48,45 @@
               :placeholder="__('Add notes for the estimation team...')"
               rows="3"
             />
-            <p v-else class="whitespace-pre-wrap text-sm text-ink-gray-7">{{ doc.notes || __('No notes') }}</p>
+            <p v-else class="whitespace-pre-wrap text-sm text-ink-gray-7">
+              {{ doc.notes || __('No notes') }}
+            </p>
           </div>
           <div class="mb-4">
-            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">{{ __('Images') }}</div>
+            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+              {{ __('Images') }}
+            </div>
             <div class="flex flex-wrap gap-2">
-              <div v-for="(img, idx) in localImages" :key="idx" class="group relative">
-                <img :src="img.url" class="size-16 cursor-pointer rounded border border-outline-gray-2 object-cover" @click="openFile(img.url)" />
-                <button v-if="canEditOwner" class="absolute -right-1 -top-1 hidden size-4 items-center justify-center rounded-full bg-ink-gray-7 text-white group-hover:flex" @click.stop="removeImage(idx)">
+              <div
+                v-for="(img, idx) in localImages"
+                :key="idx"
+                class="group relative"
+              >
+                <img
+                  :src="img.url"
+                  class="size-16 cursor-pointer rounded border border-outline-gray-2 object-cover"
+                  @click="openFile(img.url)"
+                />
+                <button
+                  v-if="canEditOwner"
+                  class="absolute -right-1 -top-1 hidden size-4 items-center justify-center rounded-full bg-ink-gray-7 text-white group-hover:flex"
+                  @click.stop="removeImage(idx)"
+                >
                   <FeatherIcon name="x" class="size-2.5" />
                 </button>
               </div>
-              <button v-if="canEditOwner" class="flex size-16 items-center justify-center rounded border border-dashed border-outline-gray-3 bg-surface-gray-1 text-ink-gray-5 hover:bg-surface-gray-2" @click="showUploader = true">
+              <button
+                v-if="canEditOwner"
+                class="flex size-16 items-center justify-center rounded border border-dashed border-outline-gray-3 bg-surface-gray-1 text-ink-gray-5 hover:bg-surface-gray-2"
+                @click="showUploader = true"
+              >
                 <FeatherIcon name="plus" class="size-5" />
               </button>
-              <span v-if="!localImages.length && !canEditImages" class="text-sm text-ink-gray-4">{{ __('No images') }}</span>
+              <span
+                v-if="!localImages.length && !canEditImages"
+                class="text-sm text-ink-gray-4"
+                >{{ __('No images') }}</span
+              >
             </div>
           </div>
         </template>
@@ -71,16 +102,30 @@
         <!-- Estimation Team: notes/images BOTTOM (always read-only) -->
         <template v-if="isEstimationTeam">
           <div class="mt-4">
-            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">{{ __('Notes from Lead Owner') }}</div>
-            <p class="whitespace-pre-wrap text-sm text-ink-gray-7">{{ doc.notes || __('No notes') }}</p>
+            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+              {{ __('Notes from Lead Owner') }}
+            </div>
+            <p class="whitespace-pre-wrap text-sm text-ink-gray-7">
+              {{ doc.notes || __('No notes') }}
+            </p>
           </div>
           <div class="mt-4">
-            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">{{ __('Images') }}</div>
+            <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+              {{ __('Images') }}
+            </div>
             <div class="flex flex-wrap gap-2">
               <div v-for="(img, idx) in localImages" :key="idx">
-                <img :src="img.url" class="size-16 cursor-pointer rounded border border-outline-gray-2 object-cover" @click="openFile(img.url)" />
+                <img
+                  :src="img.url"
+                  class="size-16 cursor-pointer rounded border border-outline-gray-2 object-cover"
+                  @click="openFile(img.url)"
+                />
               </div>
-              <span v-if="!localImages.length" class="text-sm text-ink-gray-4">{{ __('No images') }}</span>
+              <span
+                v-if="!localImages.length"
+                class="text-sm text-ink-gray-4"
+                >{{ __('No images') }}</span
+              >
             </div>
           </div>
         </template>
@@ -90,7 +135,10 @@
           v-model="showUploader"
           doctype="CRM Quote Request"
           :docname="props.qrName"
-          :options="{ folder: 'Home/Attachments', restrictions: { allowedFileTypes: ['image/*'] } }"
+          :options="{
+            folder: 'Home/Attachments',
+            restrictions: { allowedFileTypes: ['image/*'] },
+          }"
           @after="onImagesUploaded"
         />
 
@@ -166,12 +214,19 @@ const { getUserRole } = usersStore()
 const isNewMode = computed(() => !props.qrName)
 
 // ─── document state ───────────────────────────────────────────────────────────
-const { document: qrDoc } = useDocument('CRM Quote Request', props.qrName || null)
+const { document: qrDoc } = useDocument(
+  'CRM Quote Request',
+  props.qrName || null,
+)
 const doc = computed(() => qrDoc.doc || {})
 
 // ─── permissions ──────────────────────────────────────────────────────────────
-const isEstimationTeam = computed(() => getUserRole(currentUser) === 'Estimation Team')
-const isLeadOwner = computed(() => !isNewMode.value && doc.value.lead_owner === currentUser)
+const isEstimationTeam = computed(
+  () => getUserRole(currentUser) === 'Estimation Team',
+)
+const isLeadOwner = computed(
+  () => !isNewMode.value && doc.value.lead_owner === currentUser,
+)
 
 const EDITABLE_ESTIMATION_STATUSES = ['Pending', 'Revision Requested']
 
@@ -182,7 +237,10 @@ const canEditEstimation = computed(
     EDITABLE_ESTIMATION_STATUSES.includes(doc.value.status),
 )
 const canEditOwner = computed(
-  () => !isNewMode.value && isLeadOwner.value && doc.value.status === 'Quote Received',
+  () =>
+    !isNewMode.value &&
+    isLeadOwner.value &&
+    doc.value.status === 'Quote Received',
 )
 const canEditImages = computed(() => isNewMode.value || canEditOwner.value)
 
@@ -207,7 +265,11 @@ const ESTIMATION_FIELDS = [
 const ALWAYS_READONLY = ['lead', 'requested_by', 'requested_on']
 
 function applyFieldProps(field) {
-  if (field.fieldname === 'notes' || field.fieldname === 'images' || field.fieldname === 'status') {
+  if (
+    field.fieldname === 'notes' ||
+    field.fieldname === 'images' ||
+    field.fieldname === 'status'
+  ) {
     field.hidden = 1
     return
   }
@@ -245,7 +307,9 @@ const localStatus = ref('')
 
 watch(
   () => qrDoc.doc?.status,
-  (v) => { if (v === 'Quote Received') localStatus.value = '' },
+  (v) => {
+    if (v === 'Quote Received') localStatus.value = ''
+  },
   { immediate: true },
 )
 
@@ -257,7 +321,7 @@ watch(
   () => qrDoc.doc?.notes,
   (v) => {
     if (!notesInited.value && v !== undefined) {
-      localNotes.value = canEditOwner.value ? '' : (v || '')
+      localNotes.value = canEditOwner.value ? '' : v || ''
       notesInited.value = true
     }
   },

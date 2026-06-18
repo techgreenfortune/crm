@@ -321,5 +321,7 @@ def update_call_log(call_payload, call_log=None):
 			call_log.receiver = call_payload.get("AgentEmail")
 
 		call_log.save(ignore_permissions=True)
-		frappe.db.commit()
+		# Webhook handler runs outside request transaction; explicit commit so call log
+		# survives downstream errors in subsequent processing.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		return call_log
