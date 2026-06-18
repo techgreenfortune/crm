@@ -5,6 +5,9 @@ from frappe.contacts.doctype.contact.contact import Contact
 def prevent_user_contact_sync(doc, method):
 	# Frappe auto-creates a Contact for every User via background job (enqueue_after_commit).
 	# Background jobs have no active HTTP request — use that to detect and block the sync.
+	# Skip during tests/install/migrate so fixtures and test users can create Contacts.
+	if frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_migrate:
+		return
 	if doc.user and not getattr(frappe.local, "request", None):
 		frappe.throw(frappe._("Auto-Contact creation from User sync is disabled in CRM."))
 
