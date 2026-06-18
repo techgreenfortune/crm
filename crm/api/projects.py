@@ -131,6 +131,14 @@ def create_project_for_lead(lead: str) -> str:
 	# write — db.set_value bypasses validate().
 	frappe.db.set_value("CRM Lead", lead_doc.name, "lead_status", "Won")
 
+	# --- Fire Lead Won notification from Python (after project confirmed + Won set).
+	# Notification is disabled in fixtures; send() bypasses enabled/condition checks.
+	lead_doc.lead_status = "Won"  # reflect in-memory for .send()
+	try:
+		frappe.get_doc("Notification", "Lead Won").send(lead_doc)
+	except Exception:
+		frappe.log_error(title="Lead Won notification failed", message=frappe.get_traceback())
+
 	# --- Audit Comment ---
 	try:
 		frappe.get_doc(

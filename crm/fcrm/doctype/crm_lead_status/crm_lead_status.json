@@ -2,6 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "field:lead_status",
+ "title_field": "stage_label",
  "creation": "2023-11-29 11:09:53.678414",
  "doctype": "DocType",
  "engine": "InnoDB",

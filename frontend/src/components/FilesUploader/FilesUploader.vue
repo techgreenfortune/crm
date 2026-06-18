@@ -106,7 +106,7 @@ import { ref, computed } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, required: true },
-  docname: { type: String, required: true },
+  docname: { type: String, default: '' },
   fieldname: { type: String, default: '' },
   options: {
     type: Object,
