@@ -27,7 +27,7 @@ import frappe
 from frappe.utils import get_url
 
 from crm.integrations.brevo.brevo_handler import is_brevo_enabled, send_template_email
-from crm.integrations.brevo.template_config import BREVO_TEMPLATES
+from crm.integrations.brevo.template_config import BREVO_TEMPLATES, STATIC_CCS
 
 # Max attachment size we'll embed inline (Brevo limit is ~10 MB total).
 _MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -390,7 +390,10 @@ def send_quote_email(trigger: str, qr_name: str) -> None:
 			return
 
 		to_email = recipient["to"]
-		cc_emails = recipient.get("cc") or []
+		cc_emails = list(recipient.get("cc") or [])
+		for extra in STATIC_CCS.get(trigger, []):
+			if extra and extra != to_email and extra not in cc_emails:
+				cc_emails.append(extra)
 
 		params = spec["params"](qr_doc)
 		attachments = _quote_file_attachment(qr_doc) if spec.get("attach_quote_file") else None
