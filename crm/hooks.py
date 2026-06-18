@@ -158,6 +158,8 @@ override_doctype_class = {
 
 doc_events = {
 	"Contact": {
+		"before_insert": ["crm.overrides.contact.prevent_user_contact_sync"],
+		"before_save": ["crm.overrides.contact.prevent_user_contact_sync"],
 		"validate": ["crm.api.contact.validate"],
 		"after_insert": ["crm.api.contact.after_insert"],
 		"on_update": ["crm.api.contact.on_update"],
@@ -203,6 +205,15 @@ doc_events = {
 	},
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
+	},
+	"Notification": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
+	},
+	"Form Script": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
+	},
+	"Assignment Rule": {
+		"on_update": ["crm.api.desk_audit.on_desk_edit"],
 	},
 }
 
@@ -256,7 +267,10 @@ fixtures = [
 # ---------------
 
 scheduler_events = {
-	"daily_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_daily"],
+	"daily_long": [
+		"crm.lead_syncing.background_sync.sync_leads_from_sources_daily",
+		"crm.api.retry_engine.advance_retry_sequence",
+	],
 	"hourly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_hourly"],
 	"monthly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_monthly"],
 	"cron": {

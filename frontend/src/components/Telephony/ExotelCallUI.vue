@@ -685,7 +685,7 @@ const canClose = computed(() => {
   if (callActive.value) return false
   if (callTerminated.value && !isCallHandler.value) return false
   if (callTerminated.value) {
-    if (!dispositionEligible.value && !dispositionLocked.value) return true
+    if (!dispositionEligible.value) return true
     if (!disposition.value) return false
     if (callbackRequired.value && !scheduledCallbackAt.value) return false
     if (
@@ -803,10 +803,11 @@ function setup() {
 
     callStatus.value = updateStatus(data)
     const { user } = sessionStore()
+    const sessionUser = typeof user === 'object' ? user.value : user
 
     if (!showCallPopup.value && !showSmallCallPopup.value) {
       if (callTerminated.value) return
-      if (data.AgentEmail && data.AgentEmail == (user || user.value)) {
+      if (data.AgentEmail && data.AgentEmail === sessionUser) {
         // Incoming call
         phoneNumber.value = data.CallFrom || data.From
         showCallPopup.value = true
@@ -834,8 +835,9 @@ function stopStaleCheck() {
 function checkStale() {
   if (!showCallPopup.value && !showSmallCallPopup.value) return
   if (!callData.value?.CallSid) return
-  // Skip auto-close when agent is actively engaging with disposition form.
-  if (callTerminated.value && disposition.value) return
+  // Once call is terminated, no more socket events are expected — stale
+  // detection has no purpose and must not race against disposition save.
+  if (callTerminated.value) return
   // No intermediate socket events expected while call is live, so use a long
   // safety-net timeout rather than the short ACTIVE_STALE_MS — prevents
   // stale-close on normal calls while still closing the popup if the socket
@@ -909,10 +911,9 @@ async function attemptCloseCallPopup() {
     closeCallPopup()
     return
   }
-  // Non-eligible leads (past C0, engagement Active/Archived/Won) skip the
-  // disposition step entirely. Close without posting; the call log stays
-  // disposition-blank, which the backend gate accepts.
-  if (!dispositionEligible.value && !dispositionLocked.value) {
+  // Non-eligible leads (past C0, not Cold-Unresponsive/Reactivated) must not
+  // have dispositions written — backend will reject them. Close without API call.
+  if (!dispositionEligible.value) {
     closeCallPopup()
     return
   }
@@ -1042,6 +1043,10 @@ function updateStatus(data) {
     )
     return 'Call ended'
   }
+
+  // No branch matched — keep current status rather than returning undefined,
+  // which would corrupt every computed that checks callStatus.value.
+  return callStatus.value
 }
 
 defineExpose({ makeOutgoingCall, setup })

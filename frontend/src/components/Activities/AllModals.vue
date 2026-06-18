@@ -1,12 +1,13 @@
 <template>
-  <div></div>
+  <div />
 </template>
 <script setup>
 import { inject } from 'vue'
-import { useDoctypeModal } from '@/composables/doctypeModal'
-import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import { call, toast } from 'frappe-ui'
 import { useRoute, useRouter } from 'vue-router'
+import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
+import { useDoctypeModal } from '@/composables/doctypeModal'
+import { useQuoteModal } from '@/composables/quoteModal'
 
 // Provided by Lead.vue (and any other parent that wants its resources refreshed
 // when a child modal saves). null fallback for parents that don't provide it.
@@ -20,33 +21,49 @@ const props = defineProps({
 const activities = defineModel({ type: Object })
 
 const { showModal } = useDoctypeModal()
+const { showQuoteModal: _showQuoteModal } = useQuoteModal()
 const { updateOnboardingStep } = useOnboarding('frappecrm')
 const { capture } = useTelemetry()
 
+// --- Quote flow ---
+
 async function requestQuote(leadName) {
   if (!leadName) return
-  if (
-    !window.confirm(
-      __('Create a new Quote Request and Upload Quote task for this lead?'),
-    )
-  ) {
-    return
-  }
-  try {
-    const qrName = await call('crm.api.quotes.request_quote', {
-      lead: leadName,
+  const rows = await call('frappe.client.get_list', {
+    doctype: 'CRM Quote Request',
+    filters: { lead: leadName, is_superseded: 0 },
+    fields: ['name', 'status'],
+    order_by: 'creation desc',
+    limit: 1,
+  })
+  const existing = rows?.find((r) => r.status !== 'Accepted')
+  if (existing) {
+    openQuoteModal(existing.name)
+  } else {
+    _showQuoteModal({
+      name: '',
+      leadName,
+      leadDoc: props.doc,
+      onUpdated: onQuoteUpdated,
     })
-    activities.value.reload()
-    reloadAfterChildModal?.()
-    toast.success(__('Quote Request {0} ready', [qrName]))
-  } catch (err) {
-    toast.error(err?.message || __('Could not request a quote.'))
   }
+}
+
+function openQuoteModal(qrName) {
+  _showQuoteModal({
+    name: qrName,
+    onUpdated: onQuoteUpdated,
+  })
+}
+
+function onQuoteUpdated() {
+  activities.value.reload()
+  reloadAfterChildModal?.()
 }
 
 async function showQuoteRequest(
   leadName,
-  title = 'Quote Request',
+  _title = 'Quote Request',
   qrName = null,
 ) {
   let resolvedName = qrName
@@ -72,17 +89,7 @@ async function showQuoteRequest(
     if (!rows?.length) return
     resolvedName = rows[0].name
   }
-  showModal({
-    name: resolvedName,
-    doctype: 'CRM Quote Request',
-    customTitle: title,
-    callbacks: {
-      afterUpdate: () => {
-        activities.value.reload()
-        reloadAfterChildModal?.()
-      },
-    },
-  })
+  openQuoteModal(resolvedName)
 }
 
 // Tasks
