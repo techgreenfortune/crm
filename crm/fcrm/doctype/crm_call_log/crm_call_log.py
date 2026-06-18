@@ -9,7 +9,7 @@ from crm.integrations.api import get_contact_by_phone_number
 from crm.utils import seconds_to_duration
 
 
-class CRMCallLog(Document):
+class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -52,6 +52,209 @@ class CRMCallLog(Document):
 			self.id = generate_hash(length=12)
 		if not self.telephony_medium:
 			self.telephony_medium = "Manual"
+
+	def before_save(self):
+		self._validate_disposition()
+
+	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
+		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+		self._run_disposition_stage_move()
+		self._trigger_no_answer_retry()
+
+	def _resolve_linked_lead(self):
+		if self.reference_doctype == "CRM Lead" and self.reference_docname:
+			return self.reference_docname
+		for row in self.links or []:
+			if row.link_doctype == "CRM Lead" and row.link_name:
+				return row.link_name
+		return None
+
+	def _validate_disposition(self):
+		old = self.get_doc_before_save()
+		old_disposition = old.disposition if old else None
+		new_disposition = self.disposition
+
+		if not new_disposition or new_disposition == old_disposition:
+			return
+
+		user = frappe.session.user
+		user_roles = set(frappe.get_roles(user))
+		is_privileged = bool(user_roles & {"System Manager", "Administrator"})
+
+		if not is_privileged and user not in (self.caller, self.receiver):
+			frappe.throw(
+				_("You can only set the disposition on calls you handled."),
+				exc=frappe.PermissionError,
+				title=_("Not Allowed"),
+			)
+
+		if self.status == "Call Not Answered" and new_disposition != "No Answer / Not Reachable":
+			frappe.throw(
+				_("A Call Not Answered call can only be tagged 'No Answer / Not Reachable'."),
+				title=_("Disposition Not Allowed"),
+			)
+
+		lead_name = self._resolve_linked_lead()
+
+		if lead_name:
+			state = frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
+			eligible = state.get("status") == "C0" or state.get("lead_status") in (
+				"Cold-Unresponsive",
+				"Reactivated",
+			)
+			if not eligible:
+				frappe.throw(
+					_(
+						f"Dispositions can only be set on C0 leads or leads with engagement "
+						f"Cold-Unresponsive/Reactivated. Lead {lead_name} is currently at "
+						f"{state.get('status')} / {state.get('lead_status')}."
+					),
+					title=_("Disposition Not Allowed"),
+				)
+
+		disp = (
+			frappe.db.get_value(
+				"CRM Call Disposition",
+				new_disposition,
+				["requires_callback_datetime", "requires_routing_reason", "requires_lost_reason"],
+				as_dict=True,
+			)
+			or {}
+		)
+
+		if disp.get("requires_callback_datetime") and not self.get("scheduled_callback_at"):
+			frappe.throw(
+				_(
+					f"Disposition '{new_disposition}' requires a Scheduled Callback At datetime "
+					"on this call log."
+				),
+				title=_("Callback Datetime Required"),
+			)
+
+		if lead_name and disp.get("requires_routing_reason"):
+			if not frappe.db.get_value("CRM Lead", lead_name, "custom_fabricator_routing_reason"):
+				frappe.throw(
+					_(
+						f"Disposition '{new_disposition}' requires Fabricator Routing Reason on the "
+						"linked lead. Set it on the lead before saving the call."
+					),
+					title=_("Routing Reason Required"),
+				)
+
+		if lead_name and disp.get("requires_lost_reason"):
+			lr = frappe.db.get_value("CRM Lead", lead_name, ["lost_reason", "lost_notes"], as_dict=True) or {}
+			if not lr.get("lost_reason"):
+				frappe.throw(
+					_(
+						f"Disposition '{new_disposition}' requires a Lost Reason on the linked lead. "
+						"Set it on the lead before saving the call."
+					),
+					title=_("Lost Reason Required"),
+				)
+			if lr.get("lost_reason") == "Other" and not lr.get("lost_notes"):
+				frappe.throw(
+					_("Lost Reason 'Other' additionally requires Lost Notes on the linked lead."),
+					title=_("Lost Notes Required"),
+				)
+
+	def _run_disposition_stage_move(self):
+		old = self.get_doc_before_save()
+		old_disposition = old.disposition if old else None
+		new_disposition = self.disposition
+
+		if not new_disposition or new_disposition == old_disposition:
+			return
+
+		disp = (
+			frappe.db.get_value(
+				"CRM Call Disposition",
+				new_disposition,
+				["next_status", "next_lead_status", "default_lost_reason"],
+				as_dict=True,
+			)
+			or {}
+		)
+		next_status = disp.get("next_status")
+		next_lead_status = disp.get("next_lead_status")
+		default_reason = disp.get("default_lost_reason")
+
+		if next_status or next_lead_status or default_reason:
+			lead_name = self._resolve_linked_lead()
+			if lead_name:
+				current = (
+					frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
+				)
+				gate_ok = current.get("status") == "C0" or current.get("lead_status") in (
+					"Cold-Unresponsive",
+					"Reactivated",
+				)
+				if gate_ok:
+					try:
+						lead = frappe.get_doc("CRM Lead", lead_name)
+						changed = False
+						if next_status and next_status != lead.status:
+							lead.status = next_status
+							changed = True
+						if next_lead_status and next_lead_status != lead.lead_status:
+							lead.lead_status = next_lead_status
+							changed = True
+						if default_reason and not lead.lost_reason:
+							lead.lost_reason = default_reason
+							changed = True
+						if changed:
+							lead.save(ignore_permissions=True)
+					except Exception:
+						frappe.log_error(
+							message=(
+								f"Lead {lead_name} could not auto-move for disposition {new_disposition!r}: "
+								f"current_status={current.get('status')}, "
+								f"current_lead_status={current.get('lead_status')}, "
+								f"next_status={next_status}, next_lead_status={next_lead_status}. "
+								"Lead validation rejected the change. Agent must finalise the stage manually."
+							),
+							title="Disposition stage move skipped — lead validation failed",
+						)
+
+		if new_disposition == "Requested Callback":
+			lead_name = self._resolve_linked_lead()
+			if lead_name:
+				lead_state = (
+					frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
+				)
+				if lead_state.get("status") == "C0" or lead_state.get("lead_status") in (
+					"Cold-Unresponsive",
+					"Reactivated",
+				):
+					frappe.enqueue(
+						"crm.api.call_log.cancel_retry_log",
+						queue="short",
+						user="Administrator",
+						lead_name=lead_name,
+						permanent=False,
+					)
+
+	def _trigger_no_answer_retry(self):
+		old = self.get_doc_before_save()
+		old_status = old.status if old else None
+
+		if self.status != "Call Not Answered" or old_status == "Call Not Answered":
+			return
+
+		lead_name = self._resolve_linked_lead()
+		if not lead_name:
+			return
+
+		lead_state = frappe.db.get_value("CRM Lead", lead_name, ["status", "lead_status"], as_dict=True) or {}
+		if lead_state.get("status") == "C0" or lead_state.get("lead_status") in (
+			"Cold-Unresponsive",
+			"Reactivated",
+		):
+			frappe.enqueue(
+				"crm.api.call_log.register_no_answer",
+				queue="short",
+				user="Administrator",
+				lead_name=lead_name,
+			)
 
 	@staticmethod
 	def default_list_data():

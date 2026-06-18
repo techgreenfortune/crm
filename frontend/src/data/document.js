@@ -61,7 +61,7 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
             toast.error(__(err.messages[0] || 'Document does not exist'))
           }
           if (err.exc_type === 'PermissionError') {
-            toast.error(
+            showErrorToastOnce(
               __(
                 err.messages[0] ||
                   'You do not have permission to access this document',

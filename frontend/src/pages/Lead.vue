@@ -172,7 +172,7 @@
               </Tooltip>
               <div class="flex gap-1.5">
                 <Button
-                  v-if="callEnabled"
+                  v-if="callEnabled && isTelephonyAgent()"
                   :tooltip="__('Make a Call')"
                   :icon="PhoneIcon"
                   @click="
@@ -199,16 +199,6 @@
                         )
                   "
                 />
-                <Button
-                  :tooltip="__('Go to Website')"
-                  :icon="LinkIcon"
-                  @click="
-                    doc.website
-                      ? openWebsite(doc.website)
-                      : toast.error(__('Please set a website to visit'))
-                  "
-                />
-
                 <Button
                   :tooltip="__('Attach a File')"
                   :icon="AttachmentIcon"
@@ -769,7 +759,7 @@ async function setPrimaryContact(contact) {
 }
 
 // --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
-const { isManager, isAdmin } = usersStore()
+const { isManager, isAdmin, isTelephonyAgent } = usersStore()
 const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {

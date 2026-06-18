@@ -74,7 +74,7 @@ def add_note_to_call_log(call_sid: str, note: dict):
 	else:
 		_note = frappe.set_value("FCRM Note", note.get("name"), "content", note.get("content"))
 
-	call_log = frappe.get_cached_doc("CRM Call Log", call_sid)
+	call_log = frappe.get_doc("CRM Call Log", call_sid)
 	call_log.link_with_reference_doc("FCRM Note", _note.name)
 	call_log.save(ignore_permissions=True)
 
@@ -91,8 +91,7 @@ def add_disposition_to_call_log(
 	fabricator_routing_notes: str | None = None,
 ):
 	"""Persist a disposition on a call log. Ownership and No-Answer validation
-	live in the `CRM Call Log — Before Save — Disposition Validation` server
-	script (see fixture)."""
+	live in CRMCallLog._validate_disposition() (crm_call_log.py before_save)."""
 	call_log = frappe.get_doc("CRM Call Log", call_sid)
 	call_log.disposition = disposition
 	if scheduled_callback_at:
