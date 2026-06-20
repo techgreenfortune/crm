@@ -127,7 +127,6 @@ def default_manager_dashboard_layout():
 			"layout": {"x": 0, "y": 67, "w": 10, "h": 9, "i": "c2_sub_status_breakdown"},
 		},
 	]
-	
 
 	return json.dumps(stock_charts + indiframe_charts)
 
