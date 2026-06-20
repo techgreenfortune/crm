@@ -58,63 +58,76 @@ def default_manager_dashboard_layout():
 			"type": "axis_chart",
 			"layout": {"x": 0, "y": 4, "w": 20, "h": 9, "i": "leads_over_time"},
 		},
+		# Quotes Sent & Orders Won — mirror the lead-generation pattern
+		# (event-over-time line charts).  Side-by-side on the same row.
+		{
+			"name": "quotes_sent_over_time",
+			"type": "axis_chart",
+			"layout": {"x": 0, "y": 13, "w": 10, "h": 9, "i": "quotes_sent_over_time"},
+		},
+		{
+			"name": "orders_won_over_time",
+			"type": "axis_chart",
+			"layout": {"x": 10, "y": 13, "w": 10, "h": 9, "i": "orders_won_over_time"},
+		},
 		# §11.2 Pipeline + §11.4 Loss Analysis side-by-side
 		{
 			"name": "lead_pipeline_funnel",
 			"type": "axis_chart",
-			"layout": {"x": 0, "y": 13, "w": 10, "h": 9, "i": "lead_pipeline_funnel"},
+			"layout": {"x": 0, "y": 22, "w": 10, "h": 9, "i": "lead_pipeline_funnel"},
 		},
 		{
 			"name": "lost_lead_reasons",
 			"type": "axis_chart",
-			"layout": {"x": 10, "y": 13, "w": 10, "h": 9, "i": "lost_lead_reasons"},
+			"layout": {"x": 10, "y": 22, "w": 10, "h": 9, "i": "lost_lead_reasons"},
 		},
 		# §11.1 source + sub-source as bar charts (per requirement: no donuts here)
 		{
 			"name": "leads_by_source_axis",
 			"type": "axis_chart",
-			"layout": {"x": 0, "y": 22, "w": 10, "h": 9, "i": "leads_by_source_axis"},
+			"layout": {"x": 0, "y": 31, "w": 10, "h": 9, "i": "leads_by_source_axis"},
 		},
 		{
 			"name": "leads_by_sub_source",
 			"type": "axis_chart",
-			"layout": {"x": 10, "y": 22, "w": 10, "h": 9, "i": "leads_by_sub_source"},
+			"layout": {"x": 10, "y": 31, "w": 10, "h": 9, "i": "leads_by_sub_source"},
 		},
 		# §11.3 Calling Team Productivity row 1
 		{
 			"name": "calls_per_caller",
 			"type": "axis_chart",
-			"layout": {"x": 0, "y": 31, "w": 10, "h": 9, "i": "calls_per_caller"},
+			"layout": {"x": 0, "y": 40, "w": 10, "h": 9, "i": "calls_per_caller"},
 		},
 		{
 			"name": "call_dispositions",
 			"type": "donut_chart",
-			"layout": {"x": 10, "y": 31, "w": 10, "h": 9, "i": "call_dispositions"},
+			"layout": {"x": 10, "y": 40, "w": 10, "h": 9, "i": "call_dispositions"},
 		},
 		# §11.3 Calling row 2 + §11.1 Lead Spotting
 		{
 			"name": "avg_c0_to_c2_time_per_caller",
 			"type": "axis_chart",
-			"layout": {"x": 0, "y": 40, "w": 10, "h": 9, "i": "avg_c0_to_c2_time_per_caller"},
+			"layout": {"x": 0, "y": 49, "w": 10, "h": 9, "i": "avg_c0_to_c2_time_per_caller"},
 		},
 		{
 			"name": "lead_spotting_productivity",
 			"type": "axis_chart",
-			"layout": {"x": 10, "y": 40, "w": 10, "h": 9, "i": "lead_spotting_productivity"},
+			"layout": {"x": 10, "y": 49, "w": 10, "h": 9, "i": "lead_spotting_productivity"},
 		},
 		# §11.5 Geography (full width)
 		{
 			"name": "leads_by_geography",
 			"type": "axis_chart",
-			"layout": {"x": 0, "y": 49, "w": 20, "h": 9, "i": "leads_by_geography"},
+			"layout": {"x": 0, "y": 58, "w": 20, "h": 9, "i": "leads_by_geography"},
 		},
 		# §11.2 C2 sub-status — small enough to still work as a donut
 		{
 			"name": "c2_sub_status_breakdown",
 			"type": "donut_chart",
-			"layout": {"x": 0, "y": 58, "w": 10, "h": 9, "i": "c2_sub_status_breakdown"},
+			"layout": {"x": 0, "y": 67, "w": 10, "h": 9, "i": "c2_sub_status_breakdown"},
 		},
 	]
+	
 
 	return json.dumps(stock_charts + indiframe_charts)
 
