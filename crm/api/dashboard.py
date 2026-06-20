@@ -7,15 +7,150 @@ from frappe.query_builder.functions import Avg, Coalesce, Count, Date, DateForma
 from pypika.functions import Function
 
 from crm.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
+from crm.overrides.crm_lead_permissions import downstream_users
 from crm.utils import sales_user_only
 
-# CRM roles that get the team-wide ("Manager Dashboard") view. Mirrors the
-# Sales Manager role_profile bundling that existed before the role retirement
-# on 2026-05-25 — Sales Head / Sales Coordinator / RSM / ASM / Management were
-# the five profiles bundled with Sales Manager, plus System Manager for admins.
-# Anyone else with Sales User in their roles is treated as an individual
-# contributor (self-only filter).
-_MANAGER_ROLES = frozenset({"System Manager", "Sales Head", "Sales Coordinator", "RSM", "ASM", "Management"})
+# Admin-tier roles that see EVERY lead regardless of hierarchy.  These never
+# get a WHERE lead_owner IN (…) filter on the dashboard.  All other users are
+# hierarchy-scoped: they see their own leads + everyone in their downstream
+# subtree (from ``CRM Sales Hierarchy``).  A leaf user with no reports sees
+# only their own data — no peer/parent visibility.
+_ADMIN_ROLES = frozenset({"System Manager", "Administrator"})
+
+
+def _visible_owners(user: str) -> set[str] | None:
+	"""Return the set of ``lead_owner`` values ``user`` is allowed to see on
+	the dashboard, or ``None`` for admin-tier roles that bypass the filter
+	entirely.
+
+	- Admin / System Manager → ``None`` (no SQL filter, sees every lead)
+	- Everyone else → ``downstream_users(user)`` from CRM Sales Hierarchy
+	  (self + all descendants).  Subordinates never see their parents.
+
+	The returned set is sufficient to drive a ``lead_owner IN (…)`` clause.
+	Callers should treat ``None`` as "skip the filter".
+	"""
+	roles = set(frappe.get_roles(user))
+	if roles & _ADMIN_ROLES:
+		return None
+	return downstream_users(user)
+
+
+def _scope_users(user: str, requested_users: list[str] | None = None) -> set[str] | None:
+	"""Resolve which lead_owner values to filter on for ``user``'s dashboard.
+
+	**Picks are literal** — selecting users in the picker filters to
+	exactly those users' own leads, with no subtree expansion and no
+	implicit self.  To include themselves, the caller must pick their
+	own name from the dropdown explicitly.
+
+	- No picks + admin → ``None`` (no filter; sees every lead)
+	- No picks + non-admin → ``{user}`` (own leads only)
+	- Picks + admin → exactly the picked users (empty picks reverts to all)
+	- Picks + non-admin → picked users intersected with caller's visible
+	  scope (info-leak guard).  If all picks fall outside scope (shouldn't
+	  happen since the picker only shows in-scope users), falls back to
+	  ``{user}`` so the dashboard isn't empty.
+	"""
+	visible = _visible_owners(user)
+
+	if not requested_users:
+		# No picks — default.
+		return None if visible is None else {user}
+
+	picks = {u for u in requested_users if u}
+
+	if visible is None:
+		# Admin — exactly the picks, no implicit self.
+		return picks or None
+
+	# Hierarchy-scoped caller — clamp picks to visible scope so the picker
+	# can't be abused to peek outside the caller's subtree.
+	clamped = picks & visible
+	return clamped or {user}
+
+
+def _owner_sql_filter(owners, alias: str = "lead_owner") -> tuple[str, dict]:
+	"""Build a SQL fragment + params dict for an ``IN``-clause on ``owners``.
+
+	Returns ``("", {})`` when ``owners`` is ``None`` (admin scope — no filter).
+	Returns ``(" AND alias IN ('a','b',…)", {"owner_0": "a", …})`` otherwise.
+
+	Caller is expected to interpolate the fragment AFTER the literal WHERE
+	clause and merge the param dict into the existing params.  Uses named
+	parameters with stable ``owner_<idx>`` keys to avoid collisions.
+	"""
+	if owners is None:
+		return "", {}
+	if not owners:
+		# Explicit empty set — caller scope is the empty set (no rows match).
+		# An always-false predicate keeps the query structurally valid while
+		# returning zero rows.
+		return " AND 1 = 0", {}
+	owners_list = list(owners)
+	placeholders = ", ".join(f"%(owner_{i})s" for i in range(len(owners_list)))
+	params = {f"owner_{i}": v for i, v in enumerate(owners_list)}
+	return f" AND {alias} IN ({placeholders})", params
+
+
+def _owner_qb_filter(query, column, owners):
+	"""Apply an ``IN``-clause for ``owners`` to a pypika query.
+
+	- ``owners is None`` → no filter (admin)
+	- ``owners == set()`` → always-false (no rows visible)
+	- non-empty → ``column.isin(list(owners))``
+	"""
+	if owners is None:
+		return query
+	if not owners:
+		# Match nothing — return a query that yields zero rows.
+		return query.where(column.isnull() & column.isnotnull())
+	return query.where(column.isin(list(owners)))
+
+
+def _owner_sql_in(owners, alias: str = "lead_owner") -> str:
+	"""Inline-escaped ``AND alias IN (…)`` fragment for f-string SQL.
+
+	Splicing the fragment into the SQL string is simpler than threading
+	params through every chart function.  ``owners`` originates from
+	``downstream_users(self)`` (DB-backed) intersected with the caller's
+	visible scope, so values are safe — and we still go through
+	``frappe.db.escape`` as defense-in-depth.
+
+	- ``owners is None`` → ``""`` (no filter; admin)
+	- empty iterable → ``" AND 1 = 0"`` (always-false; nothing visible)
+	- non-empty → ``" AND <alias> IN ('a','b',…)"``
+	"""
+	if owners is None:
+		return ""
+	if not owners:
+		return " AND 1 = 0"
+	quoted = ", ".join(frappe.db.escape(o) for o in owners)
+	return f" AND {alias} IN ({quoted})"
+
+
+def _coerce_users_arg(users) -> list[str]:
+	"""Accept ``users`` as JSON-string (from HTTP form data), list, or scalar.
+
+	Frappe's whitelisted endpoints pass list-shaped query params through as
+	either ``["a", "b"]`` (already a list when called from Python) or a JSON
+	string ``'["a", "b"]'`` (when posted as a form value).  Normalize.
+	"""
+	if not users:
+		return []
+	if isinstance(users, list):
+		return [u for u in users if u]
+	if isinstance(users, str):
+		stripped = users.strip()
+		if stripped.startswith("["):
+			try:
+				parsed = json.loads(stripped)
+				if isinstance(parsed, list):
+					return [u for u in parsed if u]
+			except json.JSONDecodeError:
+				pass
+		return [stripped] if stripped else []
+	return []
 
 
 # Custom function for TIMESTAMPDIFF (MySQL/MariaDB)
@@ -32,24 +167,36 @@ def reset_to_default():
 
 @frappe.whitelist()
 @sales_user_only
-def get_dashboard(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
-	"""
-	Get the dashboard data for the CRM dashboard.
-	"""
+def get_dashboard(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+	users: list[str] | str | None = None,
+):
+	"""Get the dashboard data, scoped to the caller's hierarchy.
 
+	Filtering rules (replaces the legacy role-tier gating):
+
+	- Admin / System Manager → see every lead, ``users`` is the only filter
+	- Everyone else → automatically scoped to ``downstream_users(self)``
+	  (self + descendants from CRM Sales Hierarchy).  A leaf user with no
+	  reports sees only their own data.
+
+	``user`` (single) is kept for backward compatibility with older
+	frontend callers.  ``users`` (list) supersedes it — if both are
+	supplied, ``users`` wins.
+	"""
 	if not from_date or not to_date:
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = set(frappe.get_roles(frappe.session.user))
-	# Roles that previously got Sales Manager via role_profile.json bundling
-	# (Sales Head, Sales Coordinator, RSM, ASM, Management). Preserves the
-	# old "manager dashboard" behaviour after Sales Manager retirement.
-	is_manager = bool(roles & _MANAGER_ROLES)
-	is_individual_contributor = ("Sales User" in roles) and not is_manager
+	# Resolve list-of-users.  ``user`` (singular) is the legacy field; promote
+	# it into the list form if ``users`` wasn't explicitly given.
+	requested = _coerce_users_arg(users)
+	if not requested and user:
+		requested = [user]
 
-	if is_individual_contributor:
-		user = frappe.session.user
+	owners = _scope_users(frappe.session.user, requested)
 
 	dashboard = frappe.db.exists("CRM Dashboard", "Manager Dashboard")
 
@@ -65,7 +212,7 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 		method_name = f"get_{l['name']}"
 		if hasattr(frappe.get_attr("crm.api.dashboard"), method_name):
 			method = getattr(frappe.get_attr("crm.api.dashboard"), method_name)
-			l["data"] = method(from_date, to_date, user)
+			l["data"] = method(from_date, to_date, owners)
 		else:
 			l["data"] = None
 
@@ -75,31 +222,79 @@ def get_dashboard(from_date: str | None = None, to_date: str | None = None, user
 @frappe.whitelist()
 @sales_user_only
 def get_chart(
-	name: str, type: str, from_date: str | None = None, to_date: str | None = None, user: str | None = None
+	name: str,
+	type: str,
+	from_date: str | None = None,
+	to_date: str | None = None,
+	user: str | None = None,
+	users: list[str] | str | None = None,
 ):
-	"""
-	Get number chart data for the dashboard.
+	"""Get chart data for one chart, hierarchy-scoped to the caller.
+
+	See ``get_dashboard`` for the visibility contract.  ``users`` (list) is
+	the preferred filter input; ``user`` (single) stays for legacy callers.
 	"""
 	if not from_date or not to_date:
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	roles = set(frappe.get_roles(frappe.session.user))
-	is_manager = bool(roles & _MANAGER_ROLES)
-	is_individual_contributor = ("Sales User" in roles) and not is_manager
+	requested = _coerce_users_arg(users)
+	if not requested and user:
+		requested = [user]
 
-	if is_individual_contributor:
-		user = frappe.session.user
+	owners = _scope_users(frappe.session.user, requested)
 
 	method_name = f"get_{name}"
 	if hasattr(frappe.get_attr("crm.api.dashboard"), method_name):
 		method = getattr(frappe.get_attr("crm.api.dashboard"), method_name)
-		return method(from_date, to_date, user)
+		return method(from_date, to_date, owners)
 	else:
 		return {"error": _("Invalid chart name")}
 
 
-def get_total_leads(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+@frappe.whitelist()
+@sales_user_only
+def get_visible_users():
+	"""Return users the caller can pick to filter the dashboard.
+
+	Picks replace the default scope: ticking a user shows only that user's
+	leads.  Self IS in the picker so the caller can explicitly include
+	themselves alongside reportees (otherwise picking only reportees would
+	exclude self).
+
+	- Admin / System Manager → all Sales Users (entire org)
+	- Hierarchy caller → ``downstream_users(self)`` (self + reportees)
+	- Leaf user (no reports) → ``[]`` (picker hides — only ever sees own)
+	"""
+	caller = frappe.session.user
+	owners = _visible_owners(caller)
+
+	user_filters: dict = {"enabled": 1}
+	if owners is not None:
+		# Hierarchy-scoped — self + reportees.  Hide picker for leaf users.
+		if owners == {caller}:
+			return []
+		user_filters["name"] = ["in", list(owners)]
+	else:
+		# Admin — show every Sales User in the system.
+		has_role = frappe.db.get_all(
+			"Has Role",
+			filters={"role": "Sales User", "parenttype": "User"},
+			pluck="parent",
+		)
+		if not has_role:
+			return []
+		user_filters["name"] = ["in", list(set(has_role))]
+
+	return frappe.get_all(
+		"User",
+		filters=user_filters,
+		fields=["name", "full_name", "user_image"],
+		order_by="full_name asc",
+	)
+
+
+def get_total_leads(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get lead count for the dashboard.
 	"""
@@ -114,13 +309,21 @@ def get_total_leads(from_date: str | None = None, to_date: str | None = None, us
 
 	# Build conditions for current period
 	current_cond = (Lead.creation >= from_date) & (Lead.creation < to_date_plus_one)
-	if user:
-		current_cond = current_cond & (Lead.lead_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Lead.lead_owner.isin(list(owners))
+			if owners
+			else (Lead.lead_owner.isnull() & Lead.lead_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (Lead.creation >= prev_from_date) & (Lead.creation < from_date)
-	if user:
-		prev_cond = prev_cond & (Lead.lead_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Lead.lead_owner.isin(list(owners))
+			if owners
+			else (Lead.lead_owner.isnull() & Lead.lead_owner.isnotnull())
+		)
 
 	# Build query with CASE expressions
 	query = frappe.qb.from_(Lead).select(
@@ -146,7 +349,7 @@ def get_total_leads(from_date: str | None = None, to_date: str | None = None, us
 	}
 
 
-def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get ongoing deal count for the dashboard, and also calculate average deal value for ongoing deals.
 	"""
@@ -166,15 +369,23 @@ def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, 
 		& (Deal.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (
 		(Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build query with CASE expressions
 	query = (
@@ -205,9 +416,7 @@ def get_ongoing_deals(from_date: str | None = None, to_date: str | None = None, 
 	}
 
 
-def get_average_ongoing_deal_value(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_average_ongoing_deal_value(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get ongoing deal count for the dashboard, and also calculate average deal value for ongoing deals.
 	"""
@@ -227,15 +436,23 @@ def get_average_ongoing_deal_value(
 		& (Deal.creation < to_date_plus_one)
 		& (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (
 		(Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type.notin(["Won", "Lost"]))
 	)
-	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Calculate deal value with exchange rate
 	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
@@ -267,7 +484,7 @@ def get_average_ongoing_deal_value(
 	}
 
 
-def get_won_deals(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_won_deals(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get won deal count for the dashboard, and also calculate average deal value for won deals.
 	"""
@@ -285,13 +502,21 @@ def get_won_deals(from_date: str | None = None, to_date: str | None = None, user
 	current_cond = (
 		(Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
-	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < from_date) & (Status.type == "Won")
-	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build query with CASE expressions
 	query = (
@@ -322,9 +547,7 @@ def get_won_deals(from_date: str | None = None, to_date: str | None = None, user
 	}
 
 
-def get_average_won_deal_value(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_average_won_deal_value(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get won deal count for the dashboard, and also calculate average deal value for won deals.
 	"""
@@ -342,13 +565,21 @@ def get_average_won_deal_value(
 	current_cond = (
 		(Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one) & (Status.type == "Won")
 	)
-	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (Deal.closed_date >= prev_from_date) & (Deal.closed_date < from_date) & (Status.type == "Won")
-	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Calculate deal value with exchange rate
 	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
@@ -380,7 +611,7 @@ def get_average_won_deal_value(
 	}
 
 
-def get_average_deal_value(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_average_deal_value(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get average deal value for the dashboard.
 	"""
@@ -396,13 +627,21 @@ def get_average_deal_value(from_date: str | None = None, to_date: str | None = N
 
 	# Build conditions for current period
 	current_cond = (Deal.creation >= from_date) & (Deal.creation < to_date_plus_one) & (Status.type != "Lost")
-	if user:
-		current_cond = current_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		current_cond = current_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Build conditions for previous period
 	prev_cond = (Deal.creation >= prev_from_date) & (Deal.creation < from_date) & (Status.type != "Lost")
-	if user:
-		prev_cond = prev_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		prev_cond = prev_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Calculate deal value with exchange rate
 	deal_value_expr = Deal.deal_value * IfNull(Deal.exchange_rate, 1)
@@ -435,9 +674,7 @@ def get_average_deal_value(from_date: str | None = None, to_date: str | None = N
 	}
 
 
-def get_average_time_to_close_a_lead(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_average_time_to_close_a_lead(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get average time to close deals for the dashboard.
 	"""
@@ -455,8 +692,12 @@ def get_average_time_to_close_a_lead(
 
 	# Base condition: closed_date is not null and status type is Won
 	base_cond = (Deal.closed_date.isnotnull()) & (Status.type == "Won")
-	if user:
-		base_cond = base_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		base_cond = base_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Current period condition
 	current_cond = (Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one)
@@ -500,9 +741,7 @@ def get_average_time_to_close_a_lead(
 	}
 
 
-def get_average_time_to_close_a_deal(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_average_time_to_close_a_deal(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get average time to close deals for the dashboard.
 	"""
@@ -520,8 +759,12 @@ def get_average_time_to_close_a_deal(
 
 	# Base condition: closed_date is not null and status type is Won
 	base_cond = (Deal.closed_date.isnotnull()) & (Status.type == "Won")
-	if user:
-		base_cond = base_cond & (Deal.deal_owner == user)
+	if owners is not None:
+		base_cond = base_cond & (
+			Deal.deal_owner.isin(list(owners))
+			if owners
+			else (Deal.deal_owner.isnull() & Deal.deal_owner.isnotnull())
+		)
 
 	# Current period condition
 	current_cond = (Deal.closed_date >= from_date) & (Deal.closed_date < to_date_plus_one)
@@ -563,7 +806,7 @@ def get_average_time_to_close_a_deal(
 	}
 
 
-def get_sales_trend(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_sales_trend(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get sales trend data for the dashboard.
 	[
@@ -592,8 +835,7 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.where(Date(Lead.creation).between(from_date, to_date))
 	)
 
-	if user:
-		leads_query = leads_query.where(Lead.lead_owner == user)
+	leads_query = _owner_qb_filter(leads_query, Lead.lead_owner, owners)
 
 	leads_query = leads_query.groupby(Date(Lead.creation))
 
@@ -611,8 +853,7 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 		.where(Date(Deal.creation).between(from_date, to_date))
 	)
 
-	if user:
-		deals_query = deals_query.where(Deal.deal_owner == user)
+	deals_query = _owner_qb_filter(deals_query, Deal.deal_owner, owners)
 
 	deals_query = deals_query.groupby(Date(Deal.creation))
 
@@ -665,7 +906,7 @@ def get_sales_trend(from_date: str | None = None, to_date: str | None = None, us
 	}
 
 
-def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get forecasted revenue for the dashboard.
 	[
@@ -714,8 +955,7 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 		.orderby(DateFormat(CRMDeal.expected_closure_date, "%Y-%m"))
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -744,7 +984,7 @@ def get_forecasted_revenue(from_date: str | None = None, to_date: str | None = N
 	}
 
 
-def get_funnel_conversion(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_funnel_conversion(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get funnel conversion data for the dashboard.
 	[
@@ -763,14 +1003,12 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	lead_filters = {"from": from_date, "to": to_date}
+	# Only deal_filters is used downstream (passed to
+	# get_deal_status_change_counts).  Lead totals go via Query Builder.
 	deal_filters = {"from": from_date, "to": to_date}
 
-	if user:
-		lead_conds += " AND lead_owner = %(user)s"
-		deal_conds += " AND deal_owner = %(user)s"
-		lead_filters["user"] = user
-		deal_filters["user"] = user
+	lead_conds += _owner_sql_in(owners, "lead_owner")
+	deal_conds += _owner_sql_in(owners, "deal_owner")
 
 	result = []
 
@@ -783,8 +1021,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 		.where(Date(CRMLead.creation).between(from_date, to_date))
 	)
 
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	query = _owner_qb_filter(query, CRMLead.lead_owner, owners)
 
 	total_leads = query.run(as_dict=True)
 	total_leads_count = total_leads[0].count if total_leads else 0
@@ -818,9 +1055,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	}
 
 
-def get_deals_by_stage_axis(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_deals_by_stage_axis(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get deal data by stage for the dashboard.
 	[
@@ -847,8 +1082,7 @@ def get_deals_by_stage_axis(
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -867,9 +1101,7 @@ def get_deals_by_stage_axis(
 	}
 
 
-def get_deals_by_stage_donut(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_deals_by_stage_donut(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get deal data by stage for the dashboard.
 	[
@@ -896,8 +1128,7 @@ def get_deals_by_stage_donut(
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -910,7 +1141,7 @@ def get_deals_by_stage_donut(
 	}
 
 
-def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get lost deal reasons for the dashboard.
 	[
@@ -938,8 +1169,7 @@ def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = No
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -961,7 +1191,7 @@ def get_lost_deal_reasons(from_date: str | None = None, to_date: str | None = No
 	}
 
 
-def get_leads_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_leads_by_source(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get lead data by source for the dashboard.
 	[
@@ -985,8 +1215,7 @@ def get_leads_by_source(from_date: str | None = None, to_date: str | None = None
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	query = _owner_qb_filter(query, CRMLead.lead_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -999,7 +1228,7 @@ def get_leads_by_source(from_date: str | None = None, to_date: str | None = None
 	}
 
 
-def get_deals_by_source(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_deals_by_source(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get deal data by source for the dashboard.
 	[
@@ -1023,8 +1252,7 @@ def get_deals_by_source(from_date: str | None = None, to_date: str | None = None
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -1037,7 +1265,7 @@ def get_deals_by_source(from_date: str | None = None, to_date: str | None = None
 	}
 
 
-def get_deals_by_territory(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_deals_by_territory(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get deal data by territory for the dashboard.
 	[
@@ -1068,8 +1296,7 @@ def get_deals_by_territory(from_date: str | None = None, to_date: str | None = N
 		)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -1095,9 +1322,7 @@ def get_deals_by_territory(from_date: str | None = None, to_date: str | None = N
 	}
 
 
-def get_deals_by_salesperson(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_deals_by_salesperson(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""
 	Get deal data by salesperson for the dashboard.
 	[
@@ -1131,8 +1356,7 @@ def get_deals_by_salesperson(
 		)
 	)
 
-	if user:
-		query = query.where(CRMDeal.deal_owner == user)
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 
@@ -1276,15 +1500,12 @@ def _humanize_header(key: str) -> str:
 # ─── 11.1 Lead Generation Performance ────────────────────────────────
 
 
-def get_leads_over_time(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_leads_over_time(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Daily lead creation trend."""
 	from_date, to_date = _date_window(from_date, to_date)
 
-	user_filter = ""
+	user_filter = _owner_sql_in(owners)
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND lead_owner = %(user)s"
-		params["user"] = user
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1311,9 +1532,92 @@ def get_leads_over_time(from_date: str | None = None, to_date: str | None = None
 	}
 
 
-def get_leads_by_sub_source(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+# ─── Quotes Sent over time ──────────────────────────────────────────
+# "Quote sent" is proxied by the date the Quote Request was created — a
+# QR is created the moment a sales user requests a quote with intent to
+# send it to the customer.  Estimation typically completes within 24h, so
+# creation date ≈ "quote going to customer" for analytics purposes.
+#
+# Hierarchy scope joins back to the parent CRM Lead's lead_owner (NOT the
+# requested_by user on the QR itself — that distinction matters when a
+# manager requests a quote on behalf of a rep).
+
+
+def get_quotes_sent_over_time(from_date: str | None = None, to_date: str | None = None, owners=None):
+	"""Daily quote-request creation count, scoped by parent lead's owner."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	# Join QR → CRM Lead to filter on lead_owner instead of QR.requested_by.
+	owner_clause = _owner_sql_in(owners, "l.lead_owner")
+	params = {"from_date": from_date, "to_date": to_date}
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT DATE(qr.creation) AS date, COUNT(*) AS quotes
+		FROM `tabCRM Quote Request` qr
+		LEFT JOIN `tabCRM Lead` l ON l.name = qr.lead
+		WHERE DATE(qr.creation) BETWEEN %(from_date)s AND %(to_date)s
+		      {owner_clause}
+		GROUP BY DATE(qr.creation)
+		ORDER BY DATE(qr.creation)
+		""",
+		params,
+		as_dict=True,
+	)
+
+	data = [{"date": frappe.utils.formatdate(r.date, "yyyy-MM-dd"), "quotes": r.quotes} for r in rows]
+
+	return {
+		"data": data,
+		"title": _("Quotes Sent"),
+		"subtitle": _("Daily quote requests created"),
+		"xAxis": {"title": _("Date"), "key": "date", "type": "time", "timeGrain": "day"},
+		"yAxis": {"title": _("Quotes")},
+		"series": [{"name": "quotes", "type": "line", "showDataPoints": True}],
+	}
+
+
+# ─── Orders Won over time ───────────────────────────────────────────
+# Counts leads whose status transitioned to C4 (Won) — bucketed by
+# the dedicated ``custom_c4_entered_on`` Datetime field on CRM Lead
+# (set by the "Stage Side Effects" server script on the C2→C4 save).
+
+
+def get_orders_won_over_time(from_date: str | None = None, to_date: str | None = None, owners=None):
+	"""Daily count of leads reaching C4 (Won), bucketed by C4 entry date."""
+	from_date, to_date = _date_window(from_date, to_date)
+
+	owner_clause = _owner_sql_in(owners, "lead_owner")
+	params = {"from_date": from_date, "to_date": to_date}
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT DATE(custom_c4_entered_on) AS date, COUNT(*) AS orders
+		FROM `tabCRM Lead`
+		WHERE custom_c4_entered_on IS NOT NULL
+		      AND DATE(custom_c4_entered_on) BETWEEN %(from_date)s AND %(to_date)s
+		      AND status = 'C4'
+		      {owner_clause}
+		GROUP BY DATE(custom_c4_entered_on)
+		ORDER BY DATE(custom_c4_entered_on)
+		""",
+		params,
+		as_dict=True,
+	)
+
+	data = [{"date": frappe.utils.formatdate(r.date, "yyyy-MM-dd"), "orders": r.orders} for r in rows]
+
+	return {
+		"data": data,
+		"title": _("Orders Won"),
+		"subtitle": _("Daily count of leads entering C4 (Won)"),
+		"xAxis": {"title": _("Date"), "key": "date", "type": "time", "timeGrain": "day"},
+		"yAxis": {"title": _("Orders")},
+		"series": [{"name": "orders", "type": "line", "showDataPoints": True}],
+	}
+
+
+def get_leads_by_sub_source(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Lead breakdown by custom_sub_source (horizontal bar)."""
 	from_date, to_date = _date_window(from_date, to_date)
 
@@ -1325,8 +1629,7 @@ def get_leads_by_sub_source(
 		.groupby(CRMLead.custom_sub_source)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	query = _owner_qb_filter(query, CRMLead.lead_owner, owners)
 
 	return {
 		"data": query.run(as_dict=True) or [],
@@ -1339,9 +1642,7 @@ def get_leads_by_sub_source(
 	}
 
 
-def get_leads_by_source_axis(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_leads_by_source_axis(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Lead breakdown by source as a horizontal bar chart.
 
 	Bar version of the stock `get_leads_by_source` (which is a donut). Use
@@ -1358,8 +1659,7 @@ def get_leads_by_source_axis(
 		.groupby(CRMLead.source)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	query = _owner_qb_filter(query, CRMLead.lead_owner, owners)
 
 	return {
 		"data": query.run(as_dict=True) or [],
@@ -1372,9 +1672,7 @@ def get_leads_by_source_axis(
 	}
 
 
-def get_lead_spotting_productivity(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_lead_spotting_productivity(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Volume of Lead-Spotting source leads per spotter (lead_owner).
 
 	'Spotter' = the user who currently owns the lead. If your team uses a
@@ -1387,9 +1685,7 @@ def get_lead_spotting_productivity(
 	# get_chart dispatcher (sets user=session_user for ICs).
 	user_filter = ""
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND l.lead_owner = %(user)s"
-		params["user"] = user
+	user_filter = _owner_sql_in(owners, "l.lead_owner")
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1423,9 +1719,7 @@ def get_lead_spotting_productivity(
 # ─── 11.2 Pipeline Stage Distribution ────────────────────────────────
 
 
-def get_lead_pipeline_funnel(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_lead_pipeline_funnel(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Lead-stage funnel.
 
 	Stage order:
@@ -1445,11 +1739,8 @@ def get_lead_pipeline_funnel(
 		("C7 — Forwarded to Fabricator", ["C7"]),
 	]
 
-	user_filter = ""
+	user_filter = _owner_sql_in(owners)
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND lead_owner = %(user)s"
-		params["user"] = user
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1481,17 +1772,12 @@ def get_lead_pipeline_funnel(
 	}
 
 
-def get_c2_sub_status_breakdown(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_c2_sub_status_breakdown(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""For leads currently in C2, distribution by lead_status (engagement)."""
 	from_date, to_date = _date_window(from_date, to_date)
 
-	user_filter = ""
+	user_filter = _owner_sql_in(owners)
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND lead_owner = %(user)s"
-		params["user"] = user
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1519,15 +1805,13 @@ def get_c2_sub_status_breakdown(
 # ─── 11.3 Calling Team Productivity ──────────────────────────────────
 
 
-def get_calls_per_caller(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_calls_per_caller(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Call volume per caller across all telephony providers."""
 	from_date, to_date = _date_window(from_date, to_date)
 
 	user_filter = ""
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND c.caller = %(user)s"
-		params["user"] = user
+	user_filter = _owner_sql_in(owners, "c.caller")
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1563,15 +1847,19 @@ def get_calls_per_caller(from_date: str | None = None, to_date: str | None = Non
 	}
 
 
-def get_call_dispositions(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_call_dispositions(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Disposition distribution across all calls in the date window."""
 	from_date, to_date = _date_window(from_date, to_date)
 
-	user_filter = ""
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND (caller = %(user)s OR receiver = %(user)s)"
-		params["user"] = user
+	# Calls are "yours" if caller OR receiver is in scope.
+	caller_in = _owner_sql_in(owners, "caller")
+	receiver_in = _owner_sql_in(owners, "receiver")
+	if caller_in and receiver_in:
+		# Both non-empty IN clauses — combine with OR; strip leading " AND "
+		user_filter = " AND (" + caller_in[5:] + " OR " + receiver_in[5:] + ")"
+	else:
+		user_filter = ""
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1595,9 +1883,7 @@ def get_call_dispositions(from_date: str | None = None, to_date: str | None = No
 	}
 
 
-def get_avg_c0_to_c2_time_per_caller(
-	from_date: str | None = None, to_date: str | None = None, user: str | None = None
-):
+def get_avg_c0_to_c2_time_per_caller(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Average days from C0 entry → C2 entry, grouped by lead_owner.
 
 	Only counts leads where BOTH custom_c0_entered_on and
@@ -1608,9 +1894,7 @@ def get_avg_c0_to_c2_time_per_caller(
 
 	user_filter = ""
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND l.lead_owner = %(user)s"
-		params["user"] = user
+	user_filter = _owner_sql_in(owners, "l.lead_owner")
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1648,7 +1932,7 @@ def get_avg_c0_to_c2_time_per_caller(
 # ─── 11.4 Loss Analysis ──────────────────────────────────────────────
 
 
-def get_lost_lead_reasons(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_lost_lead_reasons(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Reasons why leads were lost (status = C6), grouped by lost_reason."""
 	from_date, to_date = _date_window(from_date, to_date)
 
@@ -1660,8 +1944,7 @@ def get_lost_lead_reasons(from_date: str | None = None, to_date: str | None = No
 		.groupby(CRMLead.lost_reason)
 		.orderby(Count("*"), order=frappe.qb.desc)
 	)
-	if user:
-		query = query.where(CRMLead.lead_owner == user)
+	query = _owner_qb_filter(query, CRMLead.lead_owner, owners)
 
 	return {
 		"data": query.run(as_dict=True) or [],
@@ -1677,7 +1960,7 @@ def get_lost_lead_reasons(from_date: str | None = None, to_date: str | None = No
 # ─── 11.5 Geographic Performance ─────────────────────────────────────
 
 
-def get_leads_by_geography(from_date: str | None = None, to_date: str | None = None, user: str | None = None):
+def get_leads_by_geography(from_date: str | None = None, to_date: str | None = None, owners=None):
 	"""Top 20 cities by lead volume, with conversion (Won/total) ratio.
 
 	Note: this is a tabular/bar view of geography. A true heatmap on a
@@ -1686,11 +1969,8 @@ def get_leads_by_geography(from_date: str | None = None, to_date: str | None = N
 	"""
 	from_date, to_date = _date_window(from_date, to_date)
 
-	user_filter = ""
+	user_filter = _owner_sql_in(owners)
 	params = {"from_date": from_date, "to_date": to_date}
-	if user:
-		user_filter = " AND lead_owner = %(user)s"
-		params["user"] = user
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
@@ -1735,23 +2015,22 @@ def get_leads_by_geography(from_date: str | None = None, to_date: str | None = N
 def download_lead_export(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	user: str | None = None,
+	owners: list[str] | str | None = None,
 ):
 	"""Excel export of leads with linked deal/quote/activity summary.
 
-	Permission model mirrors `get_dashboard`:
-	  - Manager roles (_MANAGER_ROLES) see the whole team; can narrow to one
-	    rep by passing `user`.
-	  - Individual contributors are forced to their own leads (lead_owner =
-	    session user) regardless of any `user` value sent.
+	Hierarchy-scoped (same contract as ``get_dashboard``):
+
+	- Admin / System Manager → all leads, optional ``owners`` narrows the set
+	- Everyone else → only leads owned by users in ``downstream_users(self)``;
+	  ``owners`` further narrows (intersected with the visible set)
 
 	Empty result still returns a headers-only workbook so the browser gets
 	a clean file instead of an error page.
 	"""
 	from frappe.utils.xlsxutils import make_xlsx
 
-	roles = set(frappe.get_roles(frappe.session.user))
-	is_manager = bool(roles & _MANAGER_ROLES)
+	scoped_owners = _scope_users(frappe.session.user, _coerce_users_arg(owners))
 
 	conditions = ["l.status IS NOT NULL"]
 	params: dict = {}
@@ -1762,30 +2041,12 @@ def download_lead_export(
 		params["from_date"] = from_date
 		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
 
-	# "Assigned to" filtering uses Frappe's standard assignment system —
-	# tabToDo rows with reference_type='CRM Lead' and allocated_to=<user>.
-	# This is different from lead_owner (a single denormalised user on the
-	# lead row); a lead can be assigned to multiple users while owned by
-	# only one. The Leads UI's "Assigned To" column reads the same data.
-	if is_manager:
-		if user:
-			conditions.append(
-				"EXISTS (SELECT 1 FROM `tabToDo` t "
-				"WHERE t.reference_type='CRM Lead' "
-				"AND t.reference_name = l.name "
-				"AND t.allocated_to = %(filter_user)s "
-				"AND t.status = 'Open')"
-			)
-			params["filter_user"] = user
-	else:
-		conditions.append(
-			"EXISTS (SELECT 1 FROM `tabToDo` t "
-			"WHERE t.reference_type='CRM Lead' "
-			"AND t.reference_name = l.name "
-			"AND t.allocated_to = %(self_user)s "
-			"AND t.status = 'Open')"
-		)
-		params["self_user"] = frappe.session.user
+	# Hierarchy filter: leads owned by anyone in the caller's scope.  Admin
+	# (scoped_owners is None) gets no filter and sees every lead.
+	owner_clause = _owner_sql_in(scoped_owners, "l.lead_owner")
+	if owner_clause:
+		# Strip the leading " AND " — we'll AND it back in via the conditions list.
+		conditions.append(owner_clause[5:])
 
 	where_clause = " AND ".join(conditions)
 
@@ -1913,7 +2174,14 @@ def download_lead_export(
 
 	xlsx_file = make_xlsx(data, "Leads")
 
-	scope = "team" if (is_manager and not user) else (user or frappe.session.user)
+	# Filename: "team" when admin sees everything, "filtered" when narrowed,
+	# else the caller's email (single-scope leaf user).
+	if scoped_owners is None:
+		scope = "all"
+	elif len(scoped_owners) == 1 and frappe.session.user in scoped_owners:
+		scope = frappe.session.user
+	else:
+		scope = "team"
 	frappe.response["filename"] = f"lead_export_{scope}_{frappe.utils.today()}.xlsx"
 	frappe.response["filecontent"] = xlsx_file.getvalue()
 	frappe.response["type"] = "binary"
@@ -1924,23 +2192,23 @@ def download_lead_export(
 def download_calls_export(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	user: str | None = None,
+	owners: list[str] | str | None = None,
 ):
 	"""Excel export of CRM Call Log rows across all telephony providers.
 
-	Permission model:
-	  - Manager roles (_MANAGER_ROLES) see every call; can narrow to one
-	    rep's calls (caller OR receiver) via `user`.
-	  - Individual contributors are forced to their OWN calls — caller or
-	    receiver must equal session user, regardless of any `user` value.
+	Hierarchy-scoped (same contract as ``get_dashboard``):
+
+	- Admin / System Manager → every call, optional ``owners`` narrows the
+	  set by caller OR receiver match
+	- Everyone else → calls where caller or receiver is in the caller's
+	  ``downstream_users``; ``owners`` further narrows
 
 	One row per call. Includes lead context when the call is attached to
 	a CRM Lead. Date filter applies to call start_time.
 	"""
 	from frappe.utils.xlsxutils import make_xlsx
 
-	roles = set(frappe.get_roles(frappe.session.user))
-	is_manager = bool(roles & _MANAGER_ROLES)
+	scoped_owners = _scope_users(frappe.session.user, _coerce_users_arg(owners))
 
 	conditions = ["c.start_time IS NOT NULL"]
 	params: dict = {}
@@ -1951,14 +2219,14 @@ def download_calls_export(
 		params["from_date"] = from_date
 		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
 
-	if is_manager:
-		if user:
-			conditions.append("(c.caller = %(filter_user)s OR c.receiver = %(filter_user)s)")
-			params["filter_user"] = user
-	else:
-		# IC sees only calls they participated in (caller or receiver).
-		conditions.append("(c.caller = %(self_user)s OR c.receiver = %(self_user)s)")
-		params["self_user"] = frappe.session.user
+	# Calls are scoped by caller OR receiver match (a call is "yours" if
+	# you placed it or answered it).  Admin (scoped_owners is None) skips
+	# the filter entirely.
+	caller_clause = _owner_sql_in(scoped_owners, "c.caller")
+	receiver_clause = _owner_sql_in(scoped_owners, "c.receiver")
+	if caller_clause and receiver_clause:
+		# Strip leading " AND " from both and OR them together.
+		conditions.append(f"({caller_clause[5:]} OR {receiver_clause[5:]})")
 
 	where_clause = " AND ".join(conditions)
 
@@ -2045,7 +2313,12 @@ def download_calls_export(
 
 	xlsx_file = make_xlsx(data, "Calls")
 
-	scope = "team" if (is_manager and not user) else (user or frappe.session.user)
+	if scoped_owners is None:
+		scope = "all"
+	elif len(scoped_owners) == 1 and frappe.session.user in scoped_owners:
+		scope = frappe.session.user
+	else:
+		scope = "team"
 	frappe.response["filename"] = f"calls_export_{scope}_{frappe.utils.today()}.xlsx"
 	frappe.response["filecontent"] = xlsx_file.getvalue()
 	frappe.response["type"] = "binary"
