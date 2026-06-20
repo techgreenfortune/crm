@@ -100,6 +100,8 @@ const axisCharts = [
   { label: __('Deals by Salesperson'), value: 'deals_by_salesperson' },
   // IndiFrame lead-centric analytics
   { label: __('Leads Over Time'), value: 'leads_over_time' },
+  { label: __('Quotes Sent'), value: 'quotes_sent_over_time' },
+  { label: __('Orders Won'), value: 'orders_won_over_time' },
   { label: __('Lead Pipeline Funnel'), value: 'lead_pipeline_funnel' },
   { label: __('Leads by Source (Bar)'), value: 'leads_by_source_axis' },
   { label: __('Leads by Sub-source (Bar)'), value: 'leads_by_sub_source' },
