@@ -171,7 +171,7 @@ def get_dashboard(
 	from_date: str | None = None,
 	to_date: str | None = None,
 	user: str | None = None,
-	users=None,
+	users: list[str] | str | None = None,
 ):
 	"""Get the dashboard data, scoped to the caller's hierarchy.
 
@@ -227,7 +227,7 @@ def get_chart(
 	from_date: str | None = None,
 	to_date: str | None = None,
 	user: str | None = None,
-	users=None,
+	users: list[str] | str | None = None,
 ):
 	"""Get chart data for one chart, hierarchy-scoped to the caller.
 
@@ -2015,7 +2015,7 @@ def get_leads_by_geography(from_date: str | None = None, to_date: str | None = N
 def download_lead_export(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	owners=None,
+	owners: list[str] | str | None = None,
 ):
 	"""Excel export of leads with linked deal/quote/activity summary.
 
@@ -2192,7 +2192,7 @@ def download_lead_export(
 def download_calls_export(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	owners=None,
+	owners: list[str] | str | None = None,
 ):
 	"""Excel export of CRM Call Log rows across all telephony providers.
 
