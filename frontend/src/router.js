@@ -208,7 +208,7 @@ router.beforeEach(async (to, from, next) => {
     await views.promise
 
     const viewType = to.params?.viewType ?? ''
-    const standardViewTypes = ['list', 'kanban', 'group_by']
+    const standardViewTypes = ['list', 'kanban', 'group_by', 'map']
 
     if (!viewType) {
       const doctypeMap = {

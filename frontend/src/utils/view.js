@@ -1,6 +1,7 @@
 import ListIcon from '@/components/Icons/ListIcon.vue'
 import GroupByIcon from '@/components/Icons/GroupByIcon.vue'
 import KanbanIcon from '@/components/Icons/KanbanIcon.vue'
+import MapIcon from '@/components/Icons/MapIcon.vue'
 import { viewsStore } from '@/stores/views'
 import { markRaw } from 'vue'
 
@@ -19,6 +20,10 @@ function standardView(type) {
     kanban: {
       label: __('Kanban'),
       icon: markRaw(KanbanIcon),
+    },
+    map: {
+      label: __('Map'),
+      icon: markRaw(MapIcon),
     },
   }
 

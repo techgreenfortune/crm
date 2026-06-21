@@ -306,6 +306,7 @@
 import ListIcon from '@/components/Icons/ListIcon.vue'
 import KanbanIcon from '@/components/Icons/KanbanIcon.vue'
 import GroupByIcon from '@/components/Icons/GroupByIcon.vue'
+import MapIcon from '@/components/Icons/MapIcon.vue'
 import QuickFilterField from '@/components/QuickFilterField.vue'
 import RefreshIcon from '@/components/Icons/RefreshIcon.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
@@ -394,6 +395,11 @@ function getViewType() {
       name: 'kanban',
       label: __('Kanban'),
       icon: markRaw(KanbanIcon),
+    },
+    map: {
+      name: 'map',
+      label: __('Map'),
+      icon: markRaw(MapIcon),
     },
   }
 
@@ -639,6 +645,17 @@ if (allowedViews.includes('group_by')) {
     },
   })
 }
+if (allowedViews.includes('map')) {
+  standardViews.push({
+    name: 'map',
+    label: __(props.options?.defaultViewName) || __('Map'),
+    icon: markRaw(MapIcon),
+    onClick() {
+      viewUpdated.value = false
+      router.push({ name: route.name, params: { viewType: 'map' } })
+    },
+  })
+}
 
 function getIcon(icon, type) {
   if (isEmoji(icon)) {
@@ -647,6 +664,8 @@ function getIcon(icon, type) {
     return markRaw(GroupByIcon)
   } else if (!icon && type === 'kanban') {
     return markRaw(KanbanIcon)
+  } else if (!icon && type === 'map') {
+    return markRaw(MapIcon)
   }
   return icon || markRaw(ListIcon)
 }
