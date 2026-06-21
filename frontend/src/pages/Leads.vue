@@ -25,7 +25,7 @@
     doctype="CRM Lead"
     :filters="{ converted: 0 }"
     :options="{
-      allowedViews: ['list', 'group_by', 'kanban'],
+      allowedViews: ['list', 'group_by', 'kanban', 'map'],
     }"
   />
   <KanbanView
@@ -223,6 +223,17 @@
       </div>
     </template>
   </KanbanView>
+  <LeadsMapView
+    v-else-if="route.params.viewType == 'map'"
+    v-model="leads"
+    :options="{
+      getRoute: (row) => ({
+        name: 'Lead',
+        params: { leadId: row.name },
+        query: { view: route.query.view, viewType: route.params.viewType },
+      }),
+    }"
+  />
   <LeadsListView
     v-else-if="leads.data && rows.length"
     ref="leadsListView"
@@ -273,6 +284,7 @@ import LayoutHeader from '@/components/LayoutHeader.vue'
 import LeadsListView from '@/components/ListViews/LeadsListView.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import KanbanView from '@/components/Kanban/KanbanView.vue'
+import LeadsMapView from '@/components/Map/LeadsMapView.vue'
 import LeadModal from '@/components/Modals/LeadModal.vue'
 import ViewControls from '@/components/ViewControls.vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
