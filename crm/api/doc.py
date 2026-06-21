@@ -322,7 +322,36 @@ def get_data(
 
 	meta = frappe.get_meta(doctype)
 
-	if view_type != "kanban":
+	# Map view: fetch every lead matching the current filters that has
+	# coordinates set, capped at MAP_MARKER_LIMIT to protect the browser.
+	# total_count (computed at return) reflects all coordinate-bearing leads,
+	# so the frontend can warn when the result was truncated.
+	MAP_MARKER_LIMIT = 500
+	if view_type == "map":
+		map_settings = {}
+		if hasattr(_list, "default_map_settings"):
+			map_settings = _list.default_map_settings()
+
+		latitude_field = map_settings.get("latitude_field", "custom_latitude")
+		rows = map_settings.get("rows") or default_rows or ["name"]
+
+		# only leads that actually have a latitude populated
+		filters[latitude_field] = ["is", "set"]
+
+		data = (
+			frappe.get_list(
+				doctype,
+				fields=rows,
+				filters=filters,
+				order_by=order_by,
+				page_length=MAP_MARKER_LIMIT,
+			)
+			or []
+		)
+		data = parse_list_data(data, doctype)
+		columns = []
+
+	if view_type not in ("kanban", "map"):
 		if columns or rows:
 			custom_view = True
 			is_default = False
