@@ -81,8 +81,19 @@ def get_filterable_fields(doctype: str):
 	meta = frappe.get_meta(doctype).as_dict()
 
 	# append standard fields (getting error when using frappe.model.std_fields)
+	name_label_map = {
+		"CRM Lead": "Lead ID",
+	}
+	name_fieldtype_map = {
+		"CRM Lead": "Data",
+	}
 	standard_fields = [
-		{"fieldname": "name", "fieldtype": "Link", "label": "Name", "options": doctype},
+		{
+			"fieldname": "name",
+			"fieldtype": name_fieldtype_map.get(doctype, "Link"),
+			"label": name_label_map.get(doctype, "Name"),
+			"options": doctype,
+		},
 		{"fieldname": "owner", "fieldtype": "Link", "label": "Created By", "options": "User"},
 		{
 			"fieldname": "modified_by",
