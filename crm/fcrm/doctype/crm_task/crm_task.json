@@ -19,6 +19,7 @@
   "assigned_to",
   "status",
   "due_date",
+  "reminder_sent",
   "section_break_bzhd",
   "description"
  ],
@@ -74,6 +75,16 @@
    "fieldtype": "Datetime",
    "in_standard_filter": 1,
    "label": "Due Date"
+  },
+  {
+   "default": "0",
+   "fieldname": "reminder_sent",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Reminder Sent",
+   "no_copy": 1,
+   "read_only": 1,
+   "description": "Internal flag — set when a due-date reminder email has been fired. Auto-clears if due_date is changed."
   },
   {
    "fieldname": "section_break_bzhd",
@@ -185,6 +196,18 @@
    "share": 1,
    "write": 1,
    "role": "ASM"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "Dealer"
   },
   {
    "email": 1,

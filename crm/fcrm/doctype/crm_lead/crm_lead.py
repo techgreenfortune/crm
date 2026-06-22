@@ -1285,6 +1285,25 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			"kanban_fields": '["organization", "email", "mobile_no", "lead_owner", "modified"]',
 		}
 
+	@staticmethod
+	def default_map_settings():
+		return {
+			"latitude_field": "custom_latitude",
+			"longitude_field": "custom_longitude",
+			"rows": [
+				"name",
+				"lead_name",
+				"organization",
+				"status",
+				"mobile_no",
+				"email",
+				"lead_owner",
+				"custom_latitude",
+				"custom_longitude",
+				"custom_google_map_link",
+			],
+		}
+
 
 @frappe.whitelist()
 def convert_to_deal(

@@ -8,8 +8,10 @@ Architecture
   ``_params_*`` builder.  No other file changes needed.
 - Template IDs live in ``template_config.py`` as constants — change-deploy-
   restart to update.
-- The static estimation-team email lives in ``site_config.json`` under the
-  ``estimation_email`` key — no code change needed to update it.
+- Estimation-team recipients are resolved at send time from active users
+  with the ``Estimation Team`` role.  The first (alphabetically by username)
+  is the primary ``to`` recipient; the rest are added as ``cc``.  No
+  site_config or hard-coded address required — manage membership via roles.
 - A trigger silently no-ops if Brevo is disabled, the template ID is 0/missing,
   or the recipient cannot be resolved.  This lets you ship the wiring before
   every template is designed in Brevo.
@@ -25,7 +27,7 @@ import frappe
 from frappe.utils import get_url
 
 from crm.integrations.brevo.brevo_handler import is_brevo_enabled, send_template_email
-from crm.integrations.brevo.template_config import BREVO_TEMPLATES
+from crm.integrations.brevo.template_config import BREVO_TEMPLATES, STATIC_CCS
 
 # Max attachment size we'll embed inline (Brevo limit is ~10 MB total).
 _MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -36,20 +38,53 @@ _MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 # ---------------------------------------------------------------------------
 
 
-def _estimation_recipient(qr_doc) -> str | None:
-	"""Static estimation-team address from site_config.json (key: ``estimation_email``)."""
-	return frappe.conf.get("estimation_email") or None
-
-
-def _lead_owner_recipient(qr_doc) -> str | None:
-	"""Sales user — the lead_owner email on the parent lead."""
-	owner = qr_doc.get("lead_owner")
-	if not owner:
+def _user_email(user_name: str | None) -> str | None:
+	"""Resolve an active User's email.  Falls back to User.name when it is
+	itself an email-format login (Frappe's default for self-registered users).
+	"""
+	if not user_name:
 		return None
-	# lead_owner is a Link to User; User.name is typically the email, but
-	# fall back to User.email if a non-email login was used.
-	email = frappe.db.get_value("User", owner, "email") or owner
+	email = frappe.db.get_value("User", user_name, "email") or user_name
 	return email if "@" in (email or "") else None
+
+
+def _estimation_recipient(qr_doc) -> dict | None:
+	"""Resolve recipients from active users with the ``Estimation Team`` role.
+
+	Returns ``{"to": <first email>, "cc": [<rest>]}`` or ``None`` if no active
+	user has the role.  Ordering is alphabetical by User.name so the "primary"
+	is deterministic — change membership by adding/removing the role on the
+	user, not by tweaking config.
+	"""
+	role_rows = frappe.db.get_all(
+		"Has Role",
+		filters={"role": "Estimation Team", "parenttype": "User"},
+		fields=["parent"],
+	)
+	if not role_rows:
+		return None
+
+	users = sorted({r["parent"] for r in role_rows})
+	active = set(
+		frappe.db.get_all(
+			"User",
+			filters={"enabled": 1, "name": ["in", users]},
+			pluck="name",
+		)
+	)
+	emails = [e for u in users if u in active for e in [_user_email(u)] if e]
+	if not emails:
+		return None
+
+	return {"to": emails[0], "cc": emails[1:]}
+
+
+def _lead_owner_recipient(qr_doc) -> dict | None:
+	"""Sales user — the ``lead_owner`` email on the parent lead.  No CCs."""
+	email = _user_email(qr_doc.get("lead_owner"))
+	if not email:
+		return None
+	return {"to": email, "cc": []}
 
 
 # ---------------------------------------------------------------------------
@@ -195,10 +230,23 @@ def _fmt_money(value) -> str:
 		return str(value or 0)
 
 
+def _fmt_recipient(recipient) -> str:
+	"""Render a recipient dict as ``to@x.com`` or ``to@x.com (+N in CC)`` for
+	the activity-log summary.  Tolerates legacy string input.
+	"""
+	if isinstance(recipient, dict):
+		to = recipient.get("to") or ""
+		cc = recipient.get("cc") or []
+		if cc:
+			return f"{to} (+{len(cc)} in CC)"
+		return to
+	return str(recipient or "")
+
+
 def _summary_quote_requested(qr_doc, recipient, params) -> str:
 	return (
 		f"<b>[Email Sent]</b> Quotation request emailed to Estimation Team "
-		f"(<b>{recipient}</b>).<br>"
+		f"(<b>{_fmt_recipient(recipient)}</b>).<br>"
 		f"Tentative Value: <b>{_fmt_money(params.get('tentative_value'))}</b> · "
 		f"SFT: <b>{params.get('tentative_sft') or 0}</b> · "
 		f"Units: <b>{params.get('tentative_units') or 0}</b><br>"
@@ -210,7 +258,7 @@ def _summary_quote_received(qr_doc, recipient, params) -> str:
 	remarks = params.get("estimation_remarks") or "—"
 	return (
 		f"<b>[Email Sent]</b> Quotation uploaded — emailed to lead owner "
-		f"(<b>{recipient}</b>) with PDF attached.<br>"
+		f"(<b>{_fmt_recipient(recipient)}</b>) with PDF attached.<br>"
 		f"Quote <b>{params.get('quote_number') or qr_doc.name}</b> · "
 		f"Value: <b>{_fmt_money(params.get('quote_value'))}</b> · "
 		f"SFT: <b>{params.get('quote_sft') or 0}</b> · "
@@ -223,7 +271,7 @@ def _summary_revision_requested(qr_doc, recipient, params) -> str:
 	remarks = params.get("revision_remarks") or "—"
 	return (
 		f"<b>[Email Sent]</b> Revision request emailed to Estimation Team "
-		f"(<b>{recipient}</b>) with PDF attached.<br>"
+		f"(<b>{_fmt_recipient(recipient)}</b>) with PDF attached.<br>"
 		f"Quote <b>{params.get('quote_number') or qr_doc.name}</b> · "
 		f"Value: <b>{_fmt_money(params.get('quote_value'))}</b> · "
 		f"SFT: <b>{params.get('quote_sft') or 0}</b> · "
@@ -235,7 +283,7 @@ def _summary_revision_requested(qr_doc, recipient, params) -> str:
 def _summary_quote_accepted(qr_doc, recipient, params) -> str:
 	return (
 		f"<b>[Email Sent]</b> Quotation accepted — emailed to Estimation Team "
-		f"(<b>{recipient}</b>) with PDF attached.<br>"
+		f"(<b>{_fmt_recipient(recipient)}</b>) with PDF attached.<br>"
 		f"Quote <b>{params.get('quote_number') or qr_doc.name}</b> · "
 		f"Value: <b>{_fmt_money(params.get('quote_value'))}</b> · "
 		f"SFT: <b>{params.get('quote_sft') or 0}</b> · "
@@ -334,21 +382,28 @@ def send_quote_email(trigger: str, qr_name: str) -> None:
 
 		qr_doc = frappe.get_doc("CRM Quote Request", qr_name)
 		recipient = spec["recipient"](qr_doc)
-		if not recipient:
+		if not recipient or not recipient.get("to"):
 			frappe.log_error(
 				title="Brevo Quote Email — no recipient",
 				message=f"trigger={trigger} qr={qr_name}",
 			)
 			return
 
+		to_email = recipient["to"]
+		cc_emails = list(recipient.get("cc") or [])
+		for extra in STATIC_CCS.get(trigger, []):
+			if extra and extra != to_email and extra not in cc_emails:
+				cc_emails.append(extra)
+
 		params = spec["params"](qr_doc)
 		attachments = _quote_file_attachment(qr_doc) if spec.get("attach_quote_file") else None
 
 		send_template_email(
 			template_id=template_id,
-			recipients=recipient,
+			recipients=to_email,
 			params=params,
 			attachments=attachments,
+			cc=cc_emails,
 		)
 
 		# Pin a human-readable summary to the parent lead's Activities timeline.
