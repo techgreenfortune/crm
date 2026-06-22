@@ -447,8 +447,6 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			return
 		if not self.mobile_no:
 			return
-		if self.is_new():
-			return
 		if not self.has_value_changed("mobile_no"):
 			return
 
