@@ -68,7 +68,7 @@
                   @click="openFile(img.url)"
                 />
                 <button
-                  v-if="canEditOwner"
+                  v-if="canEditImages"
                   class="absolute -right-1 -top-1 hidden size-4 items-center justify-center rounded-full bg-ink-gray-7 text-white group-hover:flex"
                   @click.stop="removeImage(idx)"
                 >
@@ -76,7 +76,7 @@
                 </button>
               </div>
               <button
-                v-if="canEditOwner"
+                v-if="canEditImages"
                 class="flex size-16 items-center justify-center rounded border border-dashed border-outline-gray-3 bg-surface-gray-1 text-ink-gray-5 hover:bg-surface-gray-2"
                 @click="showUploader = true"
               >
@@ -131,10 +131,10 @@
         </template>
 
         <FilesUploader
-          v-if="showUploader && props.qrName"
+          v-if="showUploader && (props.qrName || isNewMode)"
           v-model="showUploader"
-          doctype="CRM Quote Request"
-          :docname="props.qrName"
+          :doctype="isNewMode ? 'CRM Lead' : 'CRM Quote Request'"
+          :docname="isNewMode ? props.leadName : props.qrName"
           :options="{
             folder: 'Home/Attachments',
             restrictions: { allowedFileTypes: ['image/*'] },
@@ -261,6 +261,7 @@ const ESTIMATION_FIELDS = [
   'quote_number',
   'quote_validity',
   'estimation_remarks',
+  'prepared_by',
 ]
 const ALWAYS_READONLY = ['lead', 'requested_by', 'requested_on']
 
@@ -268,7 +269,8 @@ function applyFieldProps(field) {
   if (
     field.fieldname === 'notes' ||
     field.fieldname === 'images' ||
-    field.fieldname === 'status'
+    field.fieldname === 'status' ||
+    (field.fieldname === 'prepared_by' && isNewMode.value)
   ) {
     field.hidden = 1
     return
@@ -321,7 +323,7 @@ watch(
   () => qrDoc.doc?.notes,
   (v) => {
     if (!notesInited.value && v !== undefined) {
-      localNotes.value = canEditOwner.value ? '' : v || ''
+      localNotes.value = v || ''
       notesInited.value = true
     }
   },
@@ -337,9 +339,9 @@ watch(
   () => qrDoc.doc?.images,
   (rows) => {
     if (!imagesInited.value && rows !== undefined) {
-      if (rows?.length) {
-        localImages.value = rows.map((r) => ({ url: r.image, name: r.name }))
-      }
+      localImages.value = rows?.length
+        ? rows.map((r) => ({ url: r.image, name: r.name }))
+        : []
       imagesInited.value = true
     }
   },
@@ -469,6 +471,9 @@ onMounted(() => {
       quote_value: props.leadDoc?.custom_tentative_value || 0,
       quote_sq_ft: props.leadDoc?.custom_tentative_area_sqft || 0,
       quote_margin: props.leadDoc?.custom_final_margin || 0,
+      total_quantity: props.leadDoc?.custom_total_quantity || 0,
+      quote_number: '',
+      quote_validity: '',
     }
     localNotes.value = ''
     localImages.value = []

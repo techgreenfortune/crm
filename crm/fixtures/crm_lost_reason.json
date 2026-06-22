@@ -1,138 +1,122 @@
 [
- {
-  "description": "The prospect found the pricing to be too high or not competitive.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Pricing",
-  "modified": "2026-05-23 13:00:40.129161",
-  "name": "Pricing"
- },
- {
-  "description": "The prospect chose a competitor's product or service.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Competition",
-  "modified": "2026-05-23 13:00:40.131526",
-  "name": "Competition"
- },
- {
-  "description": "The prospect did not have the budget to proceed with the purchase.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Budget Constraints",
-  "modified": "2026-05-23 13:00:40.133952",
-  "name": "Budget Constraints"
- },
- {
-  "description": "The prospect felt that the product or service was missing key features they needed.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Missing Features",
-  "modified": "2026-05-23 13:00:40.136124",
-  "name": "Missing Features"
- },
- {
-  "description": "The sales process took too long, leading to loss of interest.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Long Sales Cycle",
-  "modified": "2026-05-23 13:00:40.138343",
-  "name": "Long Sales Cycle"
- },
- {
-  "description": "The prospect was not the decision-maker and could not proceed.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "No Decision-Maker",
-  "modified": "2026-05-23 13:00:40.140649",
-  "name": "No Decision-Maker"
- },
- {
-  "description": "The prospect did not respond to follow-ups.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Unresponsive Prospect",
-  "modified": "2026-05-23 13:00:40.142844",
-  "name": "Unresponsive Prospect"
- },
- {
-  "description": "The prospect was not a good fit for the product or service.",
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Poor Fit",
-  "modified": "2026-05-23 13:00:40.145155",
-  "name": "Poor Fit"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Chose Competitor",
-  "modified": "2026-05-04 18:20:58.033086",
-  "name": "Chose Competitor"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Price Too High",
-  "modified": "2026-05-04 18:20:58.034794",
-  "name": "Price Too High"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Went with Local Fabricator",
-  "modified": "2026-05-04 18:20:58.037019",
-  "name": "Went with Local Fabricator"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Timeline Mismatch",
-  "modified": "2026-05-04 18:20:58.038166",
-  "name": "Timeline Mismatch"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Customer Unresponsive After Quote",
-  "modified": "2026-05-04 18:20:58.039329",
-  "name": "Customer Unresponsive After Quote"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Other",
-  "modified": "2026-05-04 18:20:58.042862",
-  "name": "Other"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Invalid /out of service",
-  "modified": "2026-06-12 13:31:29.911925",
-  "name": "Invalid /out of service"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Junk",
-  "modified": "2026-05-12 00:00:00",
-  "name": "Junk"
- },
- {
-  "description": null,
-  "docstatus": 0,
-  "doctype": "CRM Lost Reason",
-  "lost_reason": "Requirement Cancelled",
-  "modified": "2026-05-04 18:20:58.035839",
-  "name": "Requirement Cancelled"
- }
+  {
+    "description": "The prospect chose a competitor's product or service.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Competition",
+    "modified": "2026-05-23 13:00:40.131526",
+    "name": "Competition"
+  },
+  {
+    "description": "The prospect felt that the product or service was missing key features they needed.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Missing Features",
+    "modified": "2026-05-23 13:00:40.136124",
+    "name": "Missing Features"
+  },
+  {
+    "description": "The sales process took too long, leading to loss of interest.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Long Sales Cycle",
+    "modified": "2026-05-23 13:00:40.138343",
+    "name": "Long Sales Cycle"
+  },
+  {
+    "description": "The prospect was not the decision-maker and could not proceed.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "No Decision-Maker",
+    "modified": "2026-05-23 13:00:40.140649",
+    "name": "No Decision-Maker"
+  },
+  {
+    "description": "The prospect did not respond to follow-ups.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Unresponsive Prospect",
+    "modified": "2026-05-23 13:00:40.142844",
+    "name": "Unresponsive Prospect"
+  },
+  {
+    "description": "The prospect was not a good fit for the product or service.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Poor Fit",
+    "modified": "2026-05-23 13:00:40.145155",
+    "name": "Poor Fit"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Chose Competitor",
+    "modified": "2026-05-04 18:20:58.033086",
+    "name": "Chose Competitor"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Price Too High",
+    "modified": "2026-05-04 18:20:58.034794",
+    "name": "Price Too High"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Went with Local Fabricator",
+    "modified": "2026-05-04 18:20:58.037019",
+    "name": "Went with Local Fabricator"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Timeline Mismatch",
+    "modified": "2026-05-04 18:20:58.038166",
+    "name": "Timeline Mismatch"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Customer Unresponsive After Quote",
+    "modified": "2026-05-04 18:20:58.039329",
+    "name": "Customer Unresponsive After Quote"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Other",
+    "modified": "2026-05-04 18:20:58.042862",
+    "name": "Other"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Invalid /out of service",
+    "modified": "2026-06-12 13:31:29.911925",
+    "name": "Invalid /out of service"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Junk",
+    "modified": "2026-05-12 00:00:00",
+    "name": "Junk"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Requirement Cancelled",
+    "modified": "2026-05-04 18:20:58.035839",
+    "name": "Requirement Cancelled"
+  }
 ]

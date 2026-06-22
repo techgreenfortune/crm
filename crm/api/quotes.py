@@ -156,7 +156,12 @@ def request_quote(lead: str, notes: str = "", images: list | None = None) -> str
 			frappe.db.get_value(
 				"CRM Lead",
 				lead,
-				["custom_tentative_value", "custom_tentative_area_sqft", "custom_final_margin"],
+				[
+					"custom_tentative_value",
+					"custom_tentative_area_sqft",
+					"custom_final_margin",
+					"custom_total_quantity",
+				],
 				as_dict=True,
 			)
 			or {}
@@ -168,6 +173,7 @@ def request_quote(lead: str, notes: str = "", images: list | None = None) -> str
 		qr.quote_value = lead_vals.get("custom_tentative_value") or 0
 		qr.quote_sq_ft = lead_vals.get("custom_tentative_area_sqft") or 0
 		qr.quote_margin = lead_vals.get("custom_final_margin") or 0
+		qr.total_quantity = lead_vals.get("custom_total_quantity") or 0
 		for url in images or []:
 			qr.append("images", {"image": url})
 		qr.flags.ignore_mandatory = True

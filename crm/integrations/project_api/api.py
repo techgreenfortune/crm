@@ -1,7 +1,10 @@
+import json
 import time
 
 import frappe
 import requests
+
+from crm.overrides.crm_lead_permissions import upstream_user
 
 _RETRY_AFTER_CAP_SECONDS = 5.0
 # OpsGate's /v2/projects/public does synchronous S3 download (of the signed
@@ -85,21 +88,11 @@ def _is_dealer_lead(lead_owner: str | None) -> bool:
 
 
 def _reports_to_email(user: str) -> str | None:
-	"""Return the email of the immediate manager of ``user`` in CRM Sales Hierarchy.
-
-	Walks ONE level up: from the user's hierarchy row, look up ``reports_to``,
-	resolve to the parent's user, return that user's email.  Returns ``None``
-	when the user has no hierarchy row, no parent, or the parent has no email.
-	"""
-	if not user:
+	"""Return the email of ``user``'s immediate manager in CRM Sales Hierarchy."""
+	manager = upstream_user(user)
+	if not manager:
 		return None
-	parent_row_id = frappe.db.get_value("CRM Sales Hierarchy", {"user": user}, "reports_to")
-	if not parent_row_id:
-		return None
-	parent_user = frappe.db.get_value("CRM Sales Hierarchy", parent_row_id, "user")
-	if not parent_user:
-		return None
-	return frappe.db.get_value("User", parent_user, "email") or parent_user
+	return frappe.db.get_value("User", manager, "email") or manager
 
 
 def _build_order_block(lead_name: str) -> dict:
@@ -407,14 +400,10 @@ def create_project_on_won(lead_name: str) -> None:
 		"X-Api-Secret": api_key,
 	}
 
-	# DEBUG: log the outbound OpsGate payload so admins can verify exactly what
-	# was sent (esp. the new dealer/channel/reports_to_email fields). Writes to
-	# Error Log doctype — visible at /app/error-log — title is benign.
-	import json as _json
-
-	frappe.log_error(
-		title=f"OpsGate handoff payload — {lead_name}",
-		message=_json.dumps(payload, indent=2, default=str),
+	frappe.logger("project_api").info(
+		"OpsGate handoff payload lead=%s payload=%s",
+		lead_name,
+		json.dumps(payload, default=str),
 	)
 
 	try:
