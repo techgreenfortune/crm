@@ -220,7 +220,9 @@ def validate_write_permission(doc, method=None):
 		# subtree manager) when the parent lead is still visible to them.
 		if lead_owner != user and not _task_creator_can_access_lead(doc, user, roles):
 			frappe.throw(
-				frappe._("You can only update tasks assigned to you, for leads you own, or that you created on a lead you can see."),
+				frappe._(
+					"You can only update tasks assigned to you, for leads you own, or that you created on a lead you can see."
+				),
 				frappe.PermissionError,
 				title=frappe._("Not Permitted"),
 			)
