@@ -484,6 +484,7 @@ def get_linked_calls(name: str):
 				"task_type",
 				"description",
 				"assigned_to",
+				"owner",
 				"due_date",
 				"priority",
 				"status",
@@ -522,7 +523,14 @@ def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | No
 	task_type = task.get("task_type") or ""
 	if task_type in POOL_TASK_ROLES:
 		return POOL_TASK_ROLES[task_type] in user_roles or (task.get("assigned_to") or "") == user
-	return doc_owner == user
+	if doc_owner == user:
+		return True
+	creators = {user}
+	if user_roles & {"ASM", "RSM"}:
+		from crm.overrides.crm_lead_permissions import downstream_users
+
+		creators |= downstream_users(user)
+	return (task.get("owner") or "") in creators
 
 
 def _task_can_delete(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
@@ -545,6 +553,7 @@ def get_linked_tasks(name: str):
 			"task_type",
 			"description",
 			"assigned_to",
+			"owner",
 			"due_date",
 			"priority",
 			"status",
