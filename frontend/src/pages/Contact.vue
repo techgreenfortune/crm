@@ -307,11 +307,6 @@ function changeContactImage(file) {
 const tabIndex = ref(0)
 const tabs = [
   {
-    label: 'Deals',
-    icon: DealsIcon,
-    count: computed(() => deals.data?.length),
-  },
-  {
     label: 'Leads',
     icon: LeadsIcon,
     count: computed(() => leads.data?.length),

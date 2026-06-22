@@ -70,29 +70,6 @@ def _scope_users(user: str, requested_users: list[str] | None = None) -> set[str
 	return clamped or {user}
 
 
-def _owner_sql_filter(owners, alias: str = "lead_owner") -> tuple[str, dict]:
-	"""Build a SQL fragment + params dict for an ``IN``-clause on ``owners``.
-
-	Returns ``("", {})`` when ``owners`` is ``None`` (admin scope — no filter).
-	Returns ``(" AND alias IN ('a','b',…)", {"owner_0": "a", …})`` otherwise.
-
-	Caller is expected to interpolate the fragment AFTER the literal WHERE
-	clause and merge the param dict into the existing params.  Uses named
-	parameters with stable ``owner_<idx>`` keys to avoid collisions.
-	"""
-	if owners is None:
-		return "", {}
-	if not owners:
-		# Explicit empty set — caller scope is the empty set (no rows match).
-		# An always-false predicate keeps the query structurally valid while
-		# returning zero rows.
-		return " AND 1 = 0", {}
-	owners_list = list(owners)
-	placeholders = ", ".join(f"%(owner_{i})s" for i in range(len(owners_list)))
-	params = {f"owner_{i}": v for i, v in enumerate(owners_list)}
-	return f" AND {alias} IN ({placeholders})", params
-
-
 def _owner_qb_filter(query, column, owners):
 	"""Apply an ``IN``-clause for ``owners`` to a pypika query.
 
@@ -997,18 +974,12 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 	]
 	"""
 	lead_conds = ""
-	deal_conds = ""
 
 	if not from_date or not to_date:
 		from_date = frappe.utils.get_first_day(from_date or frappe.utils.nowdate())
 		to_date = frappe.utils.get_last_day(to_date or frappe.utils.nowdate())
 
-	# Only deal_filters is used downstream (passed to
-	# get_deal_status_change_counts).  Lead totals go via Query Builder.
-	deal_filters = {"from": from_date, "to": to_date}
-
 	lead_conds += _owner_sql_in(owners, "lead_owner")
-	deal_conds += _owner_sql_in(owners, "deal_owner")
 
 	result = []
 
@@ -1028,7 +999,7 @@ def get_funnel_conversion(from_date: str | None = None, to_date: str | None = No
 
 	result.append({"stage": "Leads", "count": total_leads_count})
 
-	result += get_deal_status_change_counts(from_date, to_date, deal_conds, deal_filters)
+	result += get_deal_status_change_counts(from_date, to_date, owners)
 
 	return {
 		"data": result or [],
@@ -1393,7 +1364,7 @@ def get_base_currency_symbol():
 def get_deal_status_change_counts(
 	from_date: str | None = None,
 	to_date: str | None = None,
-	deal_conds: str = "",
+	owners=None,
 	filters: dict | None = None,
 ):
 	"""
@@ -1431,9 +1402,7 @@ def get_deal_status_change_counts(
 		.orderby(TargetStatus.position)
 	)
 
-	# Handle optional user filter if deal_conds contains user condition
-	if filters and filters.get("user"):
-		query = query.where(CRMDeal.deal_owner == filters["user"])
+	query = _owner_qb_filter(query, CRMDeal.deal_owner, owners)
 
 	result = query.run(as_dict=True)
 	return result or []

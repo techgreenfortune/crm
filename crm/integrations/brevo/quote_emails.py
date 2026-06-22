@@ -38,7 +38,7 @@ _MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 # ---------------------------------------------------------------------------
 
 
-def _user_email(user_name: str) -> str | None:
+def _user_email(user_name: str | None) -> str | None:
 	"""Resolve an active User's email.  Falls back to User.name when it is
 	itself an email-format login (Frappe's default for self-registered users).
 	"""

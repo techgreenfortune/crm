@@ -85,7 +85,7 @@
     },
     {
       "fieldname": "prepared_by",
-      "fieldtype": "Table",
+      "fieldtype": "Link",
       "label": "Prepared By",
       "options": "CRM Quote Preparer"
     },

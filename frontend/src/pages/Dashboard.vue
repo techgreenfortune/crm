@@ -269,7 +269,7 @@ function buildExportParams() {
   const params = new URLSearchParams()
   if (fromDate.value) params.set('from_date', fromDate.value)
   if (toDate.value) params.set('to_date', toDate.value)
-  if (filters.users.length) params.set('users', JSON.stringify(filters.users))
+  if (filters.users.length) params.set('owners', JSON.stringify(filters.users))
   return params.toString()
 }
 

@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import has_gravatar, validate_email_address
 
+from crm.fcrm.doctype.crm_quote_request.crm_quote_request import _build_lead_updates
 from crm.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
@@ -80,6 +81,9 @@ _QUOTE_LEAD_FIELDS = frozenset(
 		"custom_final_margin",
 		"custom_final_quote",
 		"custom_tentative_area_sqft",
+		"custom_total_quantity",
+		"custom_quote_number",
+		"custom_quote_validity",
 	}
 )
 
@@ -894,7 +898,15 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		accepted = frappe.db.get_value(
 			"CRM Quote Request",
 			{"lead": self.name, "status": "Accepted"},
-			["quote_sq_ft", "quote_value", "quote_margin", "quote_file"],
+			[
+				"quote_sq_ft",
+				"quote_value",
+				"quote_margin",
+				"quote_file",
+				"total_quantity",
+				"quote_number",
+				"quote_validity",
+			],
 			as_dict=True,
 			order_by="modified desc",
 		)
@@ -904,15 +916,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			# custom_final_* fields.
 			return
 
-		if accepted.quote_value:
-			self.custom_final_price = accepted.quote_value
-			self.custom_tentative_value = accepted.quote_value
-		if accepted.quote_margin:
-			self.custom_final_margin = accepted.quote_margin
-		if accepted.quote_file:
-			self.custom_final_quote = accepted.quote_file
-		if accepted.quote_sq_ft:
-			self.custom_tentative_area_sqft = accepted.quote_sq_ft
+		self.update(_build_lead_updates(accepted))
 
 	def _freeze_quote_fields_at_won(self):
 		"""Once a lead is ALREADY at a Won-type status, quote-derived fields
