@@ -255,6 +255,26 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		self._extract_coordinates_from_map_link()
 		self._apply_stage_transition_guard()
 		self._dedup_and_normalize_mobile()
+		self._assign_b2f_on_c7()
+
+	def _assign_b2f_on_c7(self):
+		"""Round-robin assign lead_owner to least-loaded B2F user on first entry to C7."""
+		old = self.get_doc_before_save()
+		old_status = old.status if old else None
+		if self.status != "C7" or old_status == "C7":
+			return
+		b2f_users = frappe.db.get_all(
+			"Has Role",
+			filters={"role": "B2F Team", "parenttype": "User"},
+			pluck="parent",
+		)
+		if not b2f_users:
+			return
+
+		def _c7_load(user):
+			return frappe.db.count("CRM Lead", filters={"lead_owner": user, "status": "C7"})
+
+		self.lead_owner = min(b2f_users, key=_c7_load)
 
 	def _validate_stage_field_requirements(self):
 		if frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_import:
@@ -577,23 +597,24 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 						"status": ["in", ["Todo", "In Progress"]],
 					},
 				):
-					frappe.get_doc(
-						{
-							"doctype": "CRM Task",
-							"task_type": "handle_fabricator_lead",
-							"title": f"Handle Fabricator Lead — {self.lead_name or self.name}",
-							"status": "Todo",
-							"priority": "High",
-							"reference_doctype": "CRM Lead",
-							"reference_docname": self.name,
-							"description": (
-								f"Lead {self.lead_name} has been routed to you for fabricator handling "
-								"(C7). Review the fabricator routing reason and partner fabricator name. "
-								"The lead has exited the active sales pipeline; coordinate with the "
-								"fabricator externally to close the deal."
-							),
-						}
-					).insert(ignore_permissions=True)
+					task_doc = {
+						"doctype": "CRM Task",
+						"task_type": "handle_fabricator_lead",
+						"title": f"Handle Fabricator Lead — {self.lead_name or self.name}",
+						"status": "Todo",
+						"priority": "High",
+						"reference_doctype": "CRM Lead",
+						"reference_docname": self.name,
+						"description": (
+							f"Lead {self.lead_name} has been routed to you for fabricator handling "
+							"(C7). Review the fabricator routing reason and partner fabricator name. "
+							"The lead has exited the active sales pipeline; coordinate with the "
+							"fabricator externally to close the deal."
+						),
+					}
+					if b2f_count:
+						task_doc["assigned_to"] = self.lead_owner
+					frappe.get_doc(task_doc).insert(ignore_permissions=True)
 
 		if (
 			lead_status_changed

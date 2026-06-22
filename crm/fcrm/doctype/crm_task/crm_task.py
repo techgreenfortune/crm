@@ -34,7 +34,12 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	- Everyone else:
 	  - Tasks assigned to them (``assigned_to``), OR
 	  - Tasks whose parent ``CRM Lead`` they can see under the pure-hierarchy
-	    rule (lead_owner = user, or owned by a subtree member for ASM/RSM).
+	    rule (lead_owner = user, or owned by a subtree member for ASM/RSM), OR
+	  - Tasks they created (``owner``) — or, for ASM/RSM, tasks created by a
+	    member of their CRM Sales Hierarchy subtree — whose parent ``CRM Lead``
+	    is still visible to them (full lead visibility, reused from the CRM Lead
+	    permission query). This keeps a task with its caller after the lead is
+	    reassigned away, and surfaces it to the caller's reporting manager.
 	  - If the user holds any pool roles (Calling Team / Estimation Team /
 	    B2F Team), they additionally see unassigned tasks of that pool's
 	    task_type. A multi-pool user sees the union of all their pools.
@@ -64,6 +69,34 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 		owners |= downstream_users(user)
 	owners_in = ", ".join(esc(u) for u in sorted(owners))
 
+	# Lead visibility for the *viewing* user, reused verbatim from the CRM Lead
+	# permission query so "a lead I can see" means exactly what it does for leads
+	# (Calling Team all-leads, Estimation QR scope, owner subtree, …). Only
+	# non-tier1 / non-Administrator users reach here, so lead_cond is never ""
+	# (that is the tier1/admin no-filter case, already returned above) — guard
+	# defensively anyway. "1=0" (no lead visibility) is passed through as-is.
+	from crm.overrides.crm_lead_permissions import (
+		get_permission_query_conditions as _lead_pqc,
+	)
+
+	lead_cond = _lead_pqc(user)
+	lead_visible_sql = "1=1" if lead_cond == "" else lead_cond
+
+	# Creator gate: a task is visible to whoever created it — and, for ASM/RSM,
+	# to anyone above its creator in their CRM Sales Hierarchy subtree — as long
+	# as the parent lead is still visible to the viewer. This lets a caller keep
+	# a task they made after the lead is reassigned to another owner, and lets
+	# their reporting manager see it. ``owner`` is Frappe's creator field.
+	creator_clause = f"""(
+		`tabCRM Task`.owner IN ({owners_in})
+		AND `tabCRM Task`.reference_doctype = 'CRM Lead'
+		AND EXISTS (
+			SELECT 1 FROM `tabCRM Lead`
+			WHERE `tabCRM Lead`.name = `tabCRM Task`.reference_docname
+			AND ({lead_visible_sql})
+		)
+	)"""
+
 	base = f"""(
 		`tabCRM Task`.assigned_to = {escaped_user}
 		OR (
@@ -74,6 +107,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 				AND `tabCRM Lead`.lead_owner IN ({owners_in})
 			)
 		)
+		OR {creator_clause}
 	)"""
 
 	# Union of every pool the user belongs to (multi-pool users see all their
@@ -89,6 +123,33 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	return base
 
 
+def _task_creator_can_access_lead(doc, user: str, roles: set) -> bool:
+	"""True if ``user`` may reach a non-pool task via the creator gate: they
+	created it (``doc.owner``) — or, for ASM/RSM, a member of their CRM Sales
+	Hierarchy subtree did — AND the parent ``CRM Lead`` is still visible to them.
+
+	Mirror of the ``creator_clause`` in :func:`get_permission_query_conditions`
+	for the write/delete path, so a caller keeps write access to a task they made
+	after the lead is reassigned (as long as they can still see the lead), and
+	their reporting manager (subtree) can too.
+	"""
+	if doc.reference_doctype != "CRM Lead" or not doc.reference_docname:
+		return False
+
+	creators = {user}
+	if roles & {"ASM", "RSM"}:
+		from crm.overrides.crm_lead_permissions import downstream_users
+
+		creators |= downstream_users(user)
+	if doc.owner not in creators:
+		return False
+
+	from crm.overrides.crm_lead_permissions import has_permission as lead_has_permission
+
+	lead = frappe.get_cached_doc("CRM Lead", doc.reference_docname)
+	return bool(lead_has_permission(lead, "read", user))
+
+
 def validate_write_permission(doc, method=None):
 	"""before_save gate for CRM Task. Combines:
 
@@ -97,7 +158,8 @@ def validate_write_permission(doc, method=None):
 	2. task_type immutability: once set, the type cannot change (Administrator
 	   / privileged-task roles bypass — see ``TIER1_FULL_RW``).
 	3. Pool/assignee permission: pool tasks need the matching role; non-pool
-	   tasks need the assignee or the parent lead owner.
+	   tasks need the assignee, the parent lead owner, or the task creator (or,
+	   for ASM/RSM, the creator's subtree manager) while the lead stays visible.
 
 	Ported from the "CRM Task — Validate — Write Permission" Server Script on
 	2026-05-22 to eliminate POOL_TASK_ROLES duplication. See
@@ -154,9 +216,11 @@ def validate_write_permission(doc, method=None):
 		lead_owner = None
 		if doc.reference_doctype == "CRM Lead" and doc.reference_docname:
 			lead_owner = frappe.db.get_value("CRM Lead", doc.reference_docname, "lead_owner")
-		if lead_owner != user:
+		# Creator gate: also allow whoever made the task (or, for ASM/RSM, their
+		# subtree manager) when the parent lead is still visible to them.
+		if lead_owner != user and not _task_creator_can_access_lead(doc, user, roles):
 			frappe.throw(
-				frappe._("You can only update tasks assigned to you or for leads you own."),
+				frappe._("You can only update tasks assigned to you, for leads you own, or that you created on a lead you can see."),
 				frappe.PermissionError,
 				title=frappe._("Not Permitted"),
 			)
