@@ -400,6 +400,12 @@ class CRMTask(Document):  # nosemgrep: frappe-after-save-controller-hook
 				"width": "10rem",
 			},
 			{
+				"label": "Created By",
+				"type": "Link",
+				"key": "owner",
+				"width": "10rem",
+			},
+			{
 				"label": "Last Modified",
 				"type": "Datetime",
 				"key": "modified",
@@ -413,6 +419,7 @@ class CRMTask(Document):  # nosemgrep: frappe-after-save-controller-hook
 			"title",
 			"description",
 			"assigned_to",
+			"owner",
 			"due_date",
 			"status",
 			"priority",
