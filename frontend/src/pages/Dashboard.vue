@@ -100,61 +100,20 @@
            leaf users with no reports — they only ever see their own data.
            Selecting a user expands to their full downstream subtree on the
            backend (selecting an ASM shows the ASM + their team's leads). -->
-      <Popover
+      <UserMultiSelect
         v-if="visibleUsers.data && visibleUsers.data.length > 0"
+        class="w-52"
+        :model-value="filters.users"
+        :users="visibleUsers.data"
+        :all-label="isAdmin() ? __('All leads') : __('My leads only')"
+        :selected-label="
+          filters.users.length > 1
+            ? __('{0} users selected', [String(filters.users.length)])
+            : ''
+        "
         placement="bottom-end"
-      >
-        <template #target="{ togglePopover, isOpen }">
-          <button
-            type="button"
-            class="flex h-8 w-52 items-center justify-between gap-2 rounded-md border border-outline-gray-2 bg-surface-white px-3 text-sm text-ink-gray-8 hover:bg-surface-gray-2 focus:outline-none focus:ring-2 focus:ring-outline-gray-3"
-            @click="togglePopover()"
-          >
-            <span class="truncate">{{ userFilterLabel }}</span>
-            <LucideChevronDown
-              class="size-4 shrink-0 text-ink-gray-5 transition-transform"
-              :class="isOpen && 'rotate-180'"
-            />
-          </button>
-        </template>
-        <template #body>
-          <div
-            class="mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-outline-gray-modal bg-surface-modal p-1 shadow-md"
-          >
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-gray-2"
-              @click="clearUsers"
-            >
-              <LucideCheck
-                v-if="filters.users.length === 0"
-                class="size-4 text-ink-gray-7"
-              />
-              <span v-else class="size-4" />
-              <span class="font-medium">
-                {{ isAdmin() ? __('All leads') : __('My leads only') }}
-              </span>
-            </button>
-            <button
-              v-for="u in visibleUsers.data"
-              :key="u.name"
-              type="button"
-              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-gray-2"
-              @click="toggleUser(u.name)"
-            >
-              <LucideCheck
-                v-if="filters.users.includes(u.name)"
-                class="size-4 text-ink-gray-7"
-              />
-              <span v-else class="size-4" />
-              <UserAvatar :user="u.name" size="sm" />
-              <Tooltip :text="u.name">
-                <span class="truncate">{{ u.full_name || u.name }}</span>
-              </Tooltip>
-            </button>
-          </div>
-        </template>
-      </Popover>
+        @update:model-value="setUsers"
+      />
     </div>
 
     <div class="w-full overflow-y-scroll">
@@ -179,10 +138,8 @@ import LucideRefreshCcw from '~icons/lucide/refresh-ccw'
 import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
 import LucideDownload from '~icons/lucide/download'
-import LucideChevronDown from '~icons/lucide/chevron-down'
-import LucideCheck from '~icons/lucide/check'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
+import UserMultiSelect from '@/components/UserMultiSelect.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import { usersStore } from '@/stores/users'
@@ -193,8 +150,6 @@ import {
   createResource,
   DateRangePicker,
   Dropdown,
-  Tooltip,
-  Popover,
 } from 'frappe-ui'
 import { ref, reactive, computed, provide } from 'vue'
 
@@ -224,28 +179,8 @@ const visibleUsers = createResource({
   auto: true,
 })
 
-const userFilterLabel = computed(() => {
-  const n = filters.users.length
-  if (n === 0) {
-    // Default scope: admin sees every lead; everyone else sees own only.
-    return isAdmin() ? __('All leads') : __('My leads only')
-  }
-  if (n === 1) {
-    const u = visibleUsers.data?.find((x: any) => x.name === filters.users[0])
-    return u?.full_name || filters.users[0]
-  }
-  return __('{0} users selected', [String(n)])
-})
-
-function toggleUser(name: string) {
-  const idx = filters.users.indexOf(name)
-  if (idx === -1) filters.users.push(name)
-  else filters.users.splice(idx, 1)
-  dashboardItems.reload()
-}
-
-function clearUsers() {
-  filters.users = []
+function setUsers(users: string[]) {
+  filters.users = users
   dashboardItems.reload()
 }
 
