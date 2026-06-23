@@ -9,7 +9,7 @@ from frappe.translate import get_translated_doctypes
 
 from crm.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 from crm.fcrm.doctype.crm_task.crm_task import POOL_TASK_ROLES
-from crm.permissions.role_config import TIER1_FULL_RW
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, TIER1_FULL_RW
 
 
 @frappe.whitelist()
@@ -515,6 +515,20 @@ def get_linked_notes(name: str):
 	return notes or []
 
 
+def _visible_user_set(user: str, user_roles: set) -> set:
+	"""Users whose owned/created docs ``user`` may reach: themselves plus, for
+	downstream-scoped roles (ASM / RSM / Dealer — see DOWNSTREAM_SCOPE_ROLES),
+	their CRM Sales Hierarchy subtree. Mirrors the ``owners`` set in
+	crm_task.get_permission_query_conditions so the lead activity panel agrees
+	with the task list/report view (no panel-vs-pqc visibility mismatch)."""
+	users = {user}
+	if user_roles & DOWNSTREAM_SCOPE_ROLES:
+		from crm.overrides.crm_lead_permissions import downstream_users
+
+		users |= downstream_users(user)
+	return users
+
+
 def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
 	if "Administrator" in user_roles or user_roles & TIER1_FULL_RW:
 		return True
@@ -523,14 +537,10 @@ def _task_can_update(task: dict, user: str, user_roles: set, doc_owner: str | No
 	task_type = task.get("task_type") or ""
 	if task_type in POOL_TASK_ROLES:
 		return POOL_TASK_ROLES[task_type] in user_roles or (task.get("assigned_to") or "") == user
-	if doc_owner == user:
+	visible = _visible_user_set(user, user_roles)
+	if (doc_owner or "") in visible:
 		return True
-	creators = {user}
-	if user_roles & {"ASM", "RSM"}:
-		from crm.overrides.crm_lead_permissions import downstream_users
-
-		creators |= downstream_users(user)
-	return (task.get("owner") or "") in creators
+	return (task.get("owner") or "") in visible
 
 
 def _task_can_delete(task: dict, user: str, user_roles: set, doc_owner: str | None) -> bool:
