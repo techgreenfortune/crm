@@ -2,7 +2,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from crm.permissions.role_config import REVIEWER_ROLES, TIER1_FULL_RW
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, REVIEWER_ROLES, TIER1_FULL_RW
 
 # Estimation Team uploads quotes for any lead (including closed ones), so they
 # bypass the lead-scoped filter on top of the tier-1 bypasses.
@@ -59,7 +59,7 @@ def get_permission_query_conditions(user=None):
 	esc = frappe.db.escape
 
 	owners = {user}
-	if roles & {"ASM", "RSM"}:
+	if roles & DOWNSTREAM_SCOPE_ROLES:
 		from crm.overrides.crm_lead_permissions import downstream_users
 
 		owners |= downstream_users(user)

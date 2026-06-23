@@ -6,7 +6,7 @@ from frappe.desk.form.assign_to import add as assign
 from frappe.desk.form.assign_to import remove as unassign
 from frappe.model.document import Document
 
-from crm.permissions.role_config import TIER1_FULL_RW
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, TIER1_FULL_RW
 
 # Pool task types and the role that owns each pool. Single source of truth.
 # Used by:
@@ -63,7 +63,7 @@ def get_permission_query_conditions(user: str | None = None) -> str:
 	# Parent-lead owners the user may see: themselves + (for ASM/RSM) their
 	# CRM Sales Hierarchy subtree — mirrors CRM Lead visibility.
 	owners = {user}
-	if roles & {"ASM", "RSM"}:
+	if roles & DOWNSTREAM_SCOPE_ROLES:
 		from crm.overrides.crm_lead_permissions import downstream_users
 
 		owners |= downstream_users(user)
@@ -137,7 +137,7 @@ def _task_creator_can_access_lead(doc, user: str, roles: set) -> bool:
 		return False
 
 	creators = {user}
-	if roles & {"ASM", "RSM"}:
+	if roles & DOWNSTREAM_SCOPE_ROLES:
 		from crm.overrides.crm_lead_permissions import downstream_users
 
 		creators |= downstream_users(user)
