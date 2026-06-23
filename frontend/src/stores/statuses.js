@@ -15,7 +15,7 @@ export const statusesStore = defineStore('crm-statuses', () => {
 
   const leadStatuses = createListResource({
     doctype: 'CRM Lead Status',
-    fields: ['name', 'color', 'position', 'type'],
+    fields: ['name', 'color', 'position', 'type', 'stage_label'],
     orderBy: 'position asc',
     cache: 'lead-statuses',
     initialData: [],
@@ -140,8 +140,11 @@ export const statusesStore = defineStore('crm-statuses', () => {
     for (const status in statusesByName) {
       options.push({
         label: translatable
-          ? __(statusesByName[status]?.name)
-          : statusesByName[status]?.name,
+          ? __(
+              statusesByName[status]?.stage_label ||
+                statusesByName[status]?.name,
+            )
+          : statusesByName[status]?.stage_label || statusesByName[status]?.name,
         value: statusesByName[status]?.name,
         icon: () => h(IndicatorIcon, { class: statusesByName[status]?.color }),
         onClick: async () => {

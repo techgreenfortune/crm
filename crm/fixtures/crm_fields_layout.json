@@ -1,56 +1,56 @@
 [
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Lead",
-  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Lead Contact Details\",\"name\":\"person_section\",\"opened\":true,\"columns\":[{\"name\":\"column_6c5g\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_1n7Q\",\"fields\":[\"mobile_no\",\"email\"]}],\"editingLabel\":false},{\"label\":\"Details\",\"name\":\"details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_ZgLG\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_site_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_TbYq\",\"fields\":[\"custom_lead_type\",\"lead_status\",\"source\",\"custom_sub_source\"]}]},{\"label\":\"Order Creation Details \",\"name\":\"section_eEiC\",\"opened\":true,\"columns\":[{\"name\":\"column_biic\",\"fields\":[\"custom_project_category\",\"custom_project_configuration\"]}],\"editingLabel\":false},{\"label\":\"Billing Details\",\"name\":\"section_WUcu\",\"opened\":true,\"columns\":[{\"name\":\"column_Mjby\",\"fields\":[\"custom_customer_address\",\"custom_pincode\",\"custom_gst_number\"]}],\"editingLabel\":false}]}]",
-  "modified": "2026-06-02 11:57:56.854551",
-  "name": "CRM Lead-Data Fields",
-  "type": "Data Fields"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Quote Request",
-  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Quote Details\",\"name\":\"quote_section\",\"opened\":true,\"columns\":[{\"name\":\"column_QR01\",\"fields\":[\"quote_file\",\"quote_value\",\"quote_margin\",\"quote_validity\",\"quote_sq_ft\",\"total_quantity\"]},{\"name\":\"column_QR02\",\"fields\":[\"lead\",\"requested_by\",\"requested_on\",\"quote_number\"]}]},{\"label\":\"Notes\",\"name\":\"quote_notes_section\",\"opened\":true,\"columns\":[{\"name\":\"column_QR03\",\"fields\":[\"estimation_remarks\",\"revision_notes\",\"status\",\"revision_images\"]}]}]}]",
-  "modified": "2026-06-02 14:38:32.198538",
-  "name": "CRM Quote Request-Quick Entry",
-  "type": "Quick Entry"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Lead",
-  "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"name\":\"person_section\",\"label\":\"Lead Contact Details\",\"columns\":[{\"name\":\"column_qe_p1\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_qe_p2\",\"fields\":[\"mobile_no\",\"email\"]}],\"collapsible\":false,\"editingLabel\":false},{\"name\":\"property_section\",\"label\":\"Site Details\",\"columns\":[{\"name\":\"column_qe_pr1\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_site_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_qe_pr2\",\"fields\":[\"custom_tentative_area_sqft\",\"custom_tentative_value\",\"custom_tentative_units\",\"custom_site_photos\",\"custom_competitors\"]}],\"editingLabel\":false,\"collapsible\":false},{\"name\":\"classification_section\",\"label\":\"Lead Classification\",\"columns\":[{\"name\":\"column_qe_c1\",\"fields\":[\"custom_lead_type\",\"custom_customer_type\",\"custom_account\"]},{\"name\":\"column_qe_c2\",\"fields\":[\"source\",\"custom_sub_source\"]}],\"collapsible\":false},{\"label\":\"Billing Details\",\"name\":\"section_IWML\",\"opened\":true,\"columns\":[{\"name\":\"column_dbIM\",\"fields\":[\"custom_customer_address\",\"custom_pincode\",\"custom_gst_number\"]}],\"editingLabel\":false},{\"name\":\"lead_section\",\"label\":\"Lead Owner & Stage\",\"columns\":[{\"name\":\"column_qe_l1\",\"fields\":[\"status\",\"lead_status\"]}],\"collapsible\":false}]}]",
-  "modified": "2026-06-02 14:55:39.623720",
-  "name": "CRM Lead-Quick Entry",
-  "type": "Quick Entry"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Lead",
-  "layout": "[{\"label\": \"Contacts\", \"name\": \"contacts_section\", \"opened\": true, \"editable\": false, \"contacts\": []}, {\"label\": \"Lead Status\", \"name\": \"lead_status_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_ls1\", \"fields\": [\"status\", \"lead_status\", \"lead_owner\", \"custom_reactivated_at\"]}]}, {\"label\": \"Person\", \"name\": \"person_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_p1\", \"fields\": [\"salutation\", \"first_name\", \"last_name\", \"email\", \"mobile_no\", \"phone\", \"gender\", \"job_title\"]}]}, {\"label\": \"Organization\", \"name\": \"organization_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_o1\", \"fields\": [\"organization\", \"custom_gst_number\", \"website\", \"territory\", \"industry\", \"annual_revenue\", \"no_of_employees\"]}]}, {\"label\": \"Source & Classification\", \"name\": \"source_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_s1\", \"fields\": [\"source\", \"custom_sub_source\", \"custom_lead_type\", \"custom_customer_type\", \"custom_account\"]}]}, {\"label\": \"Property\", \"name\": \"property_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_pr1\", \"fields\": [\"custom_pincode\", \"custom_city\", \"custom_state\", \"custom_area\", \"custom_site_address_full\", \"custom_site_pincode\", \"custom_latitude\", \"custom_longitude\", \"custom_tentative_area_sqft\", \"custom_tentative_value\", \"custom_site_photos\"]}]}, {\"label\": \"Project Details\", \"name\": \"project_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_pj1\", \"fields\": [\"custom_project_category\", \"custom_project_configuration\", \"custom_external_project_id\"]}]}, {\"label\": \"Fabricator Routing\", \"name\": \"routing_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_r1\", \"fields\": [\"custom_fabricator_routing_reason\", \"custom_partner_fabricator_name\", \"custom_fabricator_routing_notes\"]}]}, {\"label\": \"Latest Quote\", \"name\": \"quote_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_q1\", \"fields\": [\"custom_final_quote\", \"custom_final_price\", \"custom_final_margin\"]}]}, {\"label\": \"Marketing (UTM)\", \"name\": \"utm_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_u1\", \"fields\": [\"custom_utm_source\", \"custom_utm_medium\", \"custom_utm_campaign\", \"custom_utm_content\", \"custom_competitors\"]}]}]",
-  "modified": "2026-05-26 11:01:43.380624",
-  "name": "CRM Lead-Side Panel",
-  "type": "Side Panel"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Account",
-  "layout": "[{\"name\":\"account_section\",\"label\":\"Account\",\"columns\":[{\"name\":\"column_qe_a1\",\"fields\":[\"account_name\",\"account_type\"]},{\"name\":\"column_qe_a2\",\"fields\":[\"mobile_no\",\"email\"]}]}]",
-  "modified": "2026-05-26 00:00:00",
-  "name": "CRM Account-Quick Entry",
-  "type": "Quick Entry"
- },
- {
-  "docstatus": 0,
-  "doctype": "CRM Fields Layout",
-  "dt": "CRM Account",
-  "layout": "[{\"label\":\"Account Details\",\"name\":\"account_details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_sp_a1\",\"fields\":[\"account_type\",\"mobile_no\",\"email\",\"website\",\"industry\",\"territory\",\"address\"]}]}]",
-  "modified": "2026-05-26 00:00:00",
-  "name": "CRM Account-Side Panel",
-  "type": "Side Panel"
- }
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Lead",
+    "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Lead Contact Details\",\"name\":\"person_section\",\"opened\":true,\"columns\":[{\"name\":\"column_6c5g\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_1n7Q\",\"fields\":[\"mobile_no\",\"email\"]}],\"editingLabel\":false},{\"label\":\"Details\",\"name\":\"details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_ZgLG\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_site_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_TbYq\",\"fields\":[\"custom_lead_type\",\"lead_status\",\"source\",\"custom_sub_source\",\"custom_customer_type\",\"custom_spotting_response_status\"]}]},{\"label\":\"Order Creation Details \",\"name\":\"section_eEiC\",\"opened\":true,\"columns\":[{\"name\":\"column_biic\",\"fields\":[\"custom_project_category\",\"custom_project_configuration\"]}],\"editingLabel\":false},{\"label\":\"Billing Details\",\"name\":\"section_WUcu\",\"opened\":true,\"columns\":[{\"name\":\"column_Mjby\",\"fields\":[\"custom_customer_address\",\"custom_pincode\",\"custom_gst_number\"]}],\"editingLabel\":false},{\"label\":\"Quotation Value Details\",\"name\":\"section_CaIV\",\"opened\":true,\"columns\":[{\"name\":\"column_wXjJ\",\"fields\":[\"custom_tentative_area_sqft\",\"custom_tentative_value\",\"custom_tentative_units\"]}],\"editingLabel\":false},{\"label\":\"Old CRM Details\",\"name\":\"section_NRhy\",\"opened\":true,\"columns\":[{\"name\":\"column_AQOL\",\"fields\":[\"custom_old_crm_lead_id\",\"custom_old_crm_creation_date\"]}],\"editingLabel\":false}]}]",
+    "modified": "2026-06-19 13:57:48.348080",
+    "name": "CRM Lead-Data Fields",
+    "type": "Data Fields"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Quote Request",
+    "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"label\":\"Quote Details\",\"name\":\"quote_section\",\"opened\":true,\"columns\":[{\"name\":\"column_QR01\",\"fields\":[\"quote_file\",\"quote_value\",\"quote_margin\",\"quote_validity\",\"quote_sq_ft\",\"total_quantity\"]},{\"name\":\"column_QR02\",\"fields\":[\"lead\",\"requested_by\",\"requested_on\",\"quote_number\",\"prepared_by\"]}]},{\"label\":\"Notes\",\"name\":\"quote_notes_section\",\"opened\":true,\"columns\":[{\"name\":\"column_QR03\",\"fields\":[\"estimation_remarks\",\"notes\",\"status\",\"images\"]}]}]}]",
+    "modified": "2026-06-02 14:38:32.198538",
+    "name": "CRM Quote Request-Quick Entry",
+    "type": "Quick Entry"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Lead",
+    "layout": "[{\"name\":\"first_tab\",\"sections\":[{\"name\":\"person_section\",\"label\":\"Lead Contact Details\",\"columns\":[{\"name\":\"column_qe_p1\",\"fields\":[\"first_name\",\"last_name\"]},{\"name\":\"column_qe_p2\",\"fields\":[\"mobile_no\",\"email\"]}],\"collapsible\":false,\"editingLabel\":false},{\"name\":\"property_section\",\"label\":\"Site Details\",\"columns\":[{\"name\":\"column_qe_pr1\",\"fields\":[\"custom_site_address_full\",\"custom_arealocality\",\"custom_city\",\"custom_state\",\"custom_site_pincode\",\"custom_google_map_link\"]},{\"name\":\"column_qe_pr2\",\"fields\":[\"custom_tentative_area_sqft\",\"custom_tentative_value\",\"custom_tentative_units\",\"custom_site_photos\",\"custom_competitors\"]}],\"editingLabel\":false,\"collapsible\":false},{\"name\":\"classification_section\",\"label\":\"Lead Classification\",\"columns\":[{\"name\":\"column_qe_c1\",\"fields\":[\"custom_lead_type\",\"custom_customer_type\",\"custom_account\"]},{\"name\":\"column_qe_c2\",\"fields\":[\"source\",\"custom_sub_source\"]}],\"collapsible\":false},{\"label\":\"Billing Details\",\"name\":\"section_IWML\",\"opened\":true,\"columns\":[{\"name\":\"column_dbIM\",\"fields\":[\"custom_customer_address\",\"custom_pincode\",\"custom_gst_number\"]}],\"editingLabel\":false},{\"name\":\"lead_section\",\"label\":\"Lead Owner & Stage\",\"columns\":[{\"name\":\"column_qe_l1\",\"fields\":[\"status\",\"lead_status\"]}],\"collapsible\":false}]}]",
+    "modified": "2026-06-02 14:55:39.623720",
+    "name": "CRM Lead-Quick Entry",
+    "type": "Quick Entry"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Lead",
+    "layout": "[{\"label\": \"Contacts\", \"name\": \"contacts_section\", \"opened\": true, \"editable\": false, \"contacts\": []}, {\"label\": \"Lead Status\", \"name\": \"lead_status_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_ls1\", \"fields\": [\"status\", \"lead_status\", \"lead_owner\", \"custom_reactivated_at\"]}]}, {\"label\": \"Person\", \"name\": \"person_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_p1\", \"fields\": [\"salutation\", \"first_name\", \"last_name\", \"email\", \"mobile_no\", \"phone\", \"gender\", \"job_title\"]}]}, {\"label\": \"Organization\", \"name\": \"organization_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_o1\", \"fields\": [\"organization\", \"custom_gst_number\", \"website\", \"territory\", \"industry\", \"annual_revenue\", \"no_of_employees\"]}]}, {\"label\": \"Source & Classification\", \"name\": \"source_section\", \"opened\": true, \"columns\": [{\"name\": \"column_sp_s1\", \"fields\": [\"source\", \"custom_sub_source\", \"custom_lead_type\", \"custom_customer_type\", \"custom_account\"]}]}, {\"label\": \"Property\", \"name\": \"property_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_pr1\", \"fields\": [\"custom_pincode\", \"custom_city\", \"custom_state\", \"custom_area\", \"custom_site_address_full\", \"custom_site_pincode\", \"custom_latitude\", \"custom_longitude\", \"custom_tentative_area_sqft\", \"custom_tentative_value\", \"custom_site_photos\"]}]}, {\"label\": \"Project Details\", \"name\": \"project_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_pj1\", \"fields\": [\"custom_project_category\", \"custom_project_configuration\", \"custom_external_project_id\"]}]}, {\"label\": \"Fabricator Routing\", \"name\": \"routing_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_r1\", \"fields\": [\"custom_fabricator_routing_reason\", \"custom_partner_fabricator_name\", \"custom_fabricator_routing_notes\"]}]}, {\"label\": \"Latest Quote\", \"name\": \"quote_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_q1\", \"fields\": [\"custom_final_quote\", \"custom_final_price\", \"custom_final_margin\", \"custom_total_quantity\", \"custom_quote_number\", \"custom_quote_validity\"]}]}, {\"label\": \"Marketing (UTM)\", \"name\": \"utm_section\", \"opened\": false, \"columns\": [{\"name\": \"column_sp_u1\", \"fields\": [\"custom_utm_source\", \"custom_utm_medium\", \"custom_utm_campaign\", \"custom_utm_content\", \"custom_competitors\"]}]}]",
+    "modified": "2026-05-26 11:01:43.380624",
+    "name": "CRM Lead-Side Panel",
+    "type": "Side Panel"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Account",
+    "layout": "[{\"name\":\"account_section\",\"label\":\"Account\",\"columns\":[{\"name\":\"column_qe_a1\",\"fields\":[\"account_name\",\"account_type\"]},{\"name\":\"column_qe_a2\",\"fields\":[\"mobile_no\",\"email\"]}]}]",
+    "modified": "2026-05-26 00:00:00",
+    "name": "CRM Account-Quick Entry",
+    "type": "Quick Entry"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Fields Layout",
+    "dt": "CRM Account",
+    "layout": "[{\"label\":\"Account Details\",\"name\":\"account_details_section\",\"opened\":true,\"columns\":[{\"name\":\"column_sp_a1\",\"fields\":[\"account_type\",\"mobile_no\",\"email\",\"website\",\"industry\",\"territory\",\"address\"]}]}]",
+    "modified": "2026-05-26 00:00:00",
+    "name": "CRM Account-Side Panel",
+    "type": "Side Panel"
+  }
 ]

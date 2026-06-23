@@ -40,7 +40,7 @@
       @click="modalRef.showTask()"
     />
     <Button
-      v-else-if="title == 'Quotes' && doc?.status !== 'C4'"
+      v-else-if="title == 'Quotes' && !['C4', 'C6', 'C7'].includes(doc?.status)"
       variant="solid"
       :label="__('Request Quote')"
       iconLeft="plus"

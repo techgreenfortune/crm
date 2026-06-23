@@ -206,12 +206,19 @@ const fields = computed(() => {
     existingFields = columns.value.map((column) => column.key)
   }
 
-  return _fields.filter((field) => {
-    return (
-      !columns.value.find((column) => column.key === field.fieldname) &&
-      !existingFields.includes(field.fieldname)
-    )
-  })
+  return _fields
+    .filter((field) => {
+      return (
+        !columns.value.find((column) => column.key === field.fieldname) &&
+        !existingFields.includes(field.fieldname)
+      )
+    })
+    .map((field) => {
+      if (props.doctype === 'CRM Lead' && field.fieldname === 'name') {
+        return { ...field, label: 'Lead ID' }
+      }
+      return field
+    })
 })
 
 function addColumn(c) {

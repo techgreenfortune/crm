@@ -144,6 +144,29 @@
           @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
         />
       </div>
+      <!-- Multi-select Lead Owner filter (same row as quick filters so it
+           shares the responsive horizontal scroll).  Hierarchy-scoped via
+           crm.api.dashboard.get_visible_users; hidden for leaf users. -->
+      <div
+        v-if="
+          doctype === 'CRM Lead' &&
+          visibleUsers.data &&
+          visibleUsers.data.length > 0
+        "
+        class="m-1 min-w-36"
+      >
+        <UserMultiSelect
+          :model-value="selectedOwners"
+          :users="visibleUsers.data"
+          :all-label="__('All owners')"
+          :selected-label="
+            selectedOwners.length > 1
+              ? __('{0} owners selected', [String(selectedOwners.length)])
+              : ''
+          "
+          @update:model-value="applyOwners"
+        />
+      </div>
     </FadedScrollableDiv>
     <div class="-ml-2 h-[70%] border-l" />
     <div class="flex items-center gap-2">
@@ -306,6 +329,7 @@
 import ListIcon from '@/components/Icons/ListIcon.vue'
 import KanbanIcon from '@/components/Icons/KanbanIcon.vue'
 import GroupByIcon from '@/components/Icons/GroupByIcon.vue'
+import MapIcon from '@/components/Icons/MapIcon.vue'
 import QuickFilterField from '@/components/QuickFilterField.vue'
 import RefreshIcon from '@/components/Icons/RefreshIcon.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
@@ -321,6 +345,7 @@ import SortBy from '@/components/SortBy.vue'
 import Filter from '@/components/Filter.vue'
 import GroupBy from '@/components/GroupBy.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
+import UserMultiSelect from '@/components/UserMultiSelect.vue'
 import ColumnSettings from '@/components/ColumnSettings.vue'
 import KanbanSettings from '@/components/Kanban/KanbanSettings.vue'
 import { getSettings } from '@/stores/settings'
@@ -394,6 +419,11 @@ function getViewType() {
       name: 'kanban',
       label: __('Kanban'),
       icon: markRaw(KanbanIcon),
+    },
+    map: {
+      name: 'map',
+      label: __('Map'),
+      icon: markRaw(MapIcon),
     },
   }
 
@@ -639,6 +669,17 @@ if (allowedViews.includes('group_by')) {
     },
   })
 }
+if (allowedViews.includes('map')) {
+  standardViews.push({
+    name: 'map',
+    label: __(props.options?.defaultViewName) || __('Map'),
+    icon: markRaw(MapIcon),
+    onClick() {
+      viewUpdated.value = false
+      router.push({ name: route.name, params: { viewType: 'map' } })
+    },
+  })
+}
 
 function getIcon(icon, type) {
   if (isEmoji(icon)) {
@@ -647,6 +688,8 @@ function getIcon(icon, type) {
     return markRaw(GroupByIcon)
   } else if (!icon && type === 'kanban') {
     return markRaw(KanbanIcon)
+  } else if (!icon && type === 'map') {
+    return markRaw(MapIcon)
   }
   return icon || markRaw(ListIcon)
 }
@@ -836,6 +879,29 @@ const quickFilters = createResource({
 })
 
 if (!quickFilters.data) quickFilters.fetch()
+
+// --- Lead Owner multi-select filter (Lead listing only) ---------------
+// Hierarchy-scoped picker, reused from the dashboard.  Selecting owners
+// narrows the list via a `lead_owner in [...]` filter on top of the
+// existing permission scope.
+const visibleUsers = createResource({
+  url: 'crm.api.dashboard.get_visible_users',
+  auto: props.doctype === 'CRM Lead',
+})
+
+const selectedOwners = computed(() => {
+  let v = list.value?.params?.filters?.lead_owner
+  if (Array.isArray(v) && String(v[0]).toLowerCase() === 'in') return v[1] || []
+  if (typeof v === 'string' && v) return [v]
+  return []
+})
+
+function applyOwners(owners) {
+  let filters = { ...list.value.params.filters }
+  if (owners.length) filters['lead_owner'] = ['in', owners]
+  else delete filters['lead_owner']
+  updateFilter(filters)
+}
 
 function setupNewQuickFilters(filters) {
   newQuickFilters.value = filters.map((f) => ({

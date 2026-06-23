@@ -81,8 +81,19 @@ def get_filterable_fields(doctype: str):
 	meta = frappe.get_meta(doctype).as_dict()
 
 	# append standard fields (getting error when using frappe.model.std_fields)
+	name_label_map = {
+		"CRM Lead": "Lead ID",
+	}
+	name_fieldtype_map = {
+		"CRM Lead": "Data",
+	}
 	standard_fields = [
-		{"fieldname": "name", "fieldtype": "Link", "label": "Name", "options": doctype},
+		{
+			"fieldname": "name",
+			"fieldtype": name_fieldtype_map.get(doctype, "Link"),
+			"label": name_label_map.get(doctype, "Name"),
+			"options": doctype,
+		},
 		{"fieldname": "owner", "fieldtype": "Link", "label": "Created By", "options": "User"},
 		{
 			"fieldname": "modified_by",
@@ -182,6 +193,24 @@ def get_quick_filters(doctype: str, cached: bool = True):
 		fields = [field for field in meta.fields if field.in_standard_filter]
 
 	for field in fields:
+		if doctype == "CRM Lead" and field.get("fieldname") == "status":
+			statuses = frappe.get_all(
+				"CRM Lead Status",
+				fields=["name", "stage_label"],
+				order_by="position asc",
+			)
+			options = [{"label": "", "value": ""}] + [
+				{"label": s.stage_label or s.name, "value": s.name} for s in statuses
+			]
+			quick_filters.append(
+				{
+					"label": _("C-Stage"),
+					"fieldname": "status",
+					"fieldtype": "Select",
+					"options": options,
+				}
+			)
+			continue
 		options = field.get("options")
 		if field.get("fieldtype") == "Select" and options and isinstance(options, str):
 			options = options.split("\n")
@@ -304,7 +333,36 @@ def get_data(
 
 	meta = frappe.get_meta(doctype)
 
-	if view_type != "kanban":
+	# Map view: fetch every lead matching the current filters that has
+	# coordinates set, capped at MAP_MARKER_LIMIT to protect the browser.
+	# total_count (computed at return) reflects all coordinate-bearing leads,
+	# so the frontend can warn when the result was truncated.
+	MAP_MARKER_LIMIT = 500
+	if view_type == "map":
+		map_settings = {}
+		if hasattr(_list, "default_map_settings"):
+			map_settings = _list.default_map_settings()
+
+		latitude_field = map_settings.get("latitude_field", "custom_latitude")
+		rows = map_settings.get("rows") or default_rows or ["name"]
+
+		# only leads that actually have a latitude populated
+		filters[latitude_field] = ["is", "set"]
+
+		data = (
+			frappe.get_list(
+				doctype,
+				fields=rows,
+				filters=filters,
+				order_by=order_by,
+				page_length=MAP_MARKER_LIMIT,
+			)
+			or []
+		)
+		data = parse_list_data(data, doctype)
+		columns = []
+
+	if view_type not in ("kanban", "map"):
 		if columns or rows:
 			custom_view = True
 			is_default = False

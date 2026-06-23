@@ -1,7 +1,10 @@
+import json
 import time
 
 import frappe
 import requests
+
+from crm.overrides.crm_lead_permissions import upstream_user
 
 _RETRY_AFTER_CAP_SECONDS = 5.0
 # OpsGate's /v2/projects/public does synchronous S3 download (of the signed
@@ -71,6 +74,25 @@ def _resolve_sales_person_email(lead_name: str) -> str:
 		return best_email
 
 	return frappe.db.get_value("CRM Lead", lead_name, "lead_owner") or ""
+
+
+def _is_dealer_lead(lead_owner: str | None) -> bool:
+	"""Dealer-channel = the lead_owner carries the ``Dealer`` role.
+
+	No coupling to ``custom_lead_type`` — a Dealer can own Retail or Projects
+	leads; the role assignment is the sole channel marker.
+	"""
+	if not lead_owner:
+		return False
+	return "Dealer" in frappe.get_roles(lead_owner)
+
+
+def _reports_to_email(user: str) -> str | None:
+	"""Return the email of ``user``'s immediate manager in CRM Sales Hierarchy."""
+	manager = upstream_user(user)
+	if not manager:
+		return None
+	return frappe.db.get_value("User", manager, "email") or manager
 
 
 def _build_order_block(lead_name: str) -> dict:
@@ -192,9 +214,11 @@ def create_project_on_won(lead_name: str) -> None:
 	base_url = (settings.get("api_base_url") or "").rstrip("/")
 	if not (api_key and base_url):
 		frappe.log_error(
-			f"Lead {lead_name}: project handoff misconfigured "
-			f"(api_base_url or api_key in CRM OpsGate API Settings missing).",
-			"Project API: misconfigured",
+			title="Project API: misconfigured",
+			message=(
+				f"Lead {lead_name}: project handoff misconfigured "
+				f"(api_base_url or api_key in CRM OpsGate API Settings missing)."
+			),
 		)
 		return
 
@@ -208,9 +232,11 @@ def create_project_on_won(lead_name: str) -> None:
 	sales_person_email = _resolve_sales_person_email(lead_name)
 	if not sales_person_email:
 		frappe.log_error(
-			f"Lead {lead_name}: no assignee with a CRM role and no lead_owner; "
-			f"cannot resolve sales_person_email for the project handoff.",
-			"Project API: missing sales_person_email",
+			title="Project API: missing sales_person_email",
+			message=(
+				f"Lead {lead_name}: no assignee with a CRM role and no lead_owner; "
+				f"cannot resolve sales_person_email for the project handoff."
+			),
 		)
 		try:
 			frappe.get_doc(
@@ -320,6 +346,50 @@ def create_project_on_won(lead_name: str) -> None:
 		},
 		"order": order,
 	}
+
+	# Dealer-channel extension — emitted only when the lead_owner carries the
+	# Dealer role.  The non-dealer payload shape is unchanged (no new keys),
+	# so existing OpsGate consumers are unaffected.
+	#
+	#   - channel:          "dealer"  → unambiguous channel marker
+	#   - dealer_email:     the lead_owner who actually placed the order
+	#   - reports_to_email: the lead_owner's immediate manager in
+	#                        CRM Sales Hierarchy (one level up)
+	#   - sales_person_email is overridden to the reports-to email so the
+	#     OpsGate-side sales_manager_id resolves to the manager, not the dealer.
+	#
+	# If the dealer has no hierarchy row / no parent, we skip the override and
+	# emit a Comment on the lead so admins can fix the tree.
+	if _is_dealer_lead(lead.lead_owner):
+		dealer_email = frappe.db.get_value("User", lead.lead_owner, "email") or lead.lead_owner
+		reports_to = _reports_to_email(lead.lead_owner)
+		payload["channel"] = "dealer"
+		payload["dealer_email"] = dealer_email
+		if reports_to:
+			payload["reports_to_email"] = reports_to
+			payload["sales_person_email"] = reports_to
+		else:
+			frappe.log_error(
+				title="Project API: dealer has no reports-to in hierarchy",
+				message=f"lead={lead_name} dealer={lead.lead_owner}",
+			)
+			try:
+				frappe.get_doc(
+					{
+						"doctype": "Comment",
+						"comment_type": "Comment",
+						"reference_doctype": "CRM Lead",
+						"reference_name": lead_name,
+						"content": (
+							"[AUTOMATION] Project handoff: dealer has no manager in "
+							"CRM Sales Hierarchy — sales_person_email left as the dealer. "
+							"Add the dealer's reports_to and re-fire to route to the manager."
+						),
+					}
+				).insert(ignore_permissions=True)
+			except Exception:
+				pass
+
 	headers = {
 		"accept": "application/json",
 		"content-type": "application/json",
@@ -329,6 +399,12 @@ def create_project_on_won(lead_name: str) -> None:
 		# avoid migrating existing sites; admins set it to the new secret value).
 		"X-Api-Secret": api_key,
 	}
+
+	frappe.logger("project_api").info(
+		"OpsGate handoff payload lead=%s payload=%s",
+		lead_name,
+		json.dumps(payload, default=str),
+	)
 
 	try:
 		response = _post_with_retry(
@@ -344,8 +420,8 @@ def create_project_on_won(lead_name: str) -> None:
 		# dedupes on external_id, so a manual re-click after the cause is fixed
 		# is safe.
 		frappe.log_error(
-			f"Lead {lead_name}: network error talking to project API — {type(exc).__name__}: {exc}",
-			"Project API: network error",
+			title="Project API: network error",
+			message=f"Lead {lead_name}: network error talking to project API — {type(exc).__name__}: {exc}",
 		)
 		try:
 			frappe.get_doc(
@@ -375,8 +451,8 @@ def create_project_on_won(lead_name: str) -> None:
 		# verbatim into Error Log. 500 chars is enough to diagnose any backend
 		# error without leaking the whole payload.
 		frappe.log_error(
-			f"Lead {lead_name}: status {response.status_code} — {response.text[:500]}",
-			"Project API: create failed",
+			title="Project API: create failed",
+			message=f"Lead {lead_name}: status {response.status_code} — {response.text[:500]}",
 		)
 		# Pull a user-readable message out of the response — OpsGate returns
 		# `{ "error": "...", "message": "..." }` shapes on 4xx; fall back to
@@ -440,9 +516,11 @@ def create_project_on_won(lead_name: str) -> None:
 		except (TypeError, ValueError):
 			body_excerpt = repr(body)[:1024]
 		frappe.log_error(
-			f"Lead {lead_name}: HTTP {response.status_code} OK but no project id "
-			f"in response body. Body excerpt: {body_excerpt}",
-			"Project API: missing project id in 2xx response",
+			title="Project API: missing project id in 2xx response",
+			message=(
+				f"Lead {lead_name}: HTTP {response.status_code} OK but no project id "
+				f"in response body. Body excerpt: {body_excerpt}"
+			),
 		)
 		frappe.throw(
 			frappe._(

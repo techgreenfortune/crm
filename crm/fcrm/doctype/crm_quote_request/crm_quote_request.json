@@ -23,8 +23,8 @@
     "quote_number",
     "section_break_1",
     "estimation_remarks",
-    "revision_notes",
-    "revision_images"
+    "notes",
+    "images"
   ],
   "fields": [
     {
@@ -85,7 +85,7 @@
     },
     {
       "fieldname": "prepared_by",
-      "fieldtype": "Table",
+      "fieldtype": "Link",
       "label": "Prepared By",
       "options": "CRM Quote Preparer"
     },
@@ -156,20 +156,17 @@
       "permlevel": 1
     },
     {
-      "fieldname": "revision_notes",
+      "fieldname": "notes",
       "fieldtype": "Small Text",
-      "label": "Revision Notes",
-      "depends_on": "eval:doc.status != 'Pending'",
-      "mandatory_depends_on": "eval:doc.status == 'Revision Requested'",
+      "label": "Notes",
       "permlevel": 2
     },
     {
-      "fieldname": "revision_images",
+      "fieldname": "images",
       "fieldtype": "Table",
-      "label": "Revision Images",
+      "label": "Images",
       "options": "CRM Quote Revision Image",
-      "depends_on": "eval:doc.status != 'Pending'",
-      "description": "Photos or markups attached when requesting a revision.",
+      "description": "Reference photos or markups for this quote request.",
       "permlevel": 2
     }
   ],
@@ -230,6 +227,14 @@
       "read": 1,
       "report": 1,
       "role": "ASM",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "role": "Dealer",
       "write": 1
     },
     {
@@ -299,6 +304,11 @@
     {
       "permlevel": 1,
       "read": 1,
+      "role": "Dealer"
+    },
+    {
+      "permlevel": 1,
+      "read": 1,
       "role": "Project Sales Executive"
     },
     {
@@ -352,6 +362,12 @@
       "read": 1,
       "write": 1,
       "role": "ASM"
+    },
+    {
+      "permlevel": 2,
+      "read": 1,
+      "write": 1,
+      "role": "Dealer"
     },
     {
       "permlevel": 2,

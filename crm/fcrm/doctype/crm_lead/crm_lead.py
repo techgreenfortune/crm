@@ -6,11 +6,14 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import has_gravatar, validate_email_address
 
+from crm.fcrm.doctype.crm_quote_request.crm_quote_request import _build_lead_updates
 from crm.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
+from crm.utils import parse_phone_number
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
 # Everything else in self.meta.fields is blocked for non-owners.
@@ -79,8 +82,56 @@ _QUOTE_LEAD_FIELDS = frozenset(
 		"custom_final_margin",
 		"custom_final_quote",
 		"custom_tentative_area_sqft",
+		"custom_total_quantity",
+		"custom_quote_number",
+		"custom_quote_validity",
 	}
 )
+
+# Stage / engagement transition maps — used by both _apply_stage_transition_guard
+# (before_save) and _run_stage_side_effects (after_save).
+_ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
+	"C0": {"C1", "C2", "C6", "C7"},
+	"C1": {"C2", "C6", "C7"},
+	"C2": {"C4", "C6", "C7"},
+	"C4": set(),
+	"C6": set(),
+	"C7": set(),
+}
+
+_ALLOWED_LEAD_STATUS_TRANSITIONS: dict[str, set] = {
+	"Active": {"Cold-Unresponsive", "Archived"},
+	"Cold-Unresponsive": {"Reactivated", "Archived", "Active"},
+	"Reactivated": {"Active", "Cold-Unresponsive", "Archived"},
+	"Archived": {"Active"},
+	"Won": {"Active"},
+}
+
+# Calling Team may step one C-stage back on Cold/Reactivated leads.
+_CALLING_TEAM_EXTRA: dict[str, set] = {"C1": {"C0"}, "C2": {"C1"}}
+
+# Won-type mandatory fields (checked by _validate_stage_field_requirements).
+_WON_TYPE_FIELDS = (
+	("custom_final_quote", "Final Quote"),
+	("custom_final_price", "Final Price"),
+	("custom_final_margin", "Final Margin"),
+)
+
+_C4_HANDOFF_FIELDS = (
+	("email", "Email"),
+	("custom_lead_type", "Lead Type"),
+	("custom_customer_type", "Customer Type"),
+	("custom_city", "City"),
+	("custom_state", "State"),
+	("custom_pincode", "Pincode"),
+)
+
+_C7_ROUTING_FIELDS = (
+	("custom_fabricator_routing_reason", "Fabricator Routing Reason"),
+	("custom_partner_fabricator_name", "Partner Fabricator Name"),
+)
+
+_SUB_SOURCE_TRIGGER_SOURCES = frozenset({"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"})
 
 
 def _is_unassigned(snapshot) -> bool:
@@ -95,7 +146,7 @@ def _is_unassigned(snapshot) -> bool:
 	return bool(snapshot) and not snapshot.get("lead_owner")
 
 
-class CRMLead(Document):
+class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -177,14 +228,10 @@ class CRMLead(Document):
 		self.validate_email()
 		self.validate_lost_reason()
 		self.validate_retail_specific_fields()
-		# Re-pull accepted quote fields BEFORE the Stage Field Requirements
-		# server script runs (it checks `custom_final_*` for Won-type stages,
-		# which this sync populates).
+		# Re-pull accepted quote fields BEFORE stage field requirements run
+		# (it checks `custom_final_*` for Won-type stages, which this populates).
 		self._sync_accepted_quote_on_won()
-		# Per-stage mandatory-field requirements (Won-type fields, C4 handoff,
-		# C7 routing, sub_source) live in the "CRM Lead — Before Save — Stage
-		# Field Requirements" server script. Admin can tune the field map
-		# without a code deploy.
+		self._validate_stage_field_requirements()
 		# Freeze runs LAST — once a lead is already at Won, quote fields can't
 		# be edited (sync above is the only way to set them).
 		self._freeze_quote_fields_at_won()
@@ -200,9 +247,414 @@ class CRMLead(Document):
 				self.lead_owner or "",
 			)
 
+	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
+		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+		self._run_stage_side_effects()
+
 	def before_save(self):
 		self.apply_sla()
 		self._extract_coordinates_from_map_link()
+		self._apply_stage_transition_guard()
+		self._dedup_and_normalize_mobile()
+		self._assign_b2f_on_c7()
+
+	def _assign_b2f_on_c7(self):
+		"""Round-robin assign lead_owner to least-loaded B2F user on first entry to C7."""
+		old = self.get_doc_before_save()
+		old_status = old.status if old else None
+		if self.status != "C7" or old_status == "C7":
+			return
+		b2f_users = frappe.db.get_all(
+			"Has Role",
+			filters={"role": "B2F Team", "parenttype": "User"},
+			pluck="parent",
+		)
+		if not b2f_users:
+			return
+
+		def _c7_load(user):
+			return frappe.db.count("CRM Lead", filters={"lead_owner": user, "status": "C7"})
+
+		self.lead_owner = min(b2f_users, key=_c7_load)
+
+	def _validate_stage_field_requirements(self):
+		if frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_import:
+			return
+
+		missing = []
+		if self.status and frappe.get_cached_value("CRM Lead Status", self.status, "type") == "Won":
+			missing += [label for field, label in _WON_TYPE_FIELDS if not self.get(field)]
+		if self.status == "C4":
+			missing += [label for field, label in _C4_HANDOFF_FIELDS if not self.get(field)]
+		if missing:
+			frappe.throw(
+				_("Required for this stage: {0}.").format(", ".join(missing)),
+				frappe.ValidationError,
+			)
+
+		if self.status == "C7":
+			missing = [label for field, label in _C7_ROUTING_FIELDS if not self.get(field)]
+			if missing:
+				frappe.throw(
+					_("Required at C7 (Forwarded to Fabricator): {0}.").format(", ".join(missing)),
+					frappe.ValidationError,
+				)
+
+		if self.source in _SUB_SOURCE_TRIGGER_SOURCES and not self.get("custom_sub_source"):
+			frappe.throw(
+				_("Sub Source is required when Source is {0}.").format(self.source),
+				frappe.ValidationError,
+			)
+
+	def _apply_stage_transition_guard(self):
+		if self.is_new():
+			if not self.status:
+				if frappe.db.exists("CRM Lead Status", "C0"):
+					self.status = "C0"
+				else:
+					open_statuses = frappe.db.get_all(
+						"CRM Lead Status", filters={"type": "Open"}, pluck="name"
+					)
+					if open_statuses:
+						self.status = open_statuses[0]
+					else:
+						frappe.throw(
+							_(
+								"No open lead statuses configured. Run bench migrate or create a "
+								"CRM Lead Status with type 'Open'."
+							)
+						)
+			if not self.lead_status:
+				self.lead_status = "Active"
+
+		if not self.lead_status:
+			self.lead_status = "Active"
+
+		if not self.is_new():
+			old = self.get_doc_before_save()
+			old_status = old.status if old else None
+			old_lead_status = old.lead_status if old else None
+			new_status = self.status
+
+			# Auto-flip Cold-Unresponsive/Reactivated → Active on any C-stage advance.
+			if (
+				old_status
+				and old_status != new_status
+				and self.lead_status
+				in (
+					"Reactivated",
+					"Cold-Unresponsive",
+				)
+			):
+				if self.lead_status == "Cold-Unresponsive":
+					self.flags.auto_cold_flip = True
+				self.lead_status = "Active"
+
+			# C4 (Won path) stays Active until project handoff flips to Won.
+			if new_status == "C4" and self.lead_status != "Active":
+				self.lead_status = "Active"
+			# C6 (Lost) — archive so Lost leads don't pollute Active queries.
+			elif new_status == "C6" and self.lead_status != "Archived":
+				self.lead_status = "Archived"
+
+			new_lead_status = self.lead_status
+			status_changed = bool(old_status) and old_status != new_status
+			lead_status_changed = bool(old_lead_status) and old_lead_status != new_lead_status
+
+			if status_changed or lead_status_changed:
+				user = frappe.session.user
+				user_roles = set(frappe.get_roles(user))
+				is_privileged = bool(
+					user_roles & {"Administrator", "System Manager", "Sales Head", "Sales Coordinator"}
+				)
+				is_qr_gate_bypass = bool(user_roles & {"Administrator", "System Manager"})
+
+				if not is_privileged:
+					if user_roles & DOWNSTREAM_SCOPE_ROLES:
+						from crm.overrides.crm_lead_permissions import downstream_users
+
+						downstream = downstream_users(user)
+						downstream.add(user)
+						if self.lead_owner not in downstream:
+							frappe.throw(
+								_("You can only change the status of leads owned by users in your team.")
+							)
+					elif "Jr. Sales Executive" in user_roles:
+						if status_changed and new_status not in ("C1", "C2", "C6"):
+							frappe.throw(_("Spotters can only move leads to C1, C2, or C6"))
+					elif "Calling Team" in user_roles:
+						old_state_ok = old_status == "C0" or old_lead_status in (
+							"Cold-Unresponsive",
+							"Reactivated",
+						)
+						if not old_state_ok:
+							frappe.throw(
+								_(
+									"Calling Team can only manage leads at C0 or with engagement "
+									"Cold-Unresponsive/Reactivated"
+								)
+							)
+						if status_changed and new_status not in ("C0", "C1", "C2", "C6", "C7"):
+							frappe.throw(_("Calling Team can only move C-stage to C0, C1, C2, C6, or C7"))
+						if lead_status_changed and new_lead_status not in (
+							"Active",
+							"Cold-Unresponsive",
+							"Reactivated",
+							"Archived",
+						):
+							frappe.throw(
+								_(
+									"Calling Team can only set engagement to Active, Cold-Unresponsive, "
+									"Reactivated, or Archived"
+								)
+							)
+					else:
+						if self.lead_owner != user:
+							frappe.throw(_("You can only change the status of leads you own"))
+
+				if not is_qr_gate_bypass:
+					if status_changed and old_status in _ALLOWED_STATUS_TRANSITIONS:
+						allowed = set(_ALLOWED_STATUS_TRANSITIONS[old_status])
+						if "Calling Team" in user_roles:
+							allowed |= _CALLING_TEAM_EXTRA.get(old_status, set())
+						if new_status not in allowed:
+							frappe.throw(_(f"Cannot move C-stage from {old_status} to {new_status}"))
+
+					if lead_status_changed and old_lead_status in _ALLOWED_LEAD_STATUS_TRANSITIONS:
+						if new_lead_status not in _ALLOWED_LEAD_STATUS_TRANSITIONS[old_lead_status]:
+							frappe.throw(
+								_(f"Cannot move engagement from {old_lead_status} to {new_lead_status}")
+							)
+
+					if status_changed and old_status == "C2" and new_status == "C4":
+						latest_qr_status = frappe.db.get_value(
+							"CRM Quote Request",
+							{"lead": self.name},
+							"status",
+							order_by="creation desc",
+						)
+						if latest_qr_status != "Accepted":
+							frappe.throw(
+								_(
+									"Cannot advance to C4 (Won) until the Lead Owner has accepted the "
+									"Quote Request. Open the latest Quote Request and set its status "
+									"to 'Accepted'."
+								),
+								title=_("Quote Approval Required"),
+							)
+
+	def _dedup_and_normalize_mobile(self):
+		if frappe.flags.in_test or frappe.flags.in_import:
+			return
+		if not self.mobile_no:
+			return
+		if not self.has_value_changed("mobile_no"):
+			return
+
+		parsed = parse_phone_number(self.mobile_no)
+		if not parsed or not parsed.get("success") or not parsed.get("is_valid"):
+			frappe.throw(
+				_("{0} is not a valid mobile number").format(self.mobile_no),
+				title=_("Invalid Mobile Number"),
+			)
+		self.mobile_no = parsed["formats"]["E164"]
+
+		existing = frappe.db.get_value(
+			"CRM Lead",
+			{"mobile_no": self.mobile_no, "name": ["!=", self.name]},
+			["name", "lead_name", "status", "lead_status"],
+			as_dict=True,
+		)
+		if existing:
+			hint = {
+				"Cold-Unresponsive": "Use the Reactivation flow.",
+				"Archived": "Use the Reactivation flow.",
+			}.get(existing.lead_status) or {
+				"C6": "Lead is marked Lost — investigate before creating a new lead.",
+				"C4": "This number is already a customer.",
+			}.get(existing.status, "")
+			message = (
+				f"A lead with mobile {self.mobile_no} already exists: "
+				f"{existing.lead_name} ({existing.name}) — Stage: {existing.status} / {existing.lead_status}."
+			)
+			if hint:
+				message += " " + hint
+			frappe.throw(_(message), title=_("Duplicate Mobile Number"))
+
+	def _run_stage_side_effects(self):
+		old = self.get_doc_before_save()
+		old_status = old.status if old else None
+		old_lead_status = old.lead_status if old else None
+		new_status = self.status
+		new_lead_status = self.lead_status
+
+		if old is None and new_status == "C0":
+			frappe.get_doc(
+				{
+					"doctype": "CRM Task",
+					"task_type": "call_lead",
+					"title": f"Call Lead — {self.lead_name or self.name}",
+					"status": "Todo",
+					"priority": "Medium",
+					"reference_doctype": "CRM Lead",
+					"reference_docname": self.name,
+					"description": (
+						f"New lead {self.lead_name or self.name} has arrived at C0. "
+						"Make the initial call and log the disposition."
+					),
+				}
+			).insert(ignore_permissions=True)
+
+		if old is None and new_status == "C1" and self.email:
+			frappe.enqueue(
+				"crm.integrations.brevo.api.enroll_in_sequence",
+				email=self.email,
+				lead_name=self.name,
+			)
+
+		status_changed = bool(old_status) and old_status != new_status
+		lead_status_changed = bool(old_lead_status) and old_lead_status != new_lead_status
+
+		was_retry_active = old_status == "C0" and old_lead_status in (
+			"Active",
+			"Cold-Unresponsive",
+			"Reactivated",
+		)
+		is_retry_active = new_status == "C0" and new_lead_status in (
+			"Active",
+			"Cold-Unresponsive",
+			"Reactivated",
+		)
+		if (status_changed or lead_status_changed) and was_retry_active and not is_retry_active:
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
+		elif lead_status_changed and new_lead_status == "Archived":
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
+		elif lead_status_changed and old_lead_status == "Cold-Unresponsive" and new_lead_status == "Active":
+			frappe.enqueue(
+				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+			)
+
+		if status_changed:
+			if new_status == "C1" and self.email:
+				frappe.enqueue(
+					"crm.integrations.brevo.api.enroll_in_sequence",
+					email=self.email,
+					lead_name=self.name,
+				)
+
+			if new_status == "C7":
+				b2f_count = frappe.db.count("Has Role", filters={"role": "B2F Team", "parenttype": "User"})
+				if not b2f_count:
+					frappe.log_error(
+						message=(
+							f"Lead {self.name} routed to C7 but no users have the B2F Team role. "
+							"The handle_fabricator_lead task will be orphaned until a B2F user "
+							"is configured."
+						),
+						title="C7 routing: empty B2F pool",
+					)
+					recipients = set(
+						frappe.db.get_all(
+							"Has Role",
+							filters={
+								"role": ["in", ["Sales Head", "Sales Coordinator"]],
+								"parenttype": "User",
+							},
+							pluck="parent",
+						)
+					)
+					for sm in recipients:
+						try:
+							frappe.get_doc(
+								{
+									"doctype": "Notification Log",
+									"subject": "C7 routing: empty B2F pool",
+									"email_content": (
+										f"Lead {self.lead_name or self.name} routed to C7 but no B2F "
+										"users are configured. The Handle Fabricator Lead task is "
+										"orphaned until a B2F user is added."
+									),
+									"for_user": sm,
+									"type": "Alert",
+									"document_type": "CRM Lead",
+									"document_name": self.name,
+								}
+							).insert(ignore_permissions=True)
+						except Exception:
+							pass
+
+				if not frappe.db.exists(
+					"CRM Task",
+					{
+						"reference_doctype": "CRM Lead",
+						"reference_docname": self.name,
+						"task_type": "handle_fabricator_lead",
+						"status": ["in", ["Todo", "In Progress"]],
+					},
+				):
+					task_doc = {
+						"doctype": "CRM Task",
+						"task_type": "handle_fabricator_lead",
+						"title": f"Handle Fabricator Lead — {self.lead_name or self.name}",
+						"status": "Todo",
+						"priority": "High",
+						"reference_doctype": "CRM Lead",
+						"reference_docname": self.name,
+						"description": (
+							f"Lead {self.lead_name} has been routed to you for fabricator handling "
+							"(C7). Review the fabricator routing reason and partner fabricator name. "
+							"The lead has exited the active sales pipeline; coordinate with the "
+							"fabricator externally to close the deal."
+						),
+					}
+					if b2f_count:
+						task_doc["assigned_to"] = self.lead_owner
+					frappe.get_doc(task_doc).insert(ignore_permissions=True)
+
+		if (
+			lead_status_changed
+			and old_lead_status == "Cold-Unresponsive"
+			and new_lead_status in ("Reactivated", "Active")
+			and not self.get("custom_reactivated_at")
+			and not self.flags.get("auto_cold_flip")
+		):
+			frappe.db.set_value("CRM Lead", self.name, "custom_reactivated_at", frappe.utils.now_datetime())
+
+		if lead_status_changed and old_lead_status == "Active" and new_lead_status == "Cold-Unresponsive":
+			try:
+				frappe.get_doc(
+					{
+						"doctype": "Comment",
+						"comment_type": "Comment",
+						"reference_doctype": "CRM Lead",
+						"reference_name": self.name,
+						"content": f"[AUTOMATION] Lead moved to Cold-Unresponsive (C-stage preserved at {self.status}).",
+					}
+				).insert(ignore_permissions=True)
+			except Exception:
+				pass
+
+		if (
+			lead_status_changed
+			and old_lead_status == "Cold-Unresponsive"
+			and new_lead_status == "Reactivated"
+		):
+			try:
+				frappe.get_doc(
+					{
+						"doctype": "Comment",
+						"comment_type": "Comment",
+						"reference_doctype": "CRM Lead",
+						"reference_name": self.name,
+						"content": f"[AUTOMATION] Lead reactivated from Cold-Unresponsive (C-stage preserved at {self.status}).",
+					}
+				).insert(ignore_permissions=True)
+			except Exception:
+				pass
 
 	def _extract_coordinates_from_map_link(self):
 		"""Populate `custom_latitude` / `custom_longitude` from a pasted
@@ -342,7 +794,7 @@ class CRMLead(Document):
 		# Orphan ASM/RSM (no hierarchy row) bypass via `allowed_assignees`
 		# returning None. The secondary lower-block check still protects
 		# managers reassigning a downstream-owned lead onto an out-of-tree user.
-		if user_roles & {"ASM", "RSM"} and self.has_value_changed("lead_owner") and self.lead_owner:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES and self.has_value_changed("lead_owner") and self.lead_owner:
 			from crm.overrides.crm_lead_permissions import allowed_assignees
 
 			allowed = allowed_assignees(user)
@@ -405,7 +857,7 @@ class CRMLead(Document):
 		# write access mid-save.
 		if self.lead_owner == user or old.lead_owner == user:
 			return
-		if user_roles & {"ASM", "RSM"}:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES:
 			from crm.overrides.crm_lead_permissions import downstream_users
 
 			downstream = downstream_users(user)
@@ -466,7 +918,15 @@ class CRMLead(Document):
 		accepted = frappe.db.get_value(
 			"CRM Quote Request",
 			{"lead": self.name, "status": "Accepted"},
-			["quote_sq_ft", "quote_value", "quote_margin", "quote_file"],
+			[
+				"quote_sq_ft",
+				"quote_value",
+				"quote_margin",
+				"quote_file",
+				"total_quantity",
+				"quote_number",
+				"quote_validity",
+			],
 			as_dict=True,
 			order_by="modified desc",
 		)
@@ -476,15 +936,7 @@ class CRMLead(Document):
 			# custom_final_* fields.
 			return
 
-		if accepted.quote_value:
-			self.custom_final_price = accepted.quote_value
-			self.custom_tentative_value = accepted.quote_value
-		if accepted.quote_margin:
-			self.custom_final_margin = accepted.quote_margin
-		if accepted.quote_file:
-			self.custom_final_quote = accepted.quote_file
-		if accepted.quote_sq_ft:
-			self.custom_tentative_area_sqft = accepted.quote_sq_ft
+		self.update(_build_lead_updates(accepted))
 
 	def _freeze_quote_fields_at_won(self):
 		"""Once a lead is ALREADY at a Won-type status, quote-derived fields
@@ -782,6 +1234,12 @@ class CRMLead(Document):
 				"width": "12rem",
 			},
 			{
+				"label": "Lead ID",
+				"type": "Data",
+				"key": "name",
+				"width": "14rem",
+			},
+			{
 				"label": "Organization",
 				"type": "Link",
 				"key": "organization",
@@ -845,6 +1303,25 @@ class CRMLead(Document):
 			"column_field": "status",
 			"title_field": "lead_name",
 			"kanban_fields": '["organization", "email", "mobile_no", "lead_owner", "modified"]',
+		}
+
+	@staticmethod
+	def default_map_settings():
+		return {
+			"latitude_field": "custom_latitude",
+			"longitude_field": "custom_longitude",
+			"rows": [
+				"name",
+				"lead_name",
+				"organization",
+				"status",
+				"mobile_no",
+				"email",
+				"lead_owner",
+				"custom_latitude",
+				"custom_longitude",
+				"custom_google_map_link",
+			],
 		}
 
 

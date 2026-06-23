@@ -126,7 +126,6 @@
    "fieldname": "lead_status",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "in_standard_filter": 1,
    "label": "Lead Status",
    "options": "CRM Lead Engagement Status",
    "reqd": 1,
@@ -135,7 +134,6 @@
   {
    "fieldname": "email",
    "fieldtype": "Data",
-   "in_standard_filter": 1,
    "label": "Email",
    "options": "Email",
    "search_index": 1
@@ -222,7 +220,6 @@
   {
    "fieldname": "organization",
    "fieldtype": "Data",
-   "in_standard_filter": 1,
    "label": "Organization"
   },
   {
@@ -528,6 +525,18 @@
    "share": 1,
    "write": 1,
    "role": "ASM"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "Dealer"
   },
   {
    "email": 1,

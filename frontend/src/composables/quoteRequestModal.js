@@ -1,5 +1,5 @@
 import { toast } from 'frappe-ui'
-import { useDoctypeModal } from '@/composables/doctypeModal'
+import { useQuoteModal } from '@/composables/quoteModal'
 
 export function isQuoteTaskType(t) {
   return t === 'upload_quote' || t === 'review_quote'
@@ -10,22 +10,16 @@ export function quoteTaskTitle(t) {
 }
 
 export function useQuoteRequestModal() {
-  const { showModal } = useDoctypeModal()
+  const { showQuoteModal } = useQuoteModal()
 
-  function openQuoteRequest(
-    quoteRequestName,
-    title = __('Quote Request'),
-    callbacks = {},
-  ) {
+  function openQuoteRequest(quoteRequestName, _title, callbacks = {}) {
     if (!quoteRequestName) {
       toast.error(__('Task is not linked to a Quote Request.'))
       return
     }
-    showModal({
+    showQuoteModal({
       name: quoteRequestName,
-      doctype: 'CRM Quote Request',
-      customTitle: title,
-      callbacks,
+      onUpdated: callbacks?.afterUpdate || null,
     })
   }
 

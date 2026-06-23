@@ -94,39 +94,26 @@
           <LucideCalendar class="size-4 text-ink-gray-5 mr-2" />
         </template>
       </DateRangePicker>
-      <Link
-        v-if="isAdmin() || isManager()"
-        class="form-control w-48"
-        variant="outline"
-        :value="filters.user && getUser(filters.user).full_name"
-        doctype="User"
-        :filters="{
-          name: ['in', users.data.crmUsers?.map((u) => u.name)],
-          ignore_user_type: 1,
-        }"
-        :placeholder="__('Select user')"
-        :hideMe="true"
-        @change="(v) => updateFilter('user', v)"
-      >
-        <template #prefix>
-          <UserAvatar
-            v-if="filters.user"
-            class="mr-2"
-            :user="filters.user"
-            size="sm"
-          />
-        </template>
-        <template #item-prefix="{ option }">
-          <UserAvatar class="mr-2" :user="option.value" size="sm" />
-        </template>
-        <template #item-label="{ option }">
-          <Tooltip :text="option.value">
-            <div class="cursor-pointer">
-              {{ getUser(option.value).full_name }}
-            </div>
-          </Tooltip>
-        </template>
-      </Link>
+      <!-- Multi-select user filter scoped to my hierarchy.
+           Backend: crm.api.dashboard.get_visible_users returns downstream
+           users only (admin sees all sales users).  Picker is hidden for
+           leaf users with no reports — they only ever see their own data.
+           Selecting a user expands to their full downstream subtree on the
+           backend (selecting an ASM shows the ASM + their team's leads). -->
+      <UserMultiSelect
+        v-if="visibleUsers.data && visibleUsers.data.length > 0"
+        class="w-52"
+        :model-value="filters.users"
+        :users="visibleUsers.data"
+        :all-label="isAdmin() ? __('All leads') : __('My leads only')"
+        :selected-label="
+          filters.users.length > 1
+            ? __('{0} users selected', [String(filters.users.length)])
+            : ''
+        "
+        placement="bottom-end"
+        @update:model-value="setUsers"
+      />
     </div>
 
     <div class="w-full overflow-y-scroll">
@@ -152,10 +139,9 @@ import LucideUndo2 from '~icons/lucide/undo-2'
 import LucidePenLine from '~icons/lucide/pen-line'
 import LucideDownload from '~icons/lucide/download'
 import DashboardGrid from '@/components/Dashboard/DashboardGrid.vue'
-import UserAvatar from '@/components/UserAvatar.vue'
+import UserMultiSelect from '@/components/UserMultiSelect.vue'
 import ViewBreadcrumbs from '@/components/ViewBreadcrumbs.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
-import Link from '@/components/Controls/Link.vue'
 import { usersStore } from '@/stores/users'
 import { copy } from '@/utils'
 import { getLastXDays, formatter, formatRange } from '@/utils/dashboard'
@@ -164,11 +150,10 @@ import {
   createResource,
   DateRangePicker,
   Dropdown,
-  Tooltip,
 } from 'frappe-ui'
 import { ref, reactive, computed, provide } from 'vue'
 
-const { users, getUser, isManager, isAdmin } = usersStore()
+const { isAdmin } = usersStore()
 
 const editing = ref(false)
 
@@ -179,8 +164,25 @@ const showAddChartModal = ref(false)
 
 const filters = reactive({
   period: getLastXDays(),
-  user: null,
+  // Additive multi-select.  Default (empty) = own leads only (admin sees
+  // every lead).  Each ticked user adds their downstream subtree to the
+  // view on top of the caller's own leads.
+  users: [] as string[],
 })
+
+// Reportees available to add via the picker.  Returns [] for leaf users
+// (no reports → picker hides entirely) and for non-Sales-User callers.
+// Admin sees all CRM Sales Users; non-admin sees their downstream MINUS
+// themselves (self is always implicitly included).
+const visibleUsers = createResource({
+  url: 'crm.api.dashboard.get_visible_users',
+  auto: true,
+})
+
+function setUsers(users: string[]) {
+  filters.users = users
+  dashboardItems.reload()
+}
 
 const fromDate = computed(() => {
   if (!filters.period) return null
@@ -202,7 +204,7 @@ function buildExportParams() {
   const params = new URLSearchParams()
   if (fromDate.value) params.set('from_date', fromDate.value)
   if (toDate.value) params.set('to_date', toDate.value)
-  if (filters.user) params.set('user', filters.user)
+  if (filters.users.length) params.set('owners', JSON.stringify(filters.users))
   return params.toString()
 }
 
@@ -272,7 +274,10 @@ const dashboardItems = createResource({
     return {
       from_date: fromDate.value,
       to_date: toDate.value,
-      user: filters.user,
+      // Send as JSON array — backend coerces via _coerce_users_arg.  Empty
+      // list signals "no filter" so the backend uses the caller's full
+      // visible scope (downstream subtree).
+      users: filters.users.length ? JSON.stringify(filters.users) : null,
     }
   },
   auto: true,

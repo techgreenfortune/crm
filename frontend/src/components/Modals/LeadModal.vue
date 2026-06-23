@@ -84,6 +84,7 @@ const { capture } = useTelemetry()
 const leadStatuses = computed(() => statusOptions('lead'))
 
 let accountField = null
+let modalReady = false
 
 const tabs = createResource({
   url: 'crm.fcrm.doctype.crm_fields_layout.crm_fields_layout.get_fields_layout',
@@ -138,8 +139,7 @@ watch(
   (customerType) => {
     if (accountField) {
       accountField.filters = customerType ? { account_type: customerType } : {}
-      // Clear stale account selection when customer type changes
-      lead.doc.custom_account = null
+      if (modalReady) lead.doc.custom_account = null
     }
   },
 )
@@ -235,5 +235,9 @@ onMounted(() => {
   if (!lead.doc?.lead_status) {
     lead.doc.lead_status = 'Active'
   }
+
+  nextTick(() => {
+    modalReady = true
+  })
 })
 </script>
