@@ -2,11 +2,36 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from crm.permissions.role_config import REVIEWER_ROLES, TIER1_FULL_RW
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, REVIEWER_ROLES, TIER1_FULL_RW
 
 # Estimation Team uploads quotes for any lead (including closed ones), so they
 # bypass the lead-scoped filter on top of the tier-1 bypasses.
 _QR_BYPASS_ROLES = TIER1_FULL_RW | {"Estimation Team"}
+
+
+def _build_lead_updates(qr) -> dict:
+	"""Return CRM Lead custom-field updates from a QR doc or frappe._dict.
+
+	Single source of truth for the QR→Lead field mapping. Used by both the
+	QR controller's status-transition hooks and CRM Lead's won-sync method.
+	"""
+	updates = {}
+	if qr.get("quote_value"):
+		updates["custom_tentative_value"] = qr.quote_value
+		updates["custom_final_price"] = qr.quote_value
+	if qr.get("quote_margin"):
+		updates["custom_final_margin"] = qr.quote_margin
+	if qr.get("quote_file"):
+		updates["custom_final_quote"] = qr.quote_file
+	if qr.get("quote_sq_ft"):
+		updates["custom_tentative_area_sqft"] = qr.quote_sq_ft
+	if qr.get("total_quantity"):
+		updates["custom_total_quantity"] = qr.total_quantity
+	if qr.get("quote_number"):
+		updates["custom_quote_number"] = qr.quote_number
+	if qr.get("quote_validity"):
+		updates["custom_quote_validity"] = qr.quote_validity
+	return updates
 
 
 def get_permission_query_conditions(user=None):
@@ -34,7 +59,7 @@ def get_permission_query_conditions(user=None):
 	esc = frappe.db.escape
 
 	owners = {user}
-	if roles & {"ASM", "RSM"}:
+	if roles & DOWNSTREAM_SCOPE_ROLES:
 		from crm.overrides.crm_lead_permissions import downstream_users
 
 		owners |= downstream_users(user)
@@ -214,7 +239,16 @@ class CRMQuoteRequest(Document):
 		if new_status == "Revision Requested":
 			try:
 				new_qr = frappe.new_doc("CRM Quote Request")
-				new_qr.update({"lead": self.lead, "status": "Pending"})
+				new_qr.update(
+					{
+						"lead": self.lead,
+						"status": "Pending",
+						"notes": self.notes or "",
+					}
+				)
+				for row in self.images or []:
+					if row.image:
+						new_qr.append("images", {"image": row.image, "uploaded_by": row.uploaded_by})
 				new_qr.flags.ignore_mandatory = True
 				new_qr.insert(ignore_permissions=True)
 			except Exception:
@@ -301,16 +335,7 @@ class CRMQuoteRequest(Document):
 		old_status = old.status if old else None
 
 		if old_status != self.status and self.status == "Quote Received":
-			updates = {}
-			if self.quote_value:
-				updates["custom_tentative_value"] = self.quote_value
-				updates["custom_final_price"] = self.quote_value
-			if self.quote_margin:
-				updates["custom_final_margin"] = self.quote_margin
-			if self.quote_file:
-				updates["custom_final_quote"] = self.quote_file
-			if self.quote_sq_ft:
-				updates["custom_tentative_area_sqft"] = self.quote_sq_ft
+			updates = _build_lead_updates(self)
 			if updates:
 				frappe.db.set_value("CRM Lead", self.lead, updates)
 
@@ -371,6 +396,10 @@ class CRMQuoteRequest(Document):
 				frappe.db.set_value("CRM Task", open_review_task, "status", "Done")
 
 		if old_status != self.status and self.status == "Accepted":
+			acc_updates = _build_lead_updates(self)
+			if acc_updates:
+				frappe.db.set_value("CRM Lead", self.lead, acc_updates)
+
 			review_task = frappe.db.get_value(
 				"CRM Task",
 				{

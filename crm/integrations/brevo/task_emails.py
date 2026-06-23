@@ -28,21 +28,8 @@ from __future__ import annotations
 import frappe
 
 from crm.integrations.brevo.brevo_handler import is_brevo_enabled, send_template_email
+from crm.integrations.brevo.quote_emails import _user_email
 from crm.integrations.brevo.template_config import BREVO_TEMPLATES
-
-# ---------------------------------------------------------------------------
-# Recipient resolver
-# ---------------------------------------------------------------------------
-
-
-def _user_email(user_name: str | None) -> str | None:
-	"""Resolve an active User's email; fall back to the User.name when it is
-	itself an email-format login (Frappe's default for self-registered users).
-	"""
-	if not user_name:
-		return None
-	email = frappe.db.get_value("User", user_name, "email") or user_name
-	return email if "@" in (email or "") else None
 
 
 def _parent_owner_email(task_doc) -> str | None:

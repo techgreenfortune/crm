@@ -6,11 +6,13 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import has_gravatar, validate_email_address
 
+from crm.fcrm.doctype.crm_quote_request.crm_quote_request import _build_lead_updates
 from crm.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
 from crm.utils import parse_phone_number
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
@@ -80,6 +82,9 @@ _QUOTE_LEAD_FIELDS = frozenset(
 		"custom_final_margin",
 		"custom_final_quote",
 		"custom_tentative_area_sqft",
+		"custom_total_quantity",
+		"custom_quote_number",
+		"custom_quote_validity",
 	}
 )
 
@@ -251,6 +256,26 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		self._extract_coordinates_from_map_link()
 		self._apply_stage_transition_guard()
 		self._dedup_and_normalize_mobile()
+		self._assign_b2f_on_c7()
+
+	def _assign_b2f_on_c7(self):
+		"""Round-robin assign lead_owner to least-loaded B2F user on first entry to C7."""
+		old = self.get_doc_before_save()
+		old_status = old.status if old else None
+		if self.status != "C7" or old_status == "C7":
+			return
+		b2f_users = frappe.db.get_all(
+			"Has Role",
+			filters={"role": "B2F Team", "parenttype": "User"},
+			pluck="parent",
+		)
+		if not b2f_users:
+			return
+
+		def _c7_load(user):
+			return frappe.db.count("CRM Lead", filters={"lead_owner": user, "status": "C7"})
+
+		self.lead_owner = min(b2f_users, key=_c7_load)
 
 	def _validate_stage_field_requirements(self):
 		if frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_import:
@@ -345,7 +370,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				is_qr_gate_bypass = bool(user_roles & {"Administrator", "System Manager"})
 
 				if not is_privileged:
-					if user_roles & {"ASM", "RSM"}:
+					if user_roles & DOWNSTREAM_SCOPE_ROLES:
 						from crm.overrides.crm_lead_permissions import downstream_users
 
 						downstream = downstream_users(user)
@@ -422,8 +447,6 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		if frappe.flags.in_test or frappe.flags.in_import:
 			return
 		if not self.mobile_no:
-			return
-		if self.is_new():
 			return
 		if not self.has_value_changed("mobile_no"):
 			return
@@ -573,23 +596,24 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 						"status": ["in", ["Todo", "In Progress"]],
 					},
 				):
-					frappe.get_doc(
-						{
-							"doctype": "CRM Task",
-							"task_type": "handle_fabricator_lead",
-							"title": f"Handle Fabricator Lead — {self.lead_name or self.name}",
-							"status": "Todo",
-							"priority": "High",
-							"reference_doctype": "CRM Lead",
-							"reference_docname": self.name,
-							"description": (
-								f"Lead {self.lead_name} has been routed to you for fabricator handling "
-								"(C7). Review the fabricator routing reason and partner fabricator name. "
-								"The lead has exited the active sales pipeline; coordinate with the "
-								"fabricator externally to close the deal."
-							),
-						}
-					).insert(ignore_permissions=True)
+					task_doc = {
+						"doctype": "CRM Task",
+						"task_type": "handle_fabricator_lead",
+						"title": f"Handle Fabricator Lead — {self.lead_name or self.name}",
+						"status": "Todo",
+						"priority": "High",
+						"reference_doctype": "CRM Lead",
+						"reference_docname": self.name,
+						"description": (
+							f"Lead {self.lead_name} has been routed to you for fabricator handling "
+							"(C7). Review the fabricator routing reason and partner fabricator name. "
+							"The lead has exited the active sales pipeline; coordinate with the "
+							"fabricator externally to close the deal."
+						),
+					}
+					if b2f_count:
+						task_doc["assigned_to"] = self.lead_owner
+					frappe.get_doc(task_doc).insert(ignore_permissions=True)
 
 		if (
 			lead_status_changed
@@ -770,7 +794,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		# Orphan ASM/RSM (no hierarchy row) bypass via `allowed_assignees`
 		# returning None. The secondary lower-block check still protects
 		# managers reassigning a downstream-owned lead onto an out-of-tree user.
-		if user_roles & {"ASM", "RSM"} and self.has_value_changed("lead_owner") and self.lead_owner:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES and self.has_value_changed("lead_owner") and self.lead_owner:
 			from crm.overrides.crm_lead_permissions import allowed_assignees
 
 			allowed = allowed_assignees(user)
@@ -833,7 +857,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		# write access mid-save.
 		if self.lead_owner == user or old.lead_owner == user:
 			return
-		if user_roles & {"ASM", "RSM"}:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES:
 			from crm.overrides.crm_lead_permissions import downstream_users
 
 			downstream = downstream_users(user)
@@ -894,7 +918,15 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		accepted = frappe.db.get_value(
 			"CRM Quote Request",
 			{"lead": self.name, "status": "Accepted"},
-			["quote_sq_ft", "quote_value", "quote_margin", "quote_file"],
+			[
+				"quote_sq_ft",
+				"quote_value",
+				"quote_margin",
+				"quote_file",
+				"total_quantity",
+				"quote_number",
+				"quote_validity",
+			],
 			as_dict=True,
 			order_by="modified desc",
 		)
@@ -904,15 +936,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			# custom_final_* fields.
 			return
 
-		if accepted.quote_value:
-			self.custom_final_price = accepted.quote_value
-			self.custom_tentative_value = accepted.quote_value
-		if accepted.quote_margin:
-			self.custom_final_margin = accepted.quote_margin
-		if accepted.quote_file:
-			self.custom_final_quote = accepted.quote_file
-		if accepted.quote_sq_ft:
-			self.custom_tentative_area_sqft = accepted.quote_sq_ft
+		self.update(_build_lead_updates(accepted))
 
 	def _freeze_quote_fields_at_won(self):
 		"""Once a lead is ALREADY at a Won-type status, quote-derived fields
