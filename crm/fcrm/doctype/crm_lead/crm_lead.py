@@ -12,6 +12,7 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
+from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
 from crm.utils import parse_phone_number
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
@@ -369,7 +370,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				is_qr_gate_bypass = bool(user_roles & {"Administrator", "System Manager"})
 
 				if not is_privileged:
-					if user_roles & {"ASM", "RSM"}:
+					if user_roles & DOWNSTREAM_SCOPE_ROLES:
 						from crm.overrides.crm_lead_permissions import downstream_users
 
 						downstream = downstream_users(user)
@@ -793,7 +794,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		# Orphan ASM/RSM (no hierarchy row) bypass via `allowed_assignees`
 		# returning None. The secondary lower-block check still protects
 		# managers reassigning a downstream-owned lead onto an out-of-tree user.
-		if user_roles & {"ASM", "RSM"} and self.has_value_changed("lead_owner") and self.lead_owner:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES and self.has_value_changed("lead_owner") and self.lead_owner:
 			from crm.overrides.crm_lead_permissions import allowed_assignees
 
 			allowed = allowed_assignees(user)
@@ -856,7 +857,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		# write access mid-save.
 		if self.lead_owner == user or old.lead_owner == user:
 			return
-		if user_roles & {"ASM", "RSM"}:
+		if user_roles & DOWNSTREAM_SCOPE_ROLES:
 			from crm.overrides.crm_lead_permissions import downstream_users
 
 			downstream = downstream_users(user)
