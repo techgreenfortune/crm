@@ -60,7 +60,7 @@ def handle_request(**kwargs):
 			except Exception:
 				frappe.log_error(title="Error while updating call log")
 		else:
-			create_call_log(
+			call_log = create_call_log(
 				call_id=call_payload.get("CallSid"),
 				from_number=call_payload.get("CallFrom"),
 				to_number=call_payload.get("DialWhomNumber"),
@@ -70,13 +70,17 @@ def handle_request(**kwargs):
 			)
 
 		# Publish realtime AFTER DB commit so the call log exists when the
-		# frontend acts on the event. Guard: only publish when agent is known
-		# — user=None would broadcast to every connected session.
-		if agent_email:
-			frappe.publish_realtime("exotel_call", call_payload, user=agent_email)
-			frappe.logger("exotel").info(
-				f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} AgentEmail={agent_email}"
-			)
+		# frontend acts on the event. Terminal events from Exotel don't reliably
+		# include AgentEmail, so fall back to the call log's caller/receiver
+		# (set when the call started) before falling back to a full broadcast —
+		# a stray broadcast is better than a silently dropped terminal update,
+		# which left the call popup stuck on "Calling...".
+		target_user = agent_email or (call_log and (call_log.caller or call_log.receiver))
+		frappe.publish_realtime("exotel_call", call_payload, user=target_user)
+		frappe.logger("exotel").info(
+			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} "
+			f"AgentEmail={agent_email} ResolvedTarget={target_user}"
+		)
 	except Exception:
 		request_log.status = "Failed"
 		request_log.error = frappe.get_traceback()
