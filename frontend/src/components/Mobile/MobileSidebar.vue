@@ -97,6 +97,7 @@ import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
+import AffiliatesIcon from '@/components/Icons/AffiliatesIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
@@ -147,6 +148,11 @@ const links = [
     label: 'Accounts',
     icon: AccountsIcon,
     to: 'Accounts',
+  },
+  {
+    label: 'Affiliates',
+    icon: AffiliatesIcon,
+    to: 'Affiliates',
   },
   {
     label: 'Notes',
