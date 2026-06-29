@@ -28,7 +28,11 @@ BREVO_TEMPLATES: dict[str, int] = {
 	"revision_requested": 156,
 	"quote_accepted": 157,
 	# Task workflow
-	"task_reminder": 158,  #  design template in Brevo and fill in the ID
+	"task_reminder": 158,
+	# Affiliate commission approval workflow
+	"affiliate_approval_request": 160,  # TODO: design template in Brevo and fill in the ID
+	"affiliate_approval_granted": 161,  # TODO: design template in Brevo and fill in the ID
+	"affiliate_approval_rejected": 162,  # TODO: design template in Brevo and fill in the ID
 }
 
 # Static CC addresses merged into each trigger's recipient list at send time.

@@ -217,3 +217,16 @@ def get_accounts():
 	).run(as_dict=1)
 
 	return accounts
+
+
+@frappe.whitelist()
+def get_affiliates():
+	"""Return all CRM Affiliate records for picker dropdowns + dashboard."""
+	get_session_role_flags()
+
+	return frappe.qb.get_query(
+		"CRM Affiliate",
+		fields=["*"],
+		order_by="affiliate_name asc",
+		distinct=True,
+	).run(as_dict=1)

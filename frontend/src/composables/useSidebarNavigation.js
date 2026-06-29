@@ -16,6 +16,7 @@ import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import AccountsIcon from '@/components/Icons/AccountsIcon.vue'
+import AffiliatesIcon from '@/components/Icons/AffiliatesIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
@@ -78,6 +79,8 @@ export function useSidebarNavigation({
         return OrganizationsIcon
       case 'Accounts':
         return AccountsIcon
+      case 'Affiliates':
+        return AffiliatesIcon
       case 'Notes':
         return NoteIcon
       case 'Call Logs':

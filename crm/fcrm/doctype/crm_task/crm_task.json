@@ -37,7 +37,7 @@
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Task Type",
-   "options": "\ncall_lead\nupload_quote\nhandle_fabricator_lead\nreview_quote"
+   "options": "\ncall_lead\nupload_quote\nhandle_fabricator_lead\nreview_quote\naffiliate_approval"
   },
   {
    "fieldname": "priority",
