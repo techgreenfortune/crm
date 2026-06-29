@@ -100,7 +100,12 @@ const rows = computed(() => {
         ['Date', 'Datetime'].includes(fieldType) &&
         !['modified', 'creation'].includes(row)
       ) {
-        _rows[row] = formatDate(affiliate[row], '', true, fieldType == 'Datetime')
+        _rows[row] = formatDate(
+          affiliate[row],
+          '',
+          true,
+          fieldType == 'Datetime',
+        )
       }
 
       if (fieldType && fieldType == 'Currency') {

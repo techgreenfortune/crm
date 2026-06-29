@@ -76,10 +76,7 @@
         :loading="rejectLoading"
         @click="doReject"
       />
-      <Tooltip
-        v-if="canShowCreateProject"
-        :text="createProjectTooltip"
-      >
+      <Tooltip v-if="canShowCreateProject" :text="createProjectTooltip">
         <Button
           variant="solid"
           :label="createProjectLabel"
@@ -890,9 +887,12 @@ watch(
       name: doc.value.name,
       custom_is_affiliate_lead: doc.value.custom_is_affiliate_lead,
       custom_affiliate: doc.value.custom_affiliate,
-      custom_affiliate_commission_pct: doc.value.custom_affiliate_commission_pct,
-      custom_affiliate_approval_status: doc.value.custom_affiliate_approval_status,
-      custom_affiliate_approval_remarks: doc.value.custom_affiliate_approval_remarks,
+      custom_affiliate_commission_pct:
+        doc.value.custom_affiliate_commission_pct,
+      custom_affiliate_approval_status:
+        doc.value.custom_affiliate_approval_status,
+      custom_affiliate_approval_remarks:
+        doc.value.custom_affiliate_approval_remarks,
       custom_affiliate_submitted_to: doc.value.custom_affiliate_submitted_to,
       custom_affiliate_submitted_by: doc.value.custom_affiliate_submitted_by,
       custom_affiliate_submitted_at: doc.value.custom_affiliate_submitted_at,
@@ -921,9 +921,7 @@ const canSubmitForApproval = computed(() => {
   if (!['', 'Rejected'].includes(approvalStatus.value)) return false
   // Owner / Sales Head / admin can all submit on behalf
   return (
-    doc.value?.lead_owner === _session.user ||
-    isSalesHead.value ||
-    isManager()
+    doc.value?.lead_owner === _session.user || isSalesHead.value || isManager()
   )
 })
 
@@ -953,7 +951,9 @@ const createProjectTooltip = computed(() => {
       return __('Waiting for Sales Head approval of affiliate commission')
     if (approvalStatus.value === 'Rejected')
       return __('Affiliate commission was rejected — revise + resubmit')
-    return __('Submit affiliate commission for approval before creating project')
+    return __(
+      'Submit affiliate commission for approval before creating project',
+    )
   }
   return projectFieldsReady.value
     ? __('Create project and archive this lead')
@@ -991,10 +991,7 @@ async function doApprove() {
 }
 
 async function doReject() {
-  const remarks = window.prompt(
-    __('Reason for rejection (optional)?'),
-    '',
-  )
+  const remarks = window.prompt(__('Reason for rejection (optional)?'), '')
   // Null = user pressed Cancel.  Empty string is OK — backend stores
   // a default placeholder for blank remarks.
   if (remarks === null) return

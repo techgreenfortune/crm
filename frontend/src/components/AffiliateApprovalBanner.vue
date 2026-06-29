@@ -78,7 +78,9 @@ function userName(email) {
 }
 
 const isAffiliate = computed(() => !!props.lead?.custom_is_affiliate_lead)
-const status = computed(() => props.lead?.custom_affiliate_approval_status || '')
+const status = computed(
+  () => props.lead?.custom_affiliate_approval_status || '',
+)
 const commissionPct = computed(
   () => props.lead?.custom_affiliate_commission_pct ?? 0,
 )

@@ -1,9 +1,16 @@
 <template>
-  <Dialog v-model="show" :options="{ size: 'lg', title: __('Submit for Approval') }">
+  <Dialog
+    v-model="show"
+    :options="{ size: 'lg', title: __('Submit for Approval') }"
+  >
     <template #body-content>
       <div class="space-y-4">
-        <div class="rounded-lg border border-outline-gray-2 bg-surface-gray-1 p-3 text-sm">
-          <div class="text-ink-gray-7 mb-1">{{ __('You are about to submit:') }}</div>
+        <div
+          class="rounded-lg border border-outline-gray-2 bg-surface-gray-1 p-3 text-sm"
+        >
+          <div class="text-ink-gray-7 mb-1">
+            {{ __('You are about to submit:') }}
+          </div>
           <ul class="space-y-1 text-ink-gray-9">
             <li>
               <span class="text-ink-gray-6">{{ __('Affiliate') }}:</span>
@@ -20,19 +27,23 @@
           <label class="mb-1 block text-sm font-medium text-ink-gray-7">
             {{ __('Send approval request to') }}
           </label>
-          <div
-            v-if="salesHeads.loading"
-            class="text-sm text-ink-gray-5"
-          >
+          <div v-if="salesHeads.loading" class="text-sm text-ink-gray-5">
             {{ __('Loading sales heads…') }}
           </div>
           <div
             v-else-if="!salesHeads.data?.length"
             class="text-sm text-ink-red-5"
           >
-            {{ __('No Sales Head configured. Assign the Sales Head role to a user first.') }}
+            {{
+              __(
+                'No Sales Head configured. Assign the Sales Head role to a user first.',
+              )
+            }}
           </div>
-          <div v-else class="max-h-60 overflow-y-auto rounded-lg border border-outline-gray-2">
+          <div
+            v-else
+            class="max-h-60 overflow-y-auto rounded-lg border border-outline-gray-2"
+          >
             <button
               v-for="u in salesHeads.data"
               :key="u.name"
@@ -76,7 +87,14 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { Dialog, Button, ErrorMessage, call, createResource, toast } from 'frappe-ui'
+import {
+  Dialog,
+  Button,
+  ErrorMessage,
+  call,
+  createResource,
+  toast,
+} from 'frappe-ui'
 import LucideCheck from '~icons/lucide/check'
 import UserAvatar from '@/components/UserAvatar.vue'
 

@@ -346,11 +346,20 @@ const rows = computed(() => {
 const columns = computed(() => [
   { label: __('Name'), key: 'lead_name', width: '14rem' },
   { label: __('Status'), key: 'status', width: '10rem' },
-  { label: __('Commission %'), key: 'custom_affiliate_commission_pct', width: '8rem' },
+  {
+    label: __('Commission %'),
+    key: 'custom_affiliate_commission_pct',
+    width: '8rem',
+  },
   { label: __('Email'), key: 'email', width: '12rem' },
   { label: __('Mobile No.'), key: 'mobile_no', width: '11rem' },
   { label: __('Lead Owner'), key: 'lead_owner', width: '10rem' },
-  { label: __('Last Modified'), key: 'modified', width: '8rem', align: 'right' },
+  {
+    label: __('Last Modified'),
+    key: 'modified',
+    width: '8rem',
+    align: 'right',
+  },
 ])
 
 watch(
