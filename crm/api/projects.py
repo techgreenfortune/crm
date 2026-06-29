@@ -79,6 +79,31 @@ def create_project_for_lead(lead: str) -> str:
 			frappe.ValidationError,
 		)
 
+	# --- Affiliate-commission approval gate ---
+	# When the lead is tagged as an affiliate lead, the commission must be
+	# explicitly approved by a Sales Head before OpsGate is fired.  Any change
+	# to the commission % / affiliate / toggle resets approval back to empty,
+	# so the gate effectively blocks creation under any "unapproved" condition.
+	if lead_doc.get("custom_is_affiliate_lead"):
+		approval_status = lead_doc.get("custom_affiliate_approval_status")
+		if approval_status != "Approved":
+			if approval_status == "Pending Approval":
+				msg = _(
+					"Affiliate commission is awaiting Sales Head approval. "
+					"Project creation is blocked until approval is granted."
+				)
+			elif approval_status == "Rejected":
+				msg = _(
+					"Affiliate commission was rejected.  Revise the commission and re-submit "
+					"for approval before creating the project."
+				)
+			else:
+				msg = _(
+					"Affiliate commission must be approved by a Sales Head before "
+					"the project can be created.  Click Submit for Approval first."
+				)
+			frappe.throw(msg, title=_("Affiliate Approval Required"))
+
 	# --- Project-specific fields ---
 	# Projects-type leads require the extra project metadata cluster; retail
 	# leads skip — the integration handler routes `order_type` off lead_type and

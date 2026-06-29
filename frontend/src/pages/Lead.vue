@@ -52,22 +52,40 @@
           </Button>
         </template>
       </Dropdown>
+      <!-- Affiliate approval action buttons.  Only the relevant button is
+           shown based on the current approval state + viewer role. -->
+      <Button
+        v-if="canSubmitForApproval"
+        variant="outline"
+        :label="__('Submit for Approval')"
+        @click="showSubmitApprovalModal = true"
+      />
+      <Button
+        v-if="canApproveReject"
+        variant="solid"
+        theme="green"
+        :label="__('Approve')"
+        :loading="approveLoading"
+        @click="doApprove"
+      />
+      <Button
+        v-if="canApproveReject"
+        variant="outline"
+        theme="red"
+        :label="__('Reject')"
+        :loading="rejectLoading"
+        @click="doReject"
+      />
       <Tooltip
         v-if="canShowCreateProject"
-        :text="
-          projectFieldsReady
-            ? __('Create project and archive this lead')
-            : __(
-                'Fill all project fields (category, configuration, site address, site pincode) before handing off.',
-              )
-        "
+        :text="createProjectTooltip"
       >
         <Button
           variant="solid"
-          :label="__('Create Project')"
+          :label="createProjectLabel"
           iconLeft="briefcase"
           :loading="createProjectResource.loading"
-          :disabled="!projectFieldsReady"
+          :disabled="!createProjectEnabled"
           @click="triggerCreateProject"
         />
       </Tooltip>
@@ -116,6 +134,10 @@
           )
         }}
       </div>
+      <AffiliateApprovalBanner
+        v-if="affiliateSnapshot.custom_is_affiliate_lead"
+        :lead="affiliateSnapshot"
+      />
       <FileUploader
         :validateFile="validateIsImageFile"
         @success="(file) => updateField('image', file.file_url)"
@@ -362,6 +384,17 @@
     :lead="doc"
   />
   -->
+  <AffiliateSubmitForApprovalModal
+    v-if="showSubmitApprovalModal"
+    v-model="showSubmitApprovalModal"
+    :leadId="leadId"
+    :summary="{
+      affiliate: doc.custom_affiliate,
+      affiliate_name: doc.custom_affiliate,
+      commission_pct: doc.custom_affiliate_commission_pct,
+    }"
+    @submitted="() => (reload = true)"
+  />
   <FilesUploader
     v-model="showFilesUploader"
     doctype="CRM Lead"
@@ -435,6 +468,8 @@ import CustomActions from '@/components/CustomActions.vue'
 import ArrowUpRightIcon from '@/components/Icons/ArrowUpRightIcon.vue'
 import SuccessIcon from '@/components/Icons/SuccessIcon.vue'
 import ContactModal from '@/components/Modals/ContactModal.vue'
+import AffiliateSubmitForApprovalModal from '@/components/Modals/AffiliateSubmitForApprovalModal.vue'
+import AffiliateApprovalBanner from '@/components/AffiliateApprovalBanner.vue'
 // import ConvertToDealModal from '@/components/Modals/ConvertToDealModal.vue' // disabled: convert-to-deal flow retired
 import {
   openWebsite,
@@ -759,7 +794,7 @@ async function setPrimaryContact(contact) {
 }
 
 // --- Manual Create Project handoff (C-stage restructure 2026-05-19) ---
-const { isManager, isAdmin, isTelephonyAgent } = usersStore()
+const { isManager, isAdmin, isTelephonyAgent, getUserRole } = usersStore()
 const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {
@@ -818,6 +853,164 @@ function triggerCreateProject() {
       },
     },
   )
+}
+
+// --- Affiliate commission approval ---
+// Three header buttons coexist with Create Project:
+//
+//   - Submit for Approval (sales user when affiliate lead + status empty/Rejected)
+//   - Approve / Reject (Sales Head when status = Pending Approval)
+//
+// Visibility / enable rules:
+//   canSubmitForApproval    = is_affiliate_lead AND
+//                             approval_status in ("", "Rejected") AND
+//                             affiliate + commission_pct populated AND
+//                             (viewer is lead_owner OR Sales Head OR admin)
+//   canApproveReject        = is_affiliate_lead AND
+//                             approval_status == "Pending Approval" AND
+//                             viewer has Sales Head role
+const isSalesHead = computed(() => {
+  // usersStore.getUserRole returns the viewer's *displayed* role (single,
+  // chosen by ROLE_PRIORITY).  Admin / System Manager pass through isAdmin().
+  return getUserRole(_session.user) === 'Sales Head' || isAdmin()
+})
+
+// Persisted-only snapshot of affiliate fields.  The banner AND the header
+// action buttons (Submit / Approve / Reject) read from this snapshot, so
+// toggling affiliate fields in the Details tab does NOT show those buttons
+// or update the banner until the user actually saves the lead.
+// We refresh this only when `doc.modified` changes — i.e. the server
+// confirmed a write — which avoids reacting to local in-flight edits.
+const affiliateSnapshot = ref({})
+watch(
+  () => doc.value?.modified,
+  () => {
+    if (!doc.value?.name) return
+    affiliateSnapshot.value = {
+      name: doc.value.name,
+      custom_is_affiliate_lead: doc.value.custom_is_affiliate_lead,
+      custom_affiliate: doc.value.custom_affiliate,
+      custom_affiliate_commission_pct: doc.value.custom_affiliate_commission_pct,
+      custom_affiliate_approval_status: doc.value.custom_affiliate_approval_status,
+      custom_affiliate_approval_remarks: doc.value.custom_affiliate_approval_remarks,
+      custom_affiliate_submitted_to: doc.value.custom_affiliate_submitted_to,
+      custom_affiliate_submitted_by: doc.value.custom_affiliate_submitted_by,
+      custom_affiliate_submitted_at: doc.value.custom_affiliate_submitted_at,
+      custom_affiliate_approved_by: doc.value.custom_affiliate_approved_by,
+      custom_affiliate_approved_at: doc.value.custom_affiliate_approved_at,
+    }
+  },
+  { immediate: true },
+)
+
+const isAffiliateLead = computed(
+  () => !!affiliateSnapshot.value?.custom_is_affiliate_lead,
+)
+const approvalStatus = computed(
+  () => affiliateSnapshot.value?.custom_affiliate_approval_status || '',
+)
+const hasAffiliateFields = computed(
+  () =>
+    !!affiliateSnapshot.value?.custom_affiliate &&
+    !!affiliateSnapshot.value?.custom_affiliate_commission_pct,
+)
+
+const canSubmitForApproval = computed(() => {
+  if (!isAffiliateLead.value) return false
+  if (!hasAffiliateFields.value) return false
+  if (!['', 'Rejected'].includes(approvalStatus.value)) return false
+  // Owner / Sales Head / admin can all submit on behalf
+  return (
+    doc.value?.lead_owner === _session.user ||
+    isSalesHead.value ||
+    isManager()
+  )
+})
+
+const canApproveReject = computed(() => {
+  if (!isAffiliateLead.value) return false
+  if (approvalStatus.value !== 'Pending Approval') return false
+  return isSalesHead.value
+})
+
+// Create Project button now reflects affiliate approval state.
+const createProjectEnabled = computed(() => {
+  if (!projectFieldsReady.value) return false
+  if (isAffiliateLead.value && approvalStatus.value !== 'Approved') return false
+  return true
+})
+
+const createProjectLabel = computed(() => {
+  if (isAffiliateLead.value && approvalStatus.value !== 'Approved') {
+    return __('Approval Pending')
+  }
+  return __('Create Project')
+})
+
+const createProjectTooltip = computed(() => {
+  if (isAffiliateLead.value && approvalStatus.value !== 'Approved') {
+    if (approvalStatus.value === 'Pending Approval')
+      return __('Waiting for Sales Head approval of affiliate commission')
+    if (approvalStatus.value === 'Rejected')
+      return __('Affiliate commission was rejected — revise + resubmit')
+    return __('Submit affiliate commission for approval before creating project')
+  }
+  return projectFieldsReady.value
+    ? __('Create project and archive this lead')
+    : __(
+        'Fill all project fields (category, configuration, site address, site pincode) before handing off.',
+      )
+})
+
+const showSubmitApprovalModal = ref(false)
+const approveLoading = ref(false)
+const rejectLoading = ref(false)
+
+async function doApprove() {
+  if (
+    !window.confirm(
+      __('Approve this affiliate commission ({0}%)?', [
+        String(doc.value?.custom_affiliate_commission_pct || ''),
+      ]),
+    )
+  )
+    return
+  approveLoading.value = true
+  try {
+    await call('crm.api.affiliate.approve_commission', {
+      lead_name: props.leadId,
+      remarks: '',
+    })
+    toast.success(__('Commission approved'))
+    reload.value = true
+  } catch (err) {
+    toast.error(err?.messages?.[0] || String(err))
+  } finally {
+    approveLoading.value = false
+  }
+}
+
+async function doReject() {
+  const remarks = window.prompt(
+    __('Reason for rejection (optional)?'),
+    '',
+  )
+  // Null = user pressed Cancel.  Empty string is OK — backend stores
+  // a default placeholder for blank remarks.
+  if (remarks === null) return
+  rejectLoading.value = true
+  try {
+    await call('crm.api.affiliate.reject_commission', {
+      lead_name: props.leadId,
+      remarks: remarks || '',
+    })
+    toast.success(__('Commission rejected'))
+    reload.value = true
+  } catch (err) {
+    toast.error(err?.messages?.[0] || String(err))
+  } finally {
+    rejectLoading.value = false
+  }
 }
 
 // Lock when lead is at C4 (Won) AND lead_status == Won.

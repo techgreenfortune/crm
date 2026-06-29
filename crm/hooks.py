@@ -206,6 +206,13 @@ doc_events = {
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
 	},
+	"CRM Lead": {
+		# Reset affiliate approval to empty (forcing re-submit) whenever the
+		# commission %, the affiliate, or the is_affiliate_lead toggle changes
+		# after a previous submit/approve/reject.  See crm.api.affiliate
+		# for the rationale.
+		"before_save": ["crm.api.affiliate.on_lead_before_save"],
+	},
 	"Notification": {
 		"on_update": ["crm.api.desk_audit.on_desk_edit"],
 	},
