@@ -214,7 +214,7 @@
       "write": 1
     },
     {
-      "create": 0,
+      "create": 1,
       "delete": 0,
       "read": 1,
       "report": 1,

@@ -13,7 +13,7 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
 from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
-from crm.utils import parse_phone_number
+from crm.utils import parse_phone_number, phone_dedup_candidates
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
 # Everything else in self.meta.fields is blocked for non-owners.
@@ -459,9 +459,12 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			)
 		self.mobile_no = parsed["formats"]["E164"]
 
+		# Match across all stored formats (+91 / 91 / national / 0-prefix), not just
+		# exact E164 — legacy/imported rows may be stored un-normalized.
+		candidates = phone_dedup_candidates(self.mobile_no, self.mobile_no, parsed["national_number"])
 		existing = frappe.db.get_value(
 			"CRM Lead",
-			{"mobile_no": self.mobile_no, "name": ["!=", self.name]},
+			{"mobile_no": ["in", candidates], "name": ["!=", self.name]},
 			["name", "lead_name", "status", "lead_status"],
 			as_dict=True,
 		)

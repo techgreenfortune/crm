@@ -39,6 +39,24 @@ def parse_phone_number(phone_number, default_country="IN"):
 		return {"success": False, "error": str(e)}
 
 
+def phone_dedup_candidates(raw: str, e164: str, national_number: str) -> list[str]:
+	"""All stored-format variants of an Indian mobile number for dedup lookup.
+
+	Indian-format coverage only (parse_phone_number defaults to "IN").
+	Non-IN legacy numbers will not match; revisit if international leads land.
+	"""
+	return list(
+		{
+			e164,
+			raw.strip(),
+			national_number,
+			f"0{national_number}",
+			f"+91{national_number}",
+			f"91{national_number}",
+		}
+	)
+
+
 def are_same_phone_number(number1, number2, default_region="IN", validate=True):
 	"""
 	Check if two phone numbers are the same, regardless of their format.
