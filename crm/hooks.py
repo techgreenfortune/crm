@@ -255,15 +255,21 @@ fixtures = [
 			]
 		],
 	},
-	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact", "CRM Affiliate"]]]},
 	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
 	{
 		"dt": "Notification",
 		"filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]],
 	},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
-	{"dt": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Account"]]]},
-	{"dt": "CRM Form Script", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
+	{
+		"dt": "CRM Fields Layout",
+		"filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Account", "CRM Affiliate"]]],
+	},
+	{
+		"dt": "CRM Form Script",
+		"filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Affiliate"]]],
+	},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
 	{"dt": "CRM Lost Reason"},
