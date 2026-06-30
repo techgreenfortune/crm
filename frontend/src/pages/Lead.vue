@@ -390,7 +390,7 @@
       affiliate_name: doc.custom_affiliate,
       commission_pct: doc.custom_affiliate_commission_pct,
     }"
-    @submitted="() => (reload = true)"
+    @submitted="onAffiliateActionDone"
   />
   <FilesUploader
     v-model="showFilesUploader"
@@ -928,7 +928,13 @@ const canSubmitForApproval = computed(() => {
 const canApproveReject = computed(() => {
   if (!isAffiliateLead.value) return false
   if (approvalStatus.value !== 'Pending Approval') return false
-  return isSalesHead.value
+  // Only the *specifically picked* Sales Head sees these buttons.  Other
+  // Sales Heads do not — accountability stays with the assigned approver.
+  // Administrator / System Manager always see them as a safety net.
+  return (
+    affiliateSnapshot.value?.custom_affiliate_submitted_to === _session.user ||
+    isAdmin()
+  )
 })
 
 // Create Project button now reflects affiliate approval state.
@@ -966,6 +972,13 @@ const showSubmitApprovalModal = ref(false)
 const approveLoading = ref(false)
 const rejectLoading = ref(false)
 
+// Shared post-action refresh — reload the lead doc + activities so the
+// snapshot-driven header buttons and banner pick up the new approval state.
+function onAffiliateActionDone() {
+  document.reload?.()
+  reload.value = true
+}
+
 async function doApprove() {
   if (
     !window.confirm(
@@ -982,7 +995,7 @@ async function doApprove() {
       remarks: '',
     })
     toast.success(__('Commission approved'))
-    reload.value = true
+    onAffiliateActionDone()
   } catch (err) {
     toast.error(err?.messages?.[0] || String(err))
   } finally {
@@ -1002,7 +1015,7 @@ async function doReject() {
       remarks: remarks || '',
     })
     toast.success(__('Commission rejected'))
-    reload.value = true
+    onAffiliateActionDone()
   } catch (err) {
     toast.error(err?.messages?.[0] || String(err))
   } finally {
