@@ -14,7 +14,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import validate_email_address
 
-from crm.utils import parse_phone_number
+from crm.utils import parse_phone_number, phone_dedup_candidates
 
 if TYPE_CHECKING:
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
@@ -73,18 +73,7 @@ def _split_name(full_name: str) -> tuple[str, str]:
 
 
 def _phone_candidates(e164: str, national_number: str, raw: str) -> list[str]:
-	# Indian-format coverage only (parse_phone_number defaults to "IN").
-	# Non-IN legacy numbers will not match; revisit if international leads land.
-	return list(
-		{
-			e164,
-			raw.strip(),
-			national_number,
-			f"0{national_number}",
-			f"+91{national_number}",
-			f"91{national_number}",
-		}
-	)
+	return phone_dedup_candidates(raw, e164, national_number)
 
 
 def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str | None, str | None]:
@@ -127,6 +116,8 @@ def _trail_parts(message: str | None, payload: dict) -> list[str]:
 		bits.append(f"Message: {message}")
 	if payload.get("city"):
 		bits.append(f"City: {payload['city']}")
+	if payload.get("state"):
+		bits.append(f"State: {payload['state']}")
 	if payload.get("project_type"):
 		bits.append(f"Project Type: {payload['project_type']}")
 	utm = ", ".join(
@@ -160,6 +151,7 @@ def create_lead(
 	email: str | None = None,
 	pincode: str | None = None,
 	city: str | None = None,
+	state: str | None = None,
 	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
@@ -221,6 +213,7 @@ def create_lead(
 	payload = {
 		"message": message,
 		"city": city,
+		"state": state,
 		"project_type": project_type,
 		"utm_source": utm_source,
 		"utm_medium": utm_medium,
@@ -279,6 +272,8 @@ def create_lead(
 				"source": WEBSITE_SOURCE,
 				"custom_sub_source": WEBSITE_SUB_SOURCE,
 				"custom_pincode": pincode or None,
+				"custom_city": city or None,
+				"custom_state": state or None,
 				"custom_customer_type": customer_type or None,
 				"custom_lead_type": derived_lead_type,
 				"custom_utm_source": utm_source or None,

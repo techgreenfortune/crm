@@ -56,6 +56,11 @@ export const usersStore = defineStore('crm-users', () => {
     () => new Set(roleConfig.data?.tier1_full_rw || []),
   )
   const roleRank = computed(() => roleConfig.data?.role_rank || {})
+  // Roles that may review a Quote Request (Accept / Request Revision) without
+  // being the lead owner. Sourced from role_config.py:REVIEWER_ROLES.
+  const reviewerRoles = computed(
+    () => new Set(roleConfig.data?.reviewer_roles || []),
+  )
 
   function getUser(email) {
     if (!email || email === 'sessionUser') {
@@ -84,6 +89,14 @@ export const usersStore = defineStore('crm-users', () => {
   function isManager(email) {
     const role = getUser(email).role
     return !!role && tier1FullRw.value.has(role)
+  }
+
+  // May this user review a Quote Request (Accept / Request Revision) even when
+  // not the lead owner? Mirrors the server gate
+  // (CRMQuoteRequest._guard_status_transition) — tier-1 + downstream-scope roles.
+  function isReviewer(email) {
+    const role = getUser(email).role
+    return !!role && reviewerRoles.value.has(role)
   }
 
   function isWebsiteUser(email) {
@@ -127,6 +140,7 @@ export const usersStore = defineStore('crm-users', () => {
     getUser,
     isAdmin,
     isManager,
+    isReviewer,
     isSalesUser,
     isTelephonyAgent,
     getUserRole,

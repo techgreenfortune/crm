@@ -4,6 +4,47 @@
     class="flex flex-col justify-between gap-2 sm:px-5 px-3 py-4"
   >
     <div class="flex flex-col gap-2">
+      <!-- Quick filters: horizontal scroll on mobile, mirrors desktop row.
+           Placed above the sort/filter controls block. -->
+      <FadedScrollableDiv
+        v-if="
+          quickFilterList.length ||
+          (doctype === 'CRM Lead' && visibleUsers.data?.length)
+        "
+        class="flex items-center overflow-x-auto -ml-1 h-9"
+        orientation="horizontal"
+      >
+        <div
+          v-for="filter in quickFilterList"
+          :key="filter.fieldname"
+          class="m-1 min-w-36"
+        >
+          <QuickFilterField
+            :filter="filter"
+            @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
+          />
+        </div>
+        <div
+          v-if="
+            doctype === 'CRM Lead' &&
+            visibleUsers.data &&
+            visibleUsers.data.length > 0
+          "
+          class="m-1 min-w-36"
+        >
+          <UserMultiSelect
+            :model-value="selectedOwners"
+            :users="visibleUsers.data"
+            :all-label="__('All owners')"
+            :selected-label="
+              selectedOwners.length > 1
+                ? __('{0} owners selected', [String(selectedOwners.length)])
+                : ''
+            "
+            @update:model-value="applyOwners"
+          />
+        </div>
+      </FadedScrollableDiv>
       <div class="flex items-center justify-between gap-2 overflow-x-auto">
         <div class="flex gap-2">
           <Filter

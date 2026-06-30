@@ -151,4 +151,5 @@ def get_hierarchy_role_config() -> dict:
 	return {
 		"role_rank": ROLE_RANK,
 		"tier1_full_rw": sorted(TIER1_FULL_RW),
+		"reviewer_roles": sorted(REVIEWER_ROLES),
 	}
