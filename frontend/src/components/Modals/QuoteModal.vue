@@ -208,7 +208,7 @@ const show = defineModel({ type: Boolean })
 
 // ─── stores ──────────────────────────────────────────────────────────────────
 const { user: currentUser } = sessionStore()
-const { getUserRole } = usersStore()
+const { getUserRole, isReviewer } = usersStore()
 
 // ─── mode ────────────────────────────────────────────────────────────────────
 const isNewMode = computed(() => !props.qrName)
@@ -227,6 +227,9 @@ const isEstimationTeam = computed(
 const isLeadOwner = computed(
   () => !isNewMode.value && doc.value.lead_owner === currentUser,
 )
+const canReview = computed(
+  () => !isNewMode.value && (isLeadOwner.value || isReviewer(currentUser)),
+)
 
 const EDITABLE_ESTIMATION_STATUSES = ['Pending', 'Revision Requested']
 
@@ -239,7 +242,7 @@ const canEditEstimation = computed(
 const canEditOwner = computed(
   () =>
     !isNewMode.value &&
-    isLeadOwner.value &&
+    canReview.value &&
     doc.value.status === 'Quote Received',
 )
 const canEditImages = computed(() => isNewMode.value || canEditOwner.value)
