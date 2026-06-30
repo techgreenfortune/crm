@@ -86,6 +86,22 @@ def _is_sales_head(user: str | None = None) -> bool:
 	return bool(roles & {"Sales Head", "System Manager"})
 
 
+def _can_act_on_approval(lead, user: str | None = None) -> bool:
+	"""Whether ``user`` (defaults to session) is the *specific* approver for
+	this lead — i.e. the Sales Head that the sales user picked when submitting,
+	OR a super-approver (System Manager / Administrator).
+
+	Other Sales Heads are NOT allowed — accountability stays with the picked
+	one.  Use this instead of ``_is_sales_head`` for approve / reject gates.
+	"""
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	if "System Manager" in frappe.get_roles(user):
+		return True
+	return lead.get("custom_affiliate_submitted_to") == user
+
+
 def _validate_affiliate_lead(lead) -> None:
 	"""Throw if the lead isn't a valid affiliate lead for approval actions."""
 	if not lead.get("custom_is_affiliate_lead"):
@@ -189,7 +205,7 @@ def submit_for_approval(lead_name: str, sales_head: str) -> dict:
 			"custom_affiliate_approved_by": None,
 			"custom_affiliate_approved_at": None,
 		},
-		update_modified=False,
+		update_modified=True,
 	)
 
 	# Close any stale task from a previous round of submission.
@@ -238,14 +254,22 @@ def approve_commission(lead_name: str, remarks: str | None = None) -> dict:
 	"""Sales Head approves the affiliate commission."""
 	from crm.integrations.brevo.affiliate_emails import fire_affiliate_email
 
-	if not _is_sales_head():
-		frappe.throw(_("Only Sales Head can approve affiliate commissions."), frappe.PermissionError)
-
 	if not frappe.db.exists("CRM Lead", lead_name):
 		frappe.throw(_("Lead {0} not found").format(lead_name), frappe.DoesNotExistError)
 
 	lead = frappe.get_doc("CRM Lead", lead_name)
 	_validate_affiliate_lead(lead)
+
+	# Only the picked Sales Head (or System Manager / Admin) can approve.
+	# Any other Sales Head viewing the lead does NOT see / cannot fire this.
+	if not _can_act_on_approval(lead):
+		frappe.throw(
+			_(
+				"Only the assigned Sales Head ({0}) can approve this commission. "
+				"Ask them to act, or have a System Manager override."
+			).format(lead.get("custom_affiliate_submitted_to") or _("not assigned")),
+			frappe.PermissionError,
+		)
 
 	if lead.get("custom_affiliate_approval_status") != "Pending Approval":
 		frappe.throw(
@@ -262,7 +286,7 @@ def approve_commission(lead_name: str, remarks: str | None = None) -> dict:
 			"custom_affiliate_approved_by": frappe.session.user,
 			"custom_affiliate_approved_at": now,
 		},
-		update_modified=False,
+		update_modified=True,
 	)
 
 	_close_pending_approval_task(lead_name)
@@ -355,14 +379,21 @@ def reject_commission(lead_name: str, remarks: str | None = None) -> dict:
 	if not supplied, a default placeholder is stored."""
 	from crm.integrations.brevo.affiliate_emails import fire_affiliate_email
 
-	if not _is_sales_head():
-		frappe.throw(_("Only Sales Head can reject affiliate commissions."), frappe.PermissionError)
-
 	if not frappe.db.exists("CRM Lead", lead_name):
 		frappe.throw(_("Lead {0} not found").format(lead_name), frappe.DoesNotExistError)
 
 	lead = frappe.get_doc("CRM Lead", lead_name)
 	_validate_affiliate_lead(lead)
+
+	# Only the picked Sales Head (or System Manager / Admin) can reject.
+	if not _can_act_on_approval(lead):
+		frappe.throw(
+			_(
+				"Only the assigned Sales Head ({0}) can reject this commission. "
+				"Ask them to act, or have a System Manager override."
+			).format(lead.get("custom_affiliate_submitted_to") or _("not assigned")),
+			frappe.PermissionError,
+		)
 
 	if lead.get("custom_affiliate_approval_status") != "Pending Approval":
 		frappe.throw(
@@ -381,7 +412,7 @@ def reject_commission(lead_name: str, remarks: str | None = None) -> dict:
 			"custom_affiliate_approved_by": frappe.session.user,
 			"custom_affiliate_approved_at": now,
 		},
-		update_modified=False,
+		update_modified=True,
 	)
 
 	_close_pending_approval_task(lead_name)
