@@ -8,14 +8,8 @@ from pypika.functions import Function
 
 from crm.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
 from crm.overrides.crm_lead_permissions import downstream_users
+from crm.permissions.role_config import TIER1_FULL_RW
 from crm.utils import sales_user_only
-
-# Admin-tier roles that see EVERY lead regardless of hierarchy.  These never
-# get a WHERE lead_owner IN (…) filter on the dashboard.  All other users are
-# hierarchy-scoped: they see their own leads + everyone in their downstream
-# subtree (from ``CRM Sales Hierarchy``).  A leaf user with no reports sees
-# only their own data — no peer/parent visibility.
-_ADMIN_ROLES = frozenset({"System Manager", "Administrator"})
 
 
 def _visible_owners(user: str) -> set[str] | None:
@@ -31,7 +25,7 @@ def _visible_owners(user: str) -> set[str] | None:
 	Callers should treat ``None`` as "skip the filter".
 	"""
 	roles = set(frappe.get_roles(user))
-	if roles & _ADMIN_ROLES:
+	if roles & TIER1_FULL_RW:
 		return None
 	return downstream_users(user)
 
