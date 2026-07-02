@@ -310,6 +310,34 @@ _RESET_TRIGGER_FIELDS = (
 )
 
 
+def validate_affiliate_fields(doc, method=None):
+	"""Enforce that affiliate fields are filled when ``custom_is_affiliate_lead``
+	is on.  Server-side mirror of the Custom Field's ``mandatory_depends_on``
+	clause — catches inserts/updates from API / bench / data import where the
+	UI-level mandatory hint never fires.
+
+	Wired via ``doc_events["CRM Lead"]["validate"]`` in ``hooks.py``.
+	"""
+	if not doc.get("custom_is_affiliate_lead"):
+		return
+
+	if not doc.get("custom_affiliate"):
+		frappe.throw(
+			_("Pick an affiliate when marking the lead as an affiliate lead."),
+			title=_("Affiliate Required"),
+		)
+
+	commission = doc.get("custom_affiliate_commission_pct")
+	if commission is None or float(commission) <= 0:
+		frappe.throw(
+			_(
+				"Set the commission percentage (greater than 0) when marking the "
+				"lead as an affiliate lead."
+			),
+			title=_("Commission Required"),
+		)
+
+
 def on_lead_before_save(doc, method=None):
 	"""Reset affiliate approval to empty when the commission proposal changes.
 
