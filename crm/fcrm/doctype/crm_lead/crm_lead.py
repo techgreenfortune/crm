@@ -444,7 +444,6 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 							)
 
 	def _dedup_and_normalize_mobile(self):
-
 		if frappe.flags.in_test:
 			return
 		if not self.mobile_no:
