@@ -206,6 +206,13 @@ doc_events = {
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
 	},
+	"CRM Lead": {
+		# Reset affiliate approval to empty (forcing re-submit) whenever the
+		# commission %, the affiliate, or the is_affiliate_lead toggle changes
+		# after a previous submit/approve/reject.  See crm.api.affiliate
+		# for the rationale.
+		"before_save": ["crm.api.affiliate.on_lead_before_save"],
+	},
 	"Notification": {
 		"on_update": ["crm.api.desk_audit.on_desk_edit"],
 	},
@@ -248,15 +255,21 @@ fixtures = [
 			]
 		],
 	},
-	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact"]]]},
+	{"dt": "Custom Field", "filters": [["dt", "in", ["CRM Lead", "Contact", "CRM Affiliate"]]]},
 	{"dt": "Server Script", "filters": [["module", "=", "FCRM"]]},
 	{
 		"dt": "Notification",
 		"filters": [["document_type", "in", ["CRM Lead", "CRM Task", "CRM Quote Request"]]],
 	},
 	{"dt": "Milestone Tracker", "filters": [["document_type", "=", "CRM Lead"]]},
-	{"dt": "CRM Fields Layout", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Account"]]]},
-	{"dt": "CRM Form Script", "filters": [["dt", "in", ["CRM Quote Request", "CRM Lead"]]]},
+	{
+		"dt": "CRM Fields Layout",
+		"filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Account", "CRM Affiliate"]]],
+	},
+	{
+		"dt": "CRM Form Script",
+		"filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Affiliate"]]],
+	},
 	{"dt": "CRM Lead Source"},
 	{"dt": "CRM Sub Source"},
 	{"dt": "CRM Lost Reason"},

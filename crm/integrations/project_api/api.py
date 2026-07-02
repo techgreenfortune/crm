@@ -347,6 +347,40 @@ def create_project_on_won(lead_name: str) -> None:
 		"order": order,
 	}
 
+	# Affiliate extension — emitted when the lead is tagged as an affiliate
+	# lead AND the commission has been approved by a Sales Head.  The gate
+	# at ``crm.api.projects.create_project_for_lead`` ensures the unapproved
+	# case can't reach here, but we double-check the status before emitting
+	# so OpsGate never sees commission data without an explicit approval.
+	if lead.get("custom_is_affiliate_lead") and lead.get("custom_affiliate_approval_status") == "Approved":
+		affiliate_name = lead.custom_affiliate
+		affiliate_doc = (
+			frappe.db.get_value(
+				"CRM Affiliate",
+				affiliate_name,
+				["affiliate_name", "email", "mobile_no"],
+				as_dict=True,
+			)
+			or {}
+		)
+		commission_pct = float(lead.get("custom_affiliate_commission_pct") or 0)
+		quote_value = float(order.get("order_value") or 0)
+		commission_amount = round(quote_value * commission_pct / 100.0, 2) if commission_pct else 0
+		payload["affiliate"] = {
+			"affiliate_id": affiliate_name,
+			"affiliate_name": affiliate_doc.get("affiliate_name") or affiliate_name,
+			"affiliate_email": affiliate_doc.get("email") or "",
+			"affiliate_mobile": affiliate_doc.get("mobile_no") or "",
+			"commission_percentage": commission_pct,
+			"commission_amount": commission_amount,
+			"approved_by": lead.get("custom_affiliate_approved_by") or "",
+			"approved_at": (
+				lead.get("custom_affiliate_approved_at").isoformat()
+				if lead.get("custom_affiliate_approved_at")
+				else ""
+			),
+		}
+
 	# Dealer-channel extension — emitted only when the lead_owner carries the
 	# Dealer role.  The non-dealer payload shape is unchanged (no new keys),
 	# so existing OpsGate consumers are unaffected.
