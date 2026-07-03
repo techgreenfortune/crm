@@ -207,6 +207,9 @@ doc_events = {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
 	},
 	"CRM Lead": {
+		# Mandatory-fields check for affiliate leads — runs before before_save
+		# so the throw fires on every save path (UI, API, bench, import).
+		"validate": ["crm.api.affiliate.validate_affiliate_fields"],
 		# Reset affiliate approval to empty (forcing re-submit) whenever the
 		# commission %, the affiliate, or the is_affiliate_lead toggle changes
 		# after a previous submit/approve/reject.  See crm.api.affiliate

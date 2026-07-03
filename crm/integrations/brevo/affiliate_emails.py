@@ -53,16 +53,19 @@ def _common_params(lead_doc) -> dict:
 	)
 	commission_pct = float(lead_doc.get("custom_affiliate_commission_pct") or 0)
 	tentative_value = float(lead_doc.get("custom_tentative_value") or 0)
-	commission_amount = round(tentative_value * commission_pct / 100.0, 2) if commission_pct else 0
+	commission_amount = round(tentative_value * commission_pct / 100.0, 2) if commission_pct else 0.0
 
+	# Emails always show monetary / percentage values to exactly 2 decimal
+	# places.  Format as string here — JSON would otherwise drop trailing
+	# zeros (e.g. 25.0 instead of 25.00) and the template can't reformat.
 	return {
 		"lead_id": lead_doc.name,
 		"customer_name": lead_doc.get("lead_name") or "",
 		"affiliate_id": affiliate_name or "",
 		"affiliate_name": affiliate_label,
-		"commission_pct": commission_pct,
-		"tentative_value": tentative_value,
-		"commission_amount": commission_amount,
+		"commission_pct": f"{commission_pct:.2f}",
+		"tentative_value": f"{tentative_value:.2f}",
+		"commission_amount": f"{commission_amount:.2f}",
 		"lead_owner_email": lead_doc.get("lead_owner") or "",
 		"lead_owner_name": _user_full_name(lead_doc.get("lead_owner")),
 	}
