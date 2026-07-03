@@ -33,6 +33,27 @@ def _derive_lead_type(customer_type: str | None) -> str:
 	return "Projects" if customer_type in PROJECTS_CUSTOMER_TYPES else "Retail"
 
 
+def _resolve_sub_source(sub_source: str | None) -> str:
+	"""Validate incoming sub_source against CRM Sub Source; fall back to default.
+
+	custom_sub_source is a Link field — an unknown value would fail insert
+	validation. Public endpoint must not 500 over a bad sub_source, so
+	unknown/blank values default to WEBSITE_SUB_SOURCE and are logged.
+	"""
+	value = (sub_source or "").strip()
+	if not value:
+		return WEBSITE_SUB_SOURCE
+	if frappe.db.exists("CRM Sub Source", value):
+		return value
+	frappe.log_error(
+		title="Website Lead: unknown sub_source",
+		message=(
+			f"sub_source={value!r} not found in CRM Sub Source; " f"defaulted to {WEBSITE_SUB_SOURCE!r}."
+		),
+	)
+	return WEBSITE_SUB_SOURCE
+
+
 def _verify_token() -> None:
 	expected_raw = frappe.conf.get(TOKEN_CONF_KEY)
 	if not expected_raw or not isinstance(expected_raw, str):
@@ -114,6 +135,8 @@ def _trail_parts(message: str | None, payload: dict) -> list[str]:
 	bits: list[str] = []
 	if message:
 		bits.append(f"Message: {message}")
+	if payload.get("sub_source"):
+		bits.append(f"Sub Source: {payload['sub_source']}")
 	if payload.get("city"):
 		bits.append(f"City: {payload['city']}")
 	if payload.get("state"):
@@ -155,6 +178,7 @@ def create_lead(
 	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
+	sub_source: str | None = None,
 	lead_type: str | None = None,  # ignored; custom_lead_type is derived from customer_type
 	project_type: str | None = None,
 	utm_source: str | None = None,
@@ -210,8 +234,11 @@ def create_lead(
 			),
 		)
 
+	resolved_sub_source = _resolve_sub_source(sub_source)
+
 	payload = {
 		"message": message,
+		"sub_source": sub_source,
 		"city": city,
 		"state": state,
 		"project_type": project_type,
@@ -270,7 +297,7 @@ def create_lead(
 				"status": DEFAULT_STATUS,
 				"lead_status": DEFAULT_LEAD_STATUS,
 				"source": WEBSITE_SOURCE,
-				"custom_sub_source": WEBSITE_SUB_SOURCE,
+				"custom_sub_source": resolved_sub_source,
 				"custom_pincode": pincode or None,
 				"custom_city": city or None,
 				"custom_state": state or None,
