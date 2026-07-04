@@ -116,7 +116,11 @@
             />
           </div>
           <p class="mt-1 text-xs text-ink-gray-5">
-            {{ __('Paste only the number — the TRA-QT- prefix is added automatically.') }}
+            {{
+              __(
+                'Paste only the number — the TRA-QT- prefix is added automatically.',
+              )
+            }}
           </p>
         </div>
 
@@ -356,7 +360,8 @@ function stripQuotePrefix(value) {
   if (!raw) return ''
   const upper = raw.toUpperCase()
   if (upper.startsWith('TRA-QT-')) return raw.slice('TRA-QT-'.length).trim()
-  if (upper.startsWith('TRA-QT')) return raw.slice('TRA-QT'.length).replace(/^-/, '').trim()
+  if (upper.startsWith('TRA-QT'))
+    return raw.slice('TRA-QT'.length).replace(/^-/, '').trim()
   return raw
 }
 
