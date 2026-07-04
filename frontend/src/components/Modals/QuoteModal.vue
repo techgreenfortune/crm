@@ -91,6 +91,39 @@
           </div>
         </template>
 
+        <!-- Estimation Team: prefixed quotation-number input.  Shown only
+             while the QR is editable by Estimation Team; the raw
+             quote_number field is hidden from FieldLayout in this mode. -->
+        <div v-if="canEditEstimation" class="mb-4">
+          <div class="mb-1.5 text-sm font-medium text-ink-gray-5">
+            {{ __('Quotation Number') }}
+          </div>
+          <div
+            class="flex items-stretch overflow-hidden rounded border border-outline-gray-2 bg-surface-gray-1 focus-within:border-outline-gray-4"
+          >
+            <span
+              class="flex select-none items-center border-r border-outline-gray-2 bg-surface-gray-2 px-3 text-sm font-medium text-ink-gray-7"
+            >
+              TRA-QT-
+            </span>
+            <input
+              v-model="quoteNumberDigits"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              class="w-full bg-transparent px-3 py-1.5 text-sm text-ink-gray-9 placeholder-ink-gray-4 focus:outline-none"
+              :placeholder="__('e.g. 12345')"
+            />
+          </div>
+          <p class="mt-1 text-xs text-ink-gray-5">
+            {{
+              __(
+                'Paste only the number — the TRA-QT- prefix is added automatically.',
+              )
+            }}
+          </p>
+        </div>
+
         <!-- Single layout for all modes -->
         <FieldLayout
           v-if="computedTabs"
@@ -278,6 +311,13 @@ function applyFieldProps(field) {
     field.hidden = 1
     return
   }
+  // When the Estimation Team is editing, hide the raw quote_number field —
+  // we render our own prefixed input above the layout so the OpsGate-required
+  // `TRA-QT-` prefix is visible and can't be omitted.
+  if (field.fieldname === 'quote_number' && canEditEstimation.value) {
+    field.hidden = 1
+    return
+  }
   if (ALWAYS_READONLY.includes(field.fieldname)) {
     field.read_only = 1
     return
@@ -306,6 +346,32 @@ const computedTabs = computed(() => {
   tabs.forEach(processTab)
   return tabs
 })
+
+// ─── quote number prefix ─────────────────────────────────────────────────────
+// OpsGate rejects quote numbers that don't match `TRA-QT-<digits>`, so we keep
+// the `TRA-QT-` prefix static in the UI and only capture the digits from the
+// Estimation Team.  On load we strip whatever prefix variant is stored so the
+// input shows just the numeric tail; on save we recombine (submitEstimation).
+const QUOTE_NUMBER_PREFIX = 'TRA-QT-'
+const quoteNumberDigits = ref('')
+
+function stripQuotePrefix(value) {
+  const raw = (value || '').trim()
+  if (!raw) return ''
+  const upper = raw.toUpperCase()
+  if (upper.startsWith('TRA-QT-')) return raw.slice('TRA-QT-'.length).trim()
+  if (upper.startsWith('TRA-QT'))
+    return raw.slice('TRA-QT'.length).replace(/^-/, '').trim()
+  return raw
+}
+
+watch(
+  () => qrDoc.doc?.quote_number,
+  (v) => {
+    quoteNumberDigits.value = stripQuotePrefix(v)
+  },
+  { immediate: true },
+)
 
 // ─── local status (lead owner pick — don't mutate qrDoc.doc.status directly) ─
 const localStatus = ref('')
@@ -411,6 +477,14 @@ async function submitEstimation() {
     error.value = __('Please upload the quote file before submitting.')
     return
   }
+  const digits = quoteNumberDigits.value.trim()
+  if (!digits) {
+    error.value = __('Enter the quotation number.')
+    return
+  }
+  // Recombine prefix + digits so the server receives the canonical
+  // `TRA-QT-<digits>` string.  Backend normalization is still the safety net.
+  qrDoc.doc.quote_number = QUOTE_NUMBER_PREFIX + digits
   saving.value = true
   error.value = null
   try {
