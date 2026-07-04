@@ -81,6 +81,8 @@ class CRMQuoteRequest(Document):
 	def before_validate(self):
 		self._check_superseded()
 		self._auto_promote_status()
+		self._normalize_quote_number()
+		self._validate_quote_number_unique()
 		self._validate_positive_quote_values()
 
 	def validate(self):
@@ -117,6 +119,63 @@ class CRMQuoteRequest(Document):
 			and self.quote_file
 		):
 			self.status = "Quote Received"
+
+	def _normalize_quote_number(self):
+		"""Ensure quote_number always ends up as ``TRA-QT-<digits>``.
+
+		OpsGate rejects any other format, so we soft-normalize here on every
+		save path (UI, API, bench, data import).  Empty values are left alone
+		— ``_validate_positive_quote_values`` throws its own "required" error
+		when the QR is no longer Pending.
+		"""
+		raw = (self.quote_number or "").strip()
+		if not raw:
+			return
+
+		upper = raw.upper()
+		# Already correctly formatted.
+		if upper.startswith("TRA-QT-"):
+			self.quote_number = "TRA-QT-" + raw[len("TRA-QT-") :].strip()
+			return
+
+		# Someone pasted `TRA-QT12345` (missing hyphen) — insert one.
+		if upper.startswith("TRA-QT"):
+			tail = raw[len("TRA-QT") :].lstrip("-").strip()
+			self.quote_number = f"TRA-QT-{tail}"
+			return
+
+		# Bare digits (or any other prefix-less string) — prepend the prefix.
+		self.quote_number = f"TRA-QT-{raw}"
+
+	def _validate_quote_number_unique(self):
+		"""Refuse to save a QR with a quote_number that already exists on
+		another QR — including superseded ones, so a number is never re-used.
+
+		Runs AFTER ``_normalize_quote_number`` so the comparison is on the
+		canonical ``TRA-QT-<digits>`` form.  Empty values are skipped;
+		``_validate_positive_quote_values`` throws its own "required" error
+		for non-Pending saves.
+		"""
+		if not self.quote_number or not str(self.quote_number).strip():
+			return
+
+		clash = frappe.db.exists(
+			"CRM Quote Request",
+			{"quote_number": self.quote_number, "name": ["!=", self.name or ""]},
+		)
+		if clash:
+			clash_lead = frappe.db.get_value("CRM Quote Request", clash, "lead")
+			frappe.throw(
+				_(
+					"Quotation number <b>{0}</b> is already used on <b>{1}</b>"
+					"{2}.  Enter a different number."
+				).format(
+					self.quote_number,
+					clash,
+					f" (lead {clash_lead})" if clash_lead else "",
+				),
+				title=_("Duplicate Quotation Number"),
+			)
 
 	def _validate_positive_quote_values(self):
 		if self.status == "Pending":
