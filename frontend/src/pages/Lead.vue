@@ -27,6 +27,7 @@
             v-if="doc.status"
             :label="statusLabel(doc.status)"
             :iconRight="open ? 'chevron-up' : 'chevron-down'"
+            :disabled="document.save.loading || statusChangePending"
           >
             <template #prefix>
               <IndicatorIcon :class="getLeadStatus(doc.status).color" />
@@ -43,6 +44,7 @@
           <Button
             :label="doc.lead_status"
             :iconRight="open ? 'chevron-up' : 'chevron-down'"
+            :disabled="document.save.loading || statusChangePending"
           >
             <template #prefix>
               <IndicatorIcon
@@ -796,6 +798,13 @@ const _session = sessionStore()
 
 const canShowCreateProject = computed(() => {
   if (!doc.value) return false
+  // triggerOnChange mutates doc.status synchronously, before the server
+  // validates the transition (e.g. C4 handoff-field requirements). Without
+  // this guard, a C-stage change that's rejected server-side briefly shows
+  // this button during the optimistic window, then hides it again on revert.
+  // Wait for the pending save to resolve so it only ever reflects a
+  // server-confirmed C4.
+  if (statusChangePending.value) return false
   if (doc.value.status !== 'C4') return false
   if (doc.value.lead_status === 'Won') return false
   if (doc.value.custom_external_project_id) return false
@@ -1037,17 +1046,47 @@ function bailIfLocked() {
   return true
 }
 
+// Guards the whole status-change flow — set true at the start of a handler and
+// held until the save fully settles. Covers the pre-save window (triggerOnChange
+// + validate) that `document.save.loading` alone leaves open, so rapid repeated
+// clicks can't fire overlapping saves that carry the same stale `modified` (which
+// would trip Frappe's TimestampMismatchError). Bound to the pill's `disabled`.
+const statusChangePending = ref(false)
+
 async function triggerStatusChange(value) {
+  if (statusChangePending.value || document.save.loading) return
   if (bailIfLocked()) return
-  await triggerOnChange('status', value)
-  if (value === 'C7') {
-    showFabricatorRoutingReasonModal.value = true
-    return
+  statusChangePending.value = true
+  const oldStatus = document.doc?.status
+  try {
+    await triggerOnChange('status', value)
+    if (value === 'C7') {
+      showFabricatorRoutingReasonModal.value = true
+      return
+    }
+    // Lost-type stages still go through the whole-doc modal flow (they must
+    // persist lost_reason/lost_notes together).
+    if (getLeadStatus(document.doc.status).type === 'Lost') {
+      await setLostReason()
+      return
+    }
+    // Plain C-stage advance: persist ONLY the changed field. A scoped set_value
+    // never sends the client's cached `modified`, so it can't trip a spurious
+    // TimestampMismatchError, and it can't clobber another user's concurrent edit
+    // to a different field (multi-user safe). The server auto-flips lead_status
+    // and the response resyncs the full doc + modified.
+    await scopedFieldSave({ status: value }, { status: oldStatus }, () => {
+      sections.reload()
+      activities.value?.all_activities?.reload()
+      activities.value?.quoteRequests?.reload()
+    })
+  } finally {
+    statusChangePending.value = false
   }
-  setLostReason()
 }
 
 async function triggerLeadStatusChange(value) {
+  if (statusChangePending.value || document.save.loading) return
   if (bailIfLocked()) return
   if (
     value === 'Archived' &&
@@ -1057,9 +1096,29 @@ async function triggerLeadStatusChange(value) {
   ) {
     return
   }
-  await triggerOnChange('lead_status', value)
-  document.save.submit(null, {
-    onSuccess: () => reloadResources({ lead_status: value }),
+  statusChangePending.value = true
+  const oldLeadStatus = document.doc?.lead_status
+  try {
+    await triggerOnChange('lead_status', value)
+    await scopedFieldSave(
+      { lead_status: value },
+      { lead_status: oldLeadStatus },
+      () => reloadResources({ lead_status: value }),
+    )
+  } finally {
+    statusChangePending.value = false
+  }
+}
+
+// Persist a single field via frappe.client.set_value (scoped), not the whole doc.
+// `changed` = fields to write, `revert` = pre-change values to restore locally on
+// error. Avoids sending the stale `modified` that whole-doc saves carry.
+function scopedFieldSave(changed, revert, onSuccess) {
+  return document.setValue.submit(changed, {
+    onSuccess,
+    onError: () => {
+      if (document.doc) Object.assign(document.doc, revert)
+    },
   })
 }
 
@@ -1113,40 +1172,57 @@ function setLostReason() {
     (document.doc.lost_reason && document.doc.lost_reason !== 'Other') ||
     (document.doc.lost_reason === 'Other' && document.doc.lost_notes)
   ) {
-    document.save.submit(null, {
+    // Return the submit promise so callers can await the full save before
+    // releasing the status-change guard (see triggerStatusChange).
+    return document.save.submit(null, {
       onSuccess: () => {
         sections.reload()
         activities.value?.all_activities?.reload()
         activities.value?.quoteRequests?.reload()
       },
     })
-    return
   }
 
   showLostReasonModal.value = true
 }
 
-function beforeStatusChange(data) {
-  if (
-    Object.hasOwn(data ?? {}, 'status') &&
-    getLeadStatus(data.status).type == 'Lost'
-  ) {
-    setLostReason()
-  } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
-    showFabricatorRoutingReasonModal.value = true
-  } else if (
-    Object.hasOwn(data ?? {}, 'lead_status') &&
-    data.lead_status === 'Archived' &&
-    !window.confirm(
-      __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
-    )
-  ) {
-    // user cancelled archive — revert the field change locally
-    if (document.doc) document.doc.lead_status = doc.value?.lead_status
-  } else {
-    document.save.submit(null, {
-      onSuccess: () => reloadResources(data),
-    })
+async function beforeStatusChange(data) {
+  // This handler is the general side-panel @beforeFieldChange/@beforeSave
+  // callback (fires for ANY field, not just status) — only gate it on
+  // statusChangePending when the change actually touches status/lead_status,
+  // so an unrelated field edit isn't silently dropped while the pill save
+  // is in flight.
+  const touchesStatus =
+    Object.hasOwn(data ?? {}, 'status') ||
+    Object.hasOwn(data ?? {}, 'lead_status')
+  if (touchesStatus && (statusChangePending.value || document.save.loading)) {
+    return
+  }
+  if (touchesStatus) statusChangePending.value = true
+  try {
+    if (
+      Object.hasOwn(data ?? {}, 'status') &&
+      getLeadStatus(data.status).type == 'Lost'
+    ) {
+      await setLostReason()
+    } else if (Object.hasOwn(data ?? {}, 'status') && data.status === 'C7') {
+      showFabricatorRoutingReasonModal.value = true
+    } else if (
+      Object.hasOwn(data ?? {}, 'lead_status') &&
+      data.lead_status === 'Archived' &&
+      !window.confirm(
+        __(`Archive lead? C-stage will stay at ${doc.value?.status ?? ''}.`),
+      )
+    ) {
+      // user cancelled archive — revert the field change locally
+      if (document.doc) document.doc.lead_status = doc.value?.lead_status
+    } else {
+      await document.save.submit(null, {
+        onSuccess: () => reloadResources(data),
+      })
+    }
+  } finally {
+    if (touchesStatus) statusChangePending.value = false
   }
 }
 
