@@ -89,6 +89,16 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
               return
             }
 
+            if (err.exc_type == 'TimestampMismatchError') {
+              showErrorToastOnce(
+                __(
+                  'This record was updated elsewhere. Refreshing to the latest version — please retry your change.',
+                ),
+              )
+              documentsCache[doctype]?.[docname || '']?.reload()
+              return
+            }
+
             err.messages?.forEach((msg) => {
               showErrorToastOnce(msg)
             })
@@ -163,6 +173,33 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
         }
 
         return _originalSubmit.call(_save, values, wrappedOptions, ...rest)
+      }
+
+      // Scoped field saves (document.setValue.submit({field: value}), used by
+      // e.g. the status pill and AssignTo) bypass the save.submit wrapper above,
+      // so they never clear entries triggerOnChange left in the optimistic map.
+      // Without this, a later save.submit() error would revert those fields to
+      // their pre-change value even though this scoped save already resolved
+      // them (synced from the server on success, or reverted to previousDoc by
+      // setValue's own onError on failure) — drop the written keys either way.
+      const _setValue = documentsCache[doctype][docname].setValue
+      const _originalSetValueSubmit = _setValue.submit
+      _setValue.submit = async function (values, options, ...rest) {
+        try {
+          return await _originalSetValueSubmit.call(
+            _setValue,
+            values,
+            options,
+            ...rest,
+          )
+        } finally {
+          if (values && typeof values === 'object') {
+            const liveMap = getOptimisticMap(doctype, docname)
+            for (const field of Object.keys(values)) {
+              liveMap.delete(field)
+            }
+          }
+        }
       }
     } else {
       documentsCache[doctype][''] = reactive({

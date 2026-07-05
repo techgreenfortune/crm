@@ -26,6 +26,7 @@
               v-if="doc.status"
               :label="statusLabel(doc.status)"
               :iconRight="open ? 'chevron-up' : 'chevron-down'"
+              :disabled="document.save.loading || statusChangePending"
             >
               <template #prefix>
                 <IndicatorIcon :class="getDealStatus(doc.status).color" />
@@ -631,9 +632,42 @@ function statusLabel(status) {
   return status
 }
 
+// Guards the whole status-change flow — held from the start of a handler until
+// the save fully settles, closing the pre-save window (triggerOnChange + validate)
+// that `document.save.loading` alone leaves open. Prevents rapid repeated clicks
+// from firing overlapping saves with the same stale `modified` (TimestampMismatchError).
+const statusChangePending = ref(false)
+
 async function triggerStatusChange(value) {
-  await triggerOnChange('status', value)
-  setLostReason()
+  if (statusChangePending.value || document.save.loading) return
+  statusChangePending.value = true
+  const oldStatus = document.doc?.status
+  try {
+    await triggerOnChange('status', value)
+    // Lost-type stages keep the whole-doc modal flow (persist lost_reason/notes).
+    if (getDealStatus(document.doc.status).type === 'Lost') {
+      await setLostReason()
+      return
+    }
+    // Plain stage change: scoped set_value of only the changed field — never
+    // sends the stale `modified` (no spurious TimestampMismatchError) and can't
+    // clobber a concurrent edit to another field (multi-user safe).
+    await scopedFieldSave({ status: value }, { status: oldStatus }, () =>
+      reloadAssignees({ status: value }),
+    )
+  } finally {
+    statusChangePending.value = false
+  }
+}
+
+// Persist a single field via frappe.client.set_value (scoped), not the whole doc.
+function scopedFieldSave(changed, revert, onSuccess) {
+  return document.setValue.submit(changed, {
+    onSuccess,
+    onError: () => {
+      if (document.doc) Object.assign(document.doc, revert)
+    },
+  })
 }
 
 const showLostReasonModal = ref(false)
@@ -644,23 +678,34 @@ function setLostReason() {
     (doc.value.lost_reason && doc.value.lost_reason !== 'Other') ||
     (doc.value.lost_reason === 'Other' && doc.value.lost_notes)
   ) {
-    document.save.submit()
-    return
+    // Return the submit promise so callers can await the full save before
+    // releasing the status-change guard (see triggerStatusChange).
+    return document.save.submit()
   }
 
   showLostReasonModal.value = true
 }
 
-function beforeStatusChange(data) {
-  if (
-    Object.hasOwn(data ?? {}, 'status') &&
-    getDealStatus(data.status).type == 'Lost'
-  ) {
-    setLostReason()
-  } else {
-    document.save.submit(null, {
-      onSuccess: () => reloadAssignees(data),
-    })
+async function beforeStatusChange(data) {
+  // General side-panel @beforeFieldChange/@beforeSave callback (fires for ANY
+  // field) — only gate on statusChangePending when the change touches status,
+  // so an unrelated field edit isn't silently dropped while the pill save is
+  // in flight.
+  const touchesStatus = Object.hasOwn(data ?? {}, 'status')
+  if (touchesStatus && (statusChangePending.value || document.save.loading)) {
+    return
+  }
+  if (touchesStatus) statusChangePending.value = true
+  try {
+    if (touchesStatus && getDealStatus(data.status).type == 'Lost') {
+      await setLostReason()
+    } else {
+      await document.save.submit(null, {
+        onSuccess: () => reloadAssignees(data),
+      })
+    }
+  } finally {
+    if (touchesStatus) statusChangePending.value = false
   }
 }
 
