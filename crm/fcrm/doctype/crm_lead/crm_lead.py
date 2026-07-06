@@ -625,7 +625,14 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			and not self.get("custom_reactivated_at")
 			and not self.flags.get("auto_cold_flip")
 		):
-			frappe.db.set_value("CRM Lead", self.name, "custom_reactivated_at", frappe.utils.now_datetime())
+			# Use self.db_set (not frappe.db.set_value) so the in-memory doc — and
+			# therefore the as_dict() returned to the client by frappe.client.set_value
+			# — stays consistent with the DB. update_modified=False keeps `modified`
+			# unchanged so the client's cached timestamp doesn't silently go stale and
+			# trip a spurious TimestampMismatchError on the user's next save. This runs
+			# in after_save (post db_update), so a raw frappe.db.set_value here would
+			# bump the DB `modified` without the client ever seeing it.
+			self.db_set("custom_reactivated_at", frappe.utils.now_datetime(), update_modified=False)
 
 		if lead_status_changed and old_lead_status == "Active" and new_lead_status == "Cold-Unresponsive":
 			try:
