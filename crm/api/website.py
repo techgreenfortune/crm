@@ -19,7 +19,7 @@ from crm.utils import parse_phone_number, phone_dedup_candidates
 if TYPE_CHECKING:
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
 
-WEBSITE_SOURCE = "Direct"
+WEBSITE_SOURCE = "Direct"  # default source when the caller omits `source`
 WEBSITE_SUB_SOURCE = "Website"
 DEFAULT_STATUS = "C0"
 DEFAULT_LEAD_STATUS = "Active"
@@ -28,30 +28,56 @@ TOKEN_CONF_KEY = "indiframe_website_token"
 
 PROJECTS_CUSTOMER_TYPES = frozenset({"Architect", "Builder", "Contractor"})
 
+# This public/guest endpoint only ever legitimately originates Direct or Paid leads.
+# Restricting (rather than validating against any CRM Lead Source) also keeps callers
+# away from sources like "Referral"/"Lead Spotting" whose mandatory-sub_source rule
+# (crm_lead.py's _SUB_SOURCE_TRIGGER_SOURCES) this endpoint has no way to satisfy.
+ALLOWED_WEBSITE_SOURCES = frozenset({WEBSITE_SOURCE, "Paid"})
+
 
 def _derive_lead_type(customer_type: str | None) -> str:
 	return "Projects" if customer_type in PROJECTS_CUSTOMER_TYPES else "Retail"
 
 
-def _resolve_sub_source(sub_source: str | None) -> str:
-	"""Validate incoming sub_source against CRM Sub Source; fall back to default.
+def _resolve_source(source: str | None) -> str:
+	"""Validate incoming source against ALLOWED_WEBSITE_SOURCES; fall back to default.
+
+	Deliberately an allowlist, not "any existing CRM Lead Source" — see
+	ALLOWED_WEBSITE_SOURCES for why. Public endpoint must not 500 over a bad
+	source, so unknown/disallowed values default to WEBSITE_SOURCE and are logged.
+	"""
+	value = (source or "").strip()
+	if value in ALLOWED_WEBSITE_SOURCES:
+		return value
+	if value:
+		frappe.log_error(
+			title="Website Lead: disallowed source",
+			message=f"source={value!r} not permitted for this endpoint; defaulted to {WEBSITE_SOURCE!r}.",
+		)
+	return WEBSITE_SOURCE
+
+
+def _resolve_sub_source(sub_source: str | None, resolved_source: str) -> str | None:
+	"""Validate incoming sub_source against CRM Sub Source scoped to resolved_source.
 
 	custom_sub_source is a Link field — an unknown value would fail insert
 	validation. Public endpoint must not 500 over a bad sub_source, so
-	unknown/blank values default to WEBSITE_SUB_SOURCE and are logged.
+	unknown/blank values are dropped (logged) rather than raised.
+
+	WEBSITE_SOURCE ("Direct") has a canonical fallback, WEBSITE_SUB_SOURCE
+	("Website"). Other sources (e.g. "Paid") have no single generic
+	sub_source to fall back to, so an unresolved value is left unset.
 	"""
 	value = (sub_source or "").strip()
 	if not value:
-		return WEBSITE_SUB_SOURCE
-	if frappe.db.exists("CRM Sub Source", value):
+		return WEBSITE_SUB_SOURCE if resolved_source == WEBSITE_SOURCE else None
+	if frappe.db.exists("CRM Sub Source", {"name": value, "source": resolved_source}):
 		return value
 	frappe.log_error(
 		title="Website Lead: unknown sub_source",
-		message=(
-			f"sub_source={value!r} not found in CRM Sub Source; " f"defaulted to {WEBSITE_SUB_SOURCE!r}."
-		),
+		message=f"sub_source={value!r} not found under source={resolved_source!r}.",
 	)
-	return WEBSITE_SUB_SOURCE
+	return WEBSITE_SUB_SOURCE if resolved_source == WEBSITE_SOURCE else None
 
 
 def _verify_token() -> None:
@@ -178,6 +204,7 @@ def create_lead(
 	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
+	source: str | None = None,
 	sub_source: str | None = None,
 	lead_type: str | None = None,  # ignored; custom_lead_type is derived from customer_type
 	project_type: str | None = None,
@@ -234,7 +261,8 @@ def create_lead(
 			),
 		)
 
-	resolved_sub_source = _resolve_sub_source(sub_source)
+	resolved_source = _resolve_source(source)
+	resolved_sub_source = _resolve_sub_source(sub_source, resolved_source)
 
 	payload = {
 		"message": message,
@@ -296,7 +324,7 @@ def create_lead(
 				"organization": (company or "").strip() or None,
 				"status": DEFAULT_STATUS,
 				"lead_status": DEFAULT_LEAD_STATUS,
-				"source": WEBSITE_SOURCE,
+				"source": resolved_source,
 				"custom_sub_source": resolved_sub_source,
 				"custom_pincode": pincode or None,
 				"custom_city": city or None,
