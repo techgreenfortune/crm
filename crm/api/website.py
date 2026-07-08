@@ -181,6 +181,30 @@ def _trail_parts(message: str | None, payload: dict) -> list[str]:
 	return bits
 
 
+_LAST_TOUCH_FIELD_MAP = {
+	"utm_last_touch_source": "custom_utm_last_touch_source",
+	"utm_last_touch_medium": "custom_utm_last_touch_medium",
+	"utm_last_touch_campaign": "custom_utm_last_touch_campaign",
+	"utm_last_touch_content": "custom_utm_last_touch_content",
+}
+
+
+def _update_last_touch(lead, last_touch: dict) -> bool:
+	"""Set any provided (non-empty) last-touch UTM value on lead; return whether anything changed.
+
+	Omitted/blank values are left as-is — never null out a previously-stored
+	last-touch value just because this particular resubmission didn't carry it
+	(e.g. an older indiframe-web client mid-rollout).
+	"""
+	changed = False
+	for param_key, field_name in _LAST_TOUCH_FIELD_MAP.items():
+		value = last_touch.get(param_key)
+		if value:
+			lead.set(field_name, value)
+			changed = True
+	return changed
+
+
 def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
 	"""Return (cleaned_email, drop_note); drop_note is set only when input was provided but invalid."""
 	if not raw:
@@ -212,6 +236,14 @@ def create_lead(
 	utm_medium: str | None = None,
 	utm_campaign: str | None = None,
 	utm_content: str | None = None,
+	utm_last_touch_source: str | None = None,
+	utm_last_touch_medium: str | None = None,
+	utm_last_touch_campaign: str | None = None,
+	utm_last_touch_content: str | None = None,
+	utm_first_touch_source: str | None = None,
+	utm_first_touch_medium: str | None = None,
+	utm_first_touch_campaign: str | None = None,
+	utm_first_touch_content: str | None = None,
 	page_url: str | None = None,
 ) -> dict:
 	"""Create or re-attribute a CRM Lead from an indiframe.com form submission.
@@ -219,6 +251,18 @@ def create_lead(
 	The website (indiframe-web) is responsible for sending canonical snake_case
 	keys and properly-cased Select values (`Homeowner` not `homeowner`, etc.).
 	This endpoint does not perform alias / case normalization.
+
+	``utm_source``/``utm_medium``/``utm_campaign``/``utm_content`` are frozen at
+	first conversion attempt: captured on creation, never overwritten on
+	resubmission (see custom_utm_section's description) — NOT necessarily the
+	visitor's literal first-ever ad click, since it's whatever page/session the
+	lead happened to be created from. ``utm_first_touch_*`` is the true
+	first-touch counterpart: the client's genuinely first-captured attribution
+	(persisted 180 days), also write-once on creation, never overwritten.
+	``utm_last_touch_*`` is the last-touch set: stored on creation same as the
+	others, but updated on every resubmission where a value is provided (an
+	omitted one — e.g. an older client mid-rollout — is left as-is, never
+	nulled out).
 
 	Returns one of:
 	  ``{"status": "created",      "name": <lead-name>, "stage": "C0"}``
@@ -276,6 +320,12 @@ def create_lead(
 		"utm_content": utm_content,
 		"page_url": page_url,
 	}
+	last_touch = {
+		"utm_last_touch_source": utm_last_touch_source,
+		"utm_last_touch_medium": utm_last_touch_medium,
+		"utm_last_touch_campaign": utm_last_touch_campaign,
+		"utm_last_touch_content": utm_last_touch_content,
+	}
 	extra_lines = [email_note] if email_note else []
 
 	open_name, closed_stage = _find_existing_lead(e164, national_number, mobile)
@@ -295,15 +345,22 @@ def create_lead(
 			*_trail_parts(message, payload),
 			*extra_lines,
 		]
+		last_touch_changed = _update_last_touch(lead, last_touch)
 
 		# Auto-reactivate Cold engagement; Script 3 stamps custom_reactivated_at,
 		# Script 1 enforces invariants. C-stage preserved per PRD §7.
 		if lead.lead_status == "Cold-Unresponsive":
 			lead.lead_status = "Reactivated"
+			# Guest has no ownership/role standing; this narrow flag lets the
+			# already-allowed Cold-Unresponsive -> Reactivated move through
+			# without tripping _apply_stage_transition_guard's ownership check.
+			lead.flags.ignore_stage_transition_guard = True
 			lead.save(ignore_permissions=True)
 			lead.add_comment("Comment", "<br>".join(trail))
 			return {"status": "reactivated", "name": open_name, "stage": lead.status}
 
+		if last_touch_changed:
+			lead.save(ignore_permissions=True)
 		lead.add_comment("Comment", "<br>".join(trail))
 		return {"status": "existing", "name": open_name, "stage": lead.status}
 
@@ -335,6 +392,14 @@ def create_lead(
 				"custom_utm_medium": utm_medium or None,
 				"custom_utm_campaign": utm_campaign or None,
 				"custom_utm_content": utm_content or None,
+				"custom_utm_last_touch_source": utm_last_touch_source or None,
+				"custom_utm_last_touch_medium": utm_last_touch_medium or None,
+				"custom_utm_last_touch_campaign": utm_last_touch_campaign or None,
+				"custom_utm_last_touch_content": utm_last_touch_content or None,
+				"custom_utm_first_touch_source": utm_first_touch_source or None,
+				"custom_utm_first_touch_medium": utm_first_touch_medium or None,
+				"custom_utm_first_touch_campaign": utm_first_touch_campaign or None,
+				"custom_utm_first_touch_content": utm_first_touch_content or None,
 			}
 		).insert(ignore_permissions=True)
 	except frappe.ValidationError:
@@ -359,6 +424,8 @@ def create_lead(
 				*_trail_parts(message, payload),
 				*extra_lines,
 			]
+			if _update_last_touch(lead, last_touch):
+				lead.save(ignore_permissions=True)
 			lead.add_comment("Comment", "<br>".join(trail))
 			return {"status": "existing", "name": open_name, "stage": lead.status}
 		if closed_stage:
