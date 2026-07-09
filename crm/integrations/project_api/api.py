@@ -308,8 +308,8 @@ def create_project_on_won(lead_name: str) -> None:
 	#
 	#   Required:        external_id, name, order_type
 	#   Top-level opt:   source, pin_code, site_address, site_location,
-	#                    project_category, project_configuration,
-	#                    sales_person_email
+	#                    site_city, site_state, project_category,
+	#                    project_configuration, sales_person_email
 	#   Customer block:  customer_name, customer_mobile (controller mandatory);
 	#                    customer_email / customer_pincode / customer_city /
 	#                    customer_state / customer_address (controller has
@@ -318,6 +318,13 @@ def create_project_on_won(lead_name: str) -> None:
 	#
 	# gst_applicable is intentionally NOT sent — the backend derives it from
 	# customer_gst_number presence to avoid drift between the two signals.
+	#
+	# site_city/site_state (top level) and customer_city/customer_state
+	# (nested, billing) are two genuinely separate CRM Lead field pairs:
+	# custom_city/custom_state (site, "Site Details" section) vs
+	# custom_customer_city/custom_customer_state (billing). OpsGate's
+	# project-list/detail view reads the top-level keys, not the nested
+	# customer block, so both must be sent independently.
 	payload = {
 		"external_id": lead.name,
 		# B5 — no fallback to lead.name (internal ID). Empty string lets backend
@@ -328,6 +335,8 @@ def create_project_on_won(lead_name: str) -> None:
 		"pin_code": site_pincode,
 		"site_address": site_address,
 		"site_location": site_location,
+		"site_city": lead.get("custom_city") or None,
+		"site_state": lead.get("custom_state") or None,
 		"project_category": lead.get("custom_project_category") or None,
 		"project_configuration": lead.get("custom_project_configuration") or None,
 		"sales_person_email": sales_person_email,
@@ -337,8 +346,8 @@ def create_project_on_won(lead_name: str) -> None:
 			"customer_email": lead.email or "",
 			# Billing pincode — unchanged. Distinct from top-level pin_code (site).
 			"customer_pincode": lead.get("custom_pincode") or "",
-			"customer_city": lead.get("custom_city") or "",
-			"customer_state": lead.get("custom_state") or "",
+			"customer_city": lead.get("custom_customer_city") or "",
+			"customer_state": lead.get("custom_customer_state") or "",
 			"customer_address": lead.get("custom_customer_address") or "",
 			"customer_profession": lead.get("custom_customer_type") or "",
 			"customer_alternate_number": alt_number,
