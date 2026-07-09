@@ -15,7 +15,8 @@
   "facebook_section",
   "facebook_page",
   "column_break_zukm",
-  "facebook_lead_form"
+  "facebook_lead_form",
+  "sub_source"
  ],
  "fields": [
   {
@@ -58,6 +59,13 @@
    "unique": 1
   },
   {
+   "default": "Meta Generic",
+   "fieldname": "sub_source",
+   "fieldtype": "Link",
+   "label": "Sub Source",
+   "options": "CRM Sub Source"
+  },
+  {
    "default": "1",
    "fieldname": "enabled",
    "fieldtype": "Check",
@@ -90,7 +98,7 @@
    "link_fieldname": "source"
   }
  ],
- "modified": "2026-02-23 12:45:55.637376",
+ "modified": "2026-07-07 14:55:04.044271",
  "modified_by": "Administrator",
  "module": "Lead Syncing",
  "name": "Lead Sync Source",
