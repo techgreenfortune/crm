@@ -186,11 +186,19 @@ _LAST_TOUCH_FIELD_MAP = {
 	"utm_last_touch_medium": "custom_utm_last_touch_medium",
 	"utm_last_touch_campaign": "custom_utm_last_touch_campaign",
 	"utm_last_touch_content": "custom_utm_last_touch_content",
+	# Ad platform click IDs — auto-appended by Google/Meta on every ad click.
+	# Same update semantics as last-touch UTM (indiframe-web tracks them in the
+	# same last-touch-only localStorage envelope, no first-touch for these).
+	"gclid": "custom_gclid",
+	"fbclid": "custom_fbclid",
+	"wbraid": "custom_wbraid",
+	"gbraid": "custom_gbraid",
 }
 
 
 def _update_last_touch(lead, last_touch: dict) -> bool:
-	"""Set any provided (non-empty) last-touch UTM value on lead; return whether anything changed.
+	"""Set any provided (non-empty) last-touch value (UTM or click ID) on lead;
+	return whether anything changed.
 
 	Omitted/blank values are left as-is — never null out a previously-stored
 	last-touch value just because this particular resubmission didn't carry it
@@ -203,6 +211,17 @@ def _update_last_touch(lead, last_touch: dict) -> bool:
 			lead.set(field_name, value)
 			changed = True
 	return changed
+
+
+def _last_touch_trail_line(last_touch: dict) -> str | None:
+	"""Format provided last-touch values (UTM + click IDs) for the audit Comment.
+
+	These are the only fields that actually change on resubmission — the trail
+	must surface them, not just the frozen first-touch values, or the "captured
+	in the re-submission Comment for marketing" promise below goes unmet.
+	"""
+	parts = ", ".join(f"{k}={v}" for k, v in last_touch.items() if v)
+	return f"Last-touch update: {parts}" if parts else None
 
 
 def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
@@ -244,6 +263,10 @@ def create_lead(
 	utm_first_touch_medium: str | None = None,
 	utm_first_touch_campaign: str | None = None,
 	utm_first_touch_content: str | None = None,
+	gclid: str | None = None,
+	fbclid: str | None = None,
+	wbraid: str | None = None,
+	gbraid: str | None = None,
 	page_url: str | None = None,
 ) -> dict:
 	"""Create or re-attribute a CRM Lead from an indiframe.com form submission.
@@ -325,6 +348,10 @@ def create_lead(
 		"utm_last_touch_medium": utm_last_touch_medium,
 		"utm_last_touch_campaign": utm_last_touch_campaign,
 		"utm_last_touch_content": utm_last_touch_content,
+		"gclid": gclid,
+		"fbclid": fbclid,
+		"wbraid": wbraid,
+		"gbraid": gbraid,
 	}
 	extra_lines = [email_note] if email_note else []
 
@@ -340,12 +367,14 @@ def create_lead(
 		if lead.lead_status == "Archived":
 			return {"status": "closed_match", "stage": lead.status}
 
+		last_touch_changed = _update_last_touch(lead, last_touch)
+		last_touch_line = _last_touch_trail_line(last_touch)
 		trail = [
 			"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 			*_trail_parts(message, payload),
+			*([last_touch_line] if last_touch_line else []),
 			*extra_lines,
 		]
-		last_touch_changed = _update_last_touch(lead, last_touch)
 
 		# Auto-reactivate Cold engagement; Script 3 stamps custom_reactivated_at,
 		# Script 1 enforces invariants. C-stage preserved per PRD §7.
@@ -400,6 +429,10 @@ def create_lead(
 				"custom_utm_first_touch_medium": utm_first_touch_medium or None,
 				"custom_utm_first_touch_campaign": utm_first_touch_campaign or None,
 				"custom_utm_first_touch_content": utm_first_touch_content or None,
+				"custom_gclid": gclid or None,
+				"custom_fbclid": fbclid or None,
+				"custom_wbraid": wbraid or None,
+				"custom_gbraid": gbraid or None,
 			}
 		).insert(ignore_permissions=True)
 	except frappe.ValidationError:
@@ -419,9 +452,11 @@ def create_lead(
 		open_name, closed_stage = _find_existing_lead(e164, national_number, mobile)
 		if open_name:
 			lead = frappe.get_doc("CRM Lead", open_name)
+			last_touch_line = _last_touch_trail_line(last_touch)
 			trail = [
 				"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 				*_trail_parts(message, payload),
+				*([last_touch_line] if last_touch_line else []),
 				*extra_lines,
 			]
 			if _update_last_touch(lead, last_touch):

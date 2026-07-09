@@ -243,6 +243,22 @@ class TestCreateLeadDedup(_BaseWebsite):
 		lead_status = frappe.db.get_value("CRM Lead", cold.name, "lead_status")
 		self.assertEqual(lead_status, "Reactivated")
 
+	def test_cold_unresponsive_auto_reactivates_as_guest(self):
+		"""Regression: the endpoint runs as Guest in real production traffic, not
+		Administrator (which FrappeTestCase defaults to and which masked this bug —
+		Guest has no ownership/role standing, so _apply_stage_transition_guard's
+		ownership check would throw without the ignore_stage_transition_guard flag
+		website.py now sets before this save)."""
+		cold = make_lead(phone="+919812345016", first_name="ColdGuest", lead_status="Cold-Unresponsive")
+		frappe.set_user("Guest")
+		try:
+			res = website.create_lead(name="Resubmit", mobile="+919812345016")
+		finally:
+			frappe.set_user("Administrator")
+		self.assertEqual(res["status"], "reactivated")
+		lead_status = frappe.db.get_value("CRM Lead", cold.name, "lead_status")
+		self.assertEqual(lead_status, "Reactivated")
+
 	def test_resubmission_does_not_overwrite_email_or_utm(self):
 		"""First-touch attribution: existing email/UTM preserved on resubmit (website.py:230-255)."""
 		existing = make_lead(
@@ -387,6 +403,161 @@ class TestCreateLeadUtmAndTrail(_BaseWebsite):
 		self.assertIn("utm_source=second", joined)
 
 
+class TestCreateLeadLastTouchUtm(_BaseWebsite):
+	"""``custom_utm_last_touch_*`` — updates on every resubmission, unlike first-touch
+	``custom_utm_*`` which is write-once (website.py:_update_last_touch)."""
+
+	def test_new_lead_stores_both_first_and_last_touch(self):
+		res = website.create_lead(
+			name="LastTouch New",
+			mobile="+919812345070",
+			utm_source="google",
+			utm_medium="cpc",
+			utm_last_touch_source="facebook",
+			utm_last_touch_medium="cpc",
+			utm_last_touch_campaign="retarget",
+			utm_last_touch_content="carousel-1",
+		)
+		lead = frappe.get_doc("CRM Lead", res["name"])
+		self.assertEqual(lead.get("custom_utm_source"), "google")
+		self.assertEqual(lead.get("custom_utm_last_touch_source"), "facebook")
+		self.assertEqual(lead.get("custom_utm_last_touch_medium"), "cpc")
+		self.assertEqual(lead.get("custom_utm_last_touch_campaign"), "retarget")
+		self.assertEqual(lead.get("custom_utm_last_touch_content"), "carousel-1")
+
+	def test_resubmission_updates_last_touch_preserves_first_touch(self):
+		existing = make_lead(
+			phone="+919812345071",
+			custom_utm_source="google",
+			custom_utm_last_touch_source="google",
+		)
+		res = website.create_lead(
+			name="Resub",
+			mobile="+919812345071",
+			utm_source="ignored-on-resubmit",
+			utm_last_touch_source="facebook",
+			utm_last_touch_medium="remarketing",
+		)
+		self.assertEqual(res["status"], "existing")
+		lead = frappe.get_doc("CRM Lead", existing.name)
+		# First-touch unchanged (existing coverage elsewhere confirms this too)
+		self.assertEqual(lead.get("custom_utm_source"), "google")
+		# Last-touch updated, and actually persisted (not just returned in-memory)
+		self.assertEqual(lead.get("custom_utm_last_touch_source"), "facebook")
+		self.assertEqual(lead.get("custom_utm_last_touch_medium"), "remarketing")
+
+	def test_resubmission_with_last_touch_omitted_preserves_prior_value(self):
+		"""Simulates an older indiframe-web client mid-rollout that doesn't send
+		utm_last_touch_* yet — must not null out a previously-stored value."""
+		existing = make_lead(
+			phone="+919812345072",
+			custom_utm_last_touch_source="google",
+			custom_utm_last_touch_medium="cpc",
+		)
+		website.create_lead(name="Resub", mobile="+919812345072")
+		lead = frappe.get_doc("CRM Lead", existing.name)
+		self.assertEqual(lead.get("custom_utm_last_touch_source"), "google")
+		self.assertEqual(lead.get("custom_utm_last_touch_medium"), "cpc")
+
+	def test_resubmission_last_touch_update_surfaced_in_comment_trail(self):
+		"""Last-touch is the field that actually changes on resubmission — the
+		Comment trail must show it, not just the frozen first-touch UTM."""
+		existing = make_lead(phone="+919812345073")
+		website.create_lead(
+			name="Resub",
+			mobile="+919812345073",
+			utm_last_touch_source="facebook",
+			utm_last_touch_medium="remarketing",
+			gclid="gclid-trail-test",
+		)
+		comments = frappe.get_all(
+			"Comment",
+			filters={"reference_doctype": "CRM Lead", "reference_name": existing.name},
+			fields=["content"],
+		)
+		joined = " ".join(c.content or "" for c in comments)
+		self.assertIn("Last-touch update:", joined)
+		self.assertIn("utm_last_touch_source=facebook", joined)
+		self.assertIn("gclid=gclid-trail-test", joined)
+
+
+class TestCreateLeadFirstTouchUtm(_BaseWebsite):
+	"""``custom_utm_first_touch_*`` — true first-touch (from indiframe-web's persisted
+	180-day client-side capture), write-once same as legacy ``custom_utm_*`` — unlike
+	``custom_utm_last_touch_*`` which updates on every resubmission."""
+
+	def test_new_lead_stores_true_first_touch_independent_of_legacy_utm(self):
+		res = website.create_lead(
+			name="FirstTouch New",
+			mobile="+919812345080",
+			utm_source="last-page-visited",
+			utm_first_touch_source="google",
+			utm_first_touch_medium="cpc",
+			utm_first_touch_campaign="brand-launch",
+			utm_first_touch_content="banner-1",
+		)
+		lead = frappe.get_doc("CRM Lead", res["name"])
+		self.assertEqual(lead.get("custom_utm_source"), "last-page-visited")
+		self.assertEqual(lead.get("custom_utm_first_touch_source"), "google")
+		self.assertEqual(lead.get("custom_utm_first_touch_medium"), "cpc")
+		self.assertEqual(lead.get("custom_utm_first_touch_campaign"), "brand-launch")
+		self.assertEqual(lead.get("custom_utm_first_touch_content"), "banner-1")
+
+	def test_resubmission_never_overwrites_true_first_touch(self):
+		existing = make_lead(
+			phone="+919812345081",
+			custom_utm_first_touch_source="google",
+			custom_utm_first_touch_campaign="original-launch",
+		)
+		res = website.create_lead(
+			name="Resub",
+			mobile="+919812345081",
+			utm_first_touch_source="facebook",
+			utm_first_touch_campaign="should-be-ignored",
+		)
+		self.assertEqual(res["status"], "existing")
+		lead = frappe.get_doc("CRM Lead", existing.name)
+		self.assertEqual(lead.get("custom_utm_first_touch_source"), "google")
+		self.assertEqual(lead.get("custom_utm_first_touch_campaign"), "original-launch")
+
+
+class TestCreateLeadClickIds(_BaseWebsite):
+	"""``custom_gclid``/``fbclid``/``wbraid``/``gbraid`` — same last-touch update
+	semantics as ``custom_utm_last_touch_*`` (website.py:_LAST_TOUCH_FIELD_MAP)."""
+
+	def test_new_lead_stores_click_ids(self):
+		res = website.create_lead(
+			name="ClickId New",
+			mobile="+919812345090",
+			gclid="gclid-abc123",
+			fbclid="fbclid-def456",
+			wbraid="wbraid-ghi789",
+			gbraid="gbraid-jkl012",
+		)
+		lead = frappe.get_doc("CRM Lead", res["name"])
+		self.assertEqual(lead.get("custom_gclid"), "gclid-abc123")
+		self.assertEqual(lead.get("custom_fbclid"), "fbclid-def456")
+		self.assertEqual(lead.get("custom_wbraid"), "wbraid-ghi789")
+		self.assertEqual(lead.get("custom_gbraid"), "gbraid-jkl012")
+
+	def test_resubmission_updates_click_ids(self):
+		existing = make_lead(phone="+919812345091", custom_gclid="old-gclid")
+		res = website.create_lead(
+			name="Resub",
+			mobile="+919812345091",
+			gclid="new-gclid",
+		)
+		self.assertEqual(res["status"], "existing")
+		lead = frappe.get_doc("CRM Lead", existing.name)
+		self.assertEqual(lead.get("custom_gclid"), "new-gclid")
+
+	def test_resubmission_with_click_ids_omitted_preserves_prior_value(self):
+		existing = make_lead(phone="+919812345092", custom_gclid="stays-put")
+		website.create_lead(name="Resub", mobile="+919812345092")
+		lead = frappe.get_doc("CRM Lead", existing.name)
+		self.assertEqual(lead.get("custom_gclid"), "stays-put")
+
+
 class TestCreateLeadSource(_BaseWebsite):
 	"""``source``/``sub_source`` resolution for paid-channel attribution (website.py:36-75)."""
 
@@ -475,6 +646,7 @@ class TestCreateLeadRaceRecovery(_BaseWebsite):
 			# with doctype=CRM Lead). The recovery path uses get_doc("CRM Lead", name)
 			# with two string positional args — let those through to the real function.
 			if len(args) == 1 and isinstance(args[0], dict) and args[0].get("doctype") == "CRM Lead":
+
 				class _RaisingDoc:
 					def insert(self, *a, **kw):
 						raise frappe.ValidationError("Phone Dedup rejected (simulated)")
@@ -499,6 +671,7 @@ class TestCreateLeadRaceRecovery(_BaseWebsite):
 
 		def fake_get_doc(*args, **kwargs):
 			if len(args) == 1 and isinstance(args[0], dict) and args[0].get("doctype") == "CRM Lead":
+
 				class _RaisingDoc:
 					def insert(self, *a, **kw):
 						raise frappe.ValidationError("Some unrelated validation")
