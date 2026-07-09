@@ -124,6 +124,16 @@
                 page: syncSource.facebook_page,
               }"
             />
+
+            <Link
+              v-if="!isLocal && syncSource.facebook_lead_form"
+              v-model="syncSource.sub_source"
+              label="Sub Source"
+              doctype="CRM Sub Source"
+              :filters="{
+                source: 'Paid',
+              }"
+            />
           </div>
 
           <!-- Mapping Grid -->
@@ -246,6 +256,7 @@ const syncSource = ref({
   access_token: '',
   facebook_page: '',
   facebook_lead_form: '',
+  sub_source: fieldsMap.value.sub_source?.default || 'Meta Generic',
   enabled: true,
   background_sync_frequency:
     fieldsMap.value.background_sync_frequency?.default || 'Hourly',
@@ -343,6 +354,7 @@ watch(
   (_, oldValue) => {
     if (!oldValue) return // on mount, the value changes from empty
     syncSource.value.facebook_lead_form = ''
+    syncSource.value.sub_source = ''
   },
 )
 

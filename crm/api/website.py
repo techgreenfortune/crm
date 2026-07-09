@@ -19,7 +19,7 @@ from crm.utils import parse_phone_number, phone_dedup_candidates
 if TYPE_CHECKING:
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
 
-WEBSITE_SOURCE = "Direct"
+WEBSITE_SOURCE = "Direct"  # default source when the caller omits `source`
 WEBSITE_SUB_SOURCE = "Website"
 DEFAULT_STATUS = "C0"
 DEFAULT_LEAD_STATUS = "Active"
@@ -28,30 +28,56 @@ TOKEN_CONF_KEY = "indiframe_website_token"
 
 PROJECTS_CUSTOMER_TYPES = frozenset({"Architect", "Builder", "Contractor"})
 
+# This public/guest endpoint only ever legitimately originates Direct or Paid leads.
+# Restricting (rather than validating against any CRM Lead Source) also keeps callers
+# away from sources like "Referral"/"Lead Spotting" whose mandatory-sub_source rule
+# (crm_lead.py's _SUB_SOURCE_TRIGGER_SOURCES) this endpoint has no way to satisfy.
+ALLOWED_WEBSITE_SOURCES = frozenset({WEBSITE_SOURCE, "Paid"})
+
 
 def _derive_lead_type(customer_type: str | None) -> str:
 	return "Projects" if customer_type in PROJECTS_CUSTOMER_TYPES else "Retail"
 
 
-def _resolve_sub_source(sub_source: str | None) -> str:
-	"""Validate incoming sub_source against CRM Sub Source; fall back to default.
+def _resolve_source(source: str | None) -> str:
+	"""Validate incoming source against ALLOWED_WEBSITE_SOURCES; fall back to default.
+
+	Deliberately an allowlist, not "any existing CRM Lead Source" — see
+	ALLOWED_WEBSITE_SOURCES for why. Public endpoint must not 500 over a bad
+	source, so unknown/disallowed values default to WEBSITE_SOURCE and are logged.
+	"""
+	value = (source or "").strip()
+	if value in ALLOWED_WEBSITE_SOURCES:
+		return value
+	if value:
+		frappe.log_error(
+			title="Website Lead: disallowed source",
+			message=f"source={value!r} not permitted for this endpoint; defaulted to {WEBSITE_SOURCE!r}.",
+		)
+	return WEBSITE_SOURCE
+
+
+def _resolve_sub_source(sub_source: str | None, resolved_source: str) -> str | None:
+	"""Validate incoming sub_source against CRM Sub Source scoped to resolved_source.
 
 	custom_sub_source is a Link field — an unknown value would fail insert
 	validation. Public endpoint must not 500 over a bad sub_source, so
-	unknown/blank values default to WEBSITE_SUB_SOURCE and are logged.
+	unknown/blank values are dropped (logged) rather than raised.
+
+	WEBSITE_SOURCE ("Direct") has a canonical fallback, WEBSITE_SUB_SOURCE
+	("Website"). Other sources (e.g. "Paid") have no single generic
+	sub_source to fall back to, so an unresolved value is left unset.
 	"""
 	value = (sub_source or "").strip()
 	if not value:
-		return WEBSITE_SUB_SOURCE
-	if frappe.db.exists("CRM Sub Source", value):
+		return WEBSITE_SUB_SOURCE if resolved_source == WEBSITE_SOURCE else None
+	if frappe.db.exists("CRM Sub Source", {"name": value, "source": resolved_source}):
 		return value
 	frappe.log_error(
 		title="Website Lead: unknown sub_source",
-		message=(
-			f"sub_source={value!r} not found in CRM Sub Source; " f"defaulted to {WEBSITE_SUB_SOURCE!r}."
-		),
+		message=f"sub_source={value!r} not found under source={resolved_source!r}.",
 	)
-	return WEBSITE_SUB_SOURCE
+	return WEBSITE_SUB_SOURCE if resolved_source == WEBSITE_SOURCE else None
 
 
 def _verify_token() -> None:
@@ -155,6 +181,49 @@ def _trail_parts(message: str | None, payload: dict) -> list[str]:
 	return bits
 
 
+_LAST_TOUCH_FIELD_MAP = {
+	"utm_last_touch_source": "custom_utm_last_touch_source",
+	"utm_last_touch_medium": "custom_utm_last_touch_medium",
+	"utm_last_touch_campaign": "custom_utm_last_touch_campaign",
+	"utm_last_touch_content": "custom_utm_last_touch_content",
+	# Ad platform click IDs — auto-appended by Google/Meta on every ad click.
+	# Same update semantics as last-touch UTM (indiframe-web tracks them in the
+	# same last-touch-only localStorage envelope, no first-touch for these).
+	"gclid": "custom_gclid",
+	"fbclid": "custom_fbclid",
+	"wbraid": "custom_wbraid",
+	"gbraid": "custom_gbraid",
+}
+
+
+def _update_last_touch(lead, last_touch: dict) -> bool:
+	"""Set any provided (non-empty) last-touch value (UTM or click ID) on lead;
+	return whether anything changed.
+
+	Omitted/blank values are left as-is — never null out a previously-stored
+	last-touch value just because this particular resubmission didn't carry it
+	(e.g. an older indiframe-web client mid-rollout).
+	"""
+	changed = False
+	for param_key, field_name in _LAST_TOUCH_FIELD_MAP.items():
+		value = last_touch.get(param_key)
+		if value:
+			lead.set(field_name, value)
+			changed = True
+	return changed
+
+
+def _last_touch_trail_line(last_touch: dict) -> str | None:
+	"""Format provided last-touch values (UTM + click IDs) for the audit Comment.
+
+	These are the only fields that actually change on resubmission — the trail
+	must surface them, not just the frozen first-touch values, or the "captured
+	in the re-submission Comment for marketing" promise below goes unmet.
+	"""
+	parts = ", ".join(f"{k}={v}" for k, v in last_touch.items() if v)
+	return f"Last-touch update: {parts}" if parts else None
+
+
 def _clean_email(raw: str | None) -> tuple[str | None, str | None]:
 	"""Return (cleaned_email, drop_note); drop_note is set only when input was provided but invalid."""
 	if not raw:
@@ -178,6 +247,7 @@ def create_lead(
 	company: str | None = None,
 	message: str | None = None,
 	customer_type: str | None = None,
+	source: str | None = None,
 	sub_source: str | None = None,
 	lead_type: str | None = None,  # ignored; custom_lead_type is derived from customer_type
 	project_type: str | None = None,
@@ -185,6 +255,18 @@ def create_lead(
 	utm_medium: str | None = None,
 	utm_campaign: str | None = None,
 	utm_content: str | None = None,
+	utm_last_touch_source: str | None = None,
+	utm_last_touch_medium: str | None = None,
+	utm_last_touch_campaign: str | None = None,
+	utm_last_touch_content: str | None = None,
+	utm_first_touch_source: str | None = None,
+	utm_first_touch_medium: str | None = None,
+	utm_first_touch_campaign: str | None = None,
+	utm_first_touch_content: str | None = None,
+	gclid: str | None = None,
+	fbclid: str | None = None,
+	wbraid: str | None = None,
+	gbraid: str | None = None,
 	page_url: str | None = None,
 ) -> dict:
 	"""Create or re-attribute a CRM Lead from an indiframe.com form submission.
@@ -192,6 +274,18 @@ def create_lead(
 	The website (indiframe-web) is responsible for sending canonical snake_case
 	keys and properly-cased Select values (`Homeowner` not `homeowner`, etc.).
 	This endpoint does not perform alias / case normalization.
+
+	``utm_source``/``utm_medium``/``utm_campaign``/``utm_content`` are frozen at
+	first conversion attempt: captured on creation, never overwritten on
+	resubmission (see custom_utm_section's description) — NOT necessarily the
+	visitor's literal first-ever ad click, since it's whatever page/session the
+	lead happened to be created from. ``utm_first_touch_*`` is the true
+	first-touch counterpart: the client's genuinely first-captured attribution
+	(persisted 180 days), also write-once on creation, never overwritten.
+	``utm_last_touch_*`` is the last-touch set: stored on creation same as the
+	others, but updated on every resubmission where a value is provided (an
+	omitted one — e.g. an older client mid-rollout — is left as-is, never
+	nulled out).
 
 	Returns one of:
 	  ``{"status": "created",      "name": <lead-name>, "stage": "C0"}``
@@ -234,7 +328,8 @@ def create_lead(
 			),
 		)
 
-	resolved_sub_source = _resolve_sub_source(sub_source)
+	resolved_source = _resolve_source(source)
+	resolved_sub_source = _resolve_sub_source(sub_source, resolved_source)
 
 	payload = {
 		"message": message,
@@ -247,6 +342,16 @@ def create_lead(
 		"utm_campaign": utm_campaign,
 		"utm_content": utm_content,
 		"page_url": page_url,
+	}
+	last_touch = {
+		"utm_last_touch_source": utm_last_touch_source,
+		"utm_last_touch_medium": utm_last_touch_medium,
+		"utm_last_touch_campaign": utm_last_touch_campaign,
+		"utm_last_touch_content": utm_last_touch_content,
+		"gclid": gclid,
+		"fbclid": fbclid,
+		"wbraid": wbraid,
+		"gbraid": gbraid,
 	}
 	extra_lines = [email_note] if email_note else []
 
@@ -262,9 +367,12 @@ def create_lead(
 		if lead.lead_status == "Archived":
 			return {"status": "closed_match", "stage": lead.status}
 
+		last_touch_changed = _update_last_touch(lead, last_touch)
+		last_touch_line = _last_touch_trail_line(last_touch)
 		trail = [
 			"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 			*_trail_parts(message, payload),
+			*([last_touch_line] if last_touch_line else []),
 			*extra_lines,
 		]
 
@@ -272,10 +380,16 @@ def create_lead(
 		# Script 1 enforces invariants. C-stage preserved per PRD §7.
 		if lead.lead_status == "Cold-Unresponsive":
 			lead.lead_status = "Reactivated"
+			# Guest has no ownership/role standing; this narrow flag lets the
+			# already-allowed Cold-Unresponsive -> Reactivated move through
+			# without tripping _apply_stage_transition_guard's ownership check.
+			lead.flags.ignore_stage_transition_guard = True
 			lead.save(ignore_permissions=True)
 			lead.add_comment("Comment", "<br>".join(trail))
 			return {"status": "reactivated", "name": open_name, "stage": lead.status}
 
+		if last_touch_changed:
+			lead.save(ignore_permissions=True)
 		lead.add_comment("Comment", "<br>".join(trail))
 		return {"status": "existing", "name": open_name, "stage": lead.status}
 
@@ -296,7 +410,7 @@ def create_lead(
 				"organization": (company or "").strip() or None,
 				"status": DEFAULT_STATUS,
 				"lead_status": DEFAULT_LEAD_STATUS,
-				"source": WEBSITE_SOURCE,
+				"source": resolved_source,
 				"custom_sub_source": resolved_sub_source,
 				"custom_pincode": pincode or None,
 				"custom_city": city or None,
@@ -307,6 +421,18 @@ def create_lead(
 				"custom_utm_medium": utm_medium or None,
 				"custom_utm_campaign": utm_campaign or None,
 				"custom_utm_content": utm_content or None,
+				"custom_utm_last_touch_source": utm_last_touch_source or None,
+				"custom_utm_last_touch_medium": utm_last_touch_medium or None,
+				"custom_utm_last_touch_campaign": utm_last_touch_campaign or None,
+				"custom_utm_last_touch_content": utm_last_touch_content or None,
+				"custom_utm_first_touch_source": utm_first_touch_source or None,
+				"custom_utm_first_touch_medium": utm_first_touch_medium or None,
+				"custom_utm_first_touch_campaign": utm_first_touch_campaign or None,
+				"custom_utm_first_touch_content": utm_first_touch_content or None,
+				"custom_gclid": gclid or None,
+				"custom_fbclid": fbclid or None,
+				"custom_wbraid": wbraid or None,
+				"custom_gbraid": gbraid or None,
 			}
 		).insert(ignore_permissions=True)
 	except frappe.ValidationError:
@@ -326,11 +452,15 @@ def create_lead(
 		open_name, closed_stage = _find_existing_lead(e164, national_number, mobile)
 		if open_name:
 			lead = frappe.get_doc("CRM Lead", open_name)
+			last_touch_line = _last_touch_trail_line(last_touch)
 			trail = [
 				"[API_SUBMIT] Re-submission from indiframe.com contact form.",
 				*_trail_parts(message, payload),
+				*([last_touch_line] if last_touch_line else []),
 				*extra_lines,
 			]
+			if _update_last_touch(lead, last_touch):
+				lead.save(ignore_permissions=True)
 			lead.add_comment("Comment", "<br>".join(trail))
 			return {"status": "existing", "name": open_name, "stage": lead.status}
 		if closed_stage:
