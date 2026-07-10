@@ -99,6 +99,7 @@ _ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
 	"C7": set(),
 }
 
+
 def clear_contact_lead_link(doc, method):
 	frappe.db.sql(
 		"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",

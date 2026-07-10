@@ -174,8 +174,7 @@ class CRMQuoteRequest(Document):
 			clash_lead = frappe.db.get_value("CRM Quote Request", clash, "lead")
 			frappe.throw(
 				_(
-					"Quotation number <b>{0}</b> is already used on <b>{1}</b>"
-					"{2}.  Enter a different number."
+					"Quotation number <b>{0}</b> is already used on <b>{1}</b>{2}.  Enter a different number."
 				).format(
 					self.quote_number,
 					clash,

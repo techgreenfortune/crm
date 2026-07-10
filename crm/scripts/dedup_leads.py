@@ -48,22 +48,34 @@ def _get_connections(lead_name):
 		"qr": frappe.db.count("CRM Quote Request", {"lead": lead_name}),
 		"deal": frappe.db.count("CRM Deal", {"lead": lead_name}),
 		"retry_log": frappe.db.count("CRM Retry Log", {"lead": lead_name}),
-		"file": frappe.db.count("File", {
-			"attached_to_doctype": "CRM Lead",
-			"attached_to_name": lead_name,
-		}),
-		"task": frappe.db.count("CRM Task", {
-			"reference_doctype": "CRM Lead",
-			"reference_docname": lead_name,
-		}),
-		"note": frappe.db.count("FCRM Note", {
-			"reference_doctype": "CRM Lead",
-			"reference_docname": lead_name,
-		}),
-		"call_log": frappe.db.count("CRM Call Log", {
-			"reference_doctype": "CRM Lead",
-			"reference_docname": lead_name,
-		}),
+		"file": frappe.db.count(
+			"File",
+			{
+				"attached_to_doctype": "CRM Lead",
+				"attached_to_name": lead_name,
+			},
+		),
+		"task": frappe.db.count(
+			"CRM Task",
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_docname": lead_name,
+			},
+		),
+		"note": frappe.db.count(
+			"FCRM Note",
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_docname": lead_name,
+			},
+		),
+		"call_log": frappe.db.count(
+			"CRM Call Log",
+			{
+				"reference_doctype": "CRM Lead",
+				"reference_docname": lead_name,
+			},
+		),
 	}
 
 
@@ -127,7 +139,8 @@ def find_duplicates():
 
 	if safe:
 		soft_warned = [
-			g for g in safe
+			g
+			for g in safe
 			if g["connections"]["task"] + g["connections"]["note"] + g["connections"]["call_log"] > 0
 		]
 		clean = len(safe) - len(soft_warned)
@@ -186,11 +199,11 @@ def delete_safe_duplicates(dry_run=False):
 			continue
 
 		if deleted > 0 and deleted % 100 == 0 and not dry_run:
-			frappe.db.commit()
+			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 			print(f"  ... committed after {deleted} deletes")
 
 	if not dry_run:
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	print(
 		f"\nDone."
@@ -218,17 +231,24 @@ def migrate_and_delete_duplicate(old_name, new_name):
 	print(f"Migrating {old_name!r} → {new_name!r}")
 
 	def _sql_repoint(table, field, old, new):
-		frappe.db.sql(f"UPDATE `{table}` SET `{field}` = %s WHERE `{field}` = %s", (new, old))
+		# table/field are string literals from the caller (this function only) — not user input.
+		# Values (new, old) are properly parameterized.
+		frappe.db.sql(  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-sql-format-injection
+			f"UPDATE `{table}` SET `{field}` = %s WHERE `{field}` = %s", (new, old)
+		)
 		return frappe.db.sql("SELECT ROW_COUNT()")[0][0]
 
 	n = _sql_repoint("tabCRM Quote Request", "lead", old_name, new_name)
-	if n: print(f"  CRM Quote Request: {n} re-pointed")
+	if n:
+		print(f"  CRM Quote Request: {n} re-pointed")
 
 	n = _sql_repoint("tabCRM Deal", "lead", old_name, new_name)
-	if n: print(f"  CRM Deal: {n} re-pointed")
+	if n:
+		print(f"  CRM Deal: {n} re-pointed")
 
 	n = _sql_repoint("tabCRM Retry Log", "lead", old_name, new_name)
-	if n: print(f"  CRM Retry Log: {n} re-pointed")
+	if n:
+		print(f"  CRM Retry Log: {n} re-pointed")
 
 	frappe.db.sql(
 		"UPDATE `tabFile` SET attached_to_name = %s"
@@ -236,7 +256,8 @@ def migrate_and_delete_duplicate(old_name, new_name):
 		(new_name, old_name),
 	)
 	n = frappe.db.sql("SELECT ROW_COUNT()")[0][0]
-	if n: print(f"  File: {n} re-attached")
+	if n:
+		print(f"  File: {n} re-attached")
 
 	for table, label in [
 		("tabCRM Task", "CRM Task"),
@@ -249,18 +270,20 @@ def migrate_and_delete_duplicate(old_name, new_name):
 			(new_name, old_name),
 		)
 		n = frappe.db.sql("SELECT ROW_COUNT()")[0][0]
-		if n: print(f"  {label}: {n} re-pointed")
+		if n:
+			print(f"  {label}: {n} re-pointed")
 
 	frappe.db.sql("UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s", old_name)
 	n = frappe.db.sql("SELECT ROW_COUNT()")[0][0]
-	if n: print(f"  Contact.custom_lead: {n} cleared")
+	if n:
+		print(f"  Contact.custom_lead: {n} cleared")
 
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	print("  All connections committed.")
 
 	try:
 		frappe.delete_doc("CRM Lead", old_name, force=True, ignore_permissions=True)
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		print(f"  Deleted {old_name!r}. Done.")
 	except Exception as exc:
 		frappe.db.rollback()

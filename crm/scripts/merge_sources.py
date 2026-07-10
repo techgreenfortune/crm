@@ -76,7 +76,7 @@ def merge_spotting_sources():
 		print(f"[E] CRM Deal rows updated:                                          {count_e}")
 
 	frappe.db.sql("SET SQL_SAFE_UPDATES = @old_safe")
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	print(f"\nTotal CRM Lead rows updated: {count_a + count_b + count_c + count_d}")
 	print("Committed. Run delete_old_source_fixtures() next.")
@@ -115,7 +115,7 @@ def delete_old_source_fixtures():
 		else:
 			print(f"CRM Sub Source {name!r} not found — already gone")
 
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	print(
 		"\nDone. Now edit fixtures in git and commit:"
 		"\n  crm/fixtures/crm_lead_source.json — remove IndiFrame Spotting, GreenFortune Spotting"

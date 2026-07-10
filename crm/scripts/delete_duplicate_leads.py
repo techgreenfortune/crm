@@ -190,11 +190,11 @@ def run(dry_run=False):
 			continue
 
 		if deleted > 0 and deleted % 20 == 0:
-			frappe.db.commit()
+			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 			print(f"  ... committed after {deleted} deletes")
 
 	if not dry_run:
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 	print(f"\nDone. deleted={deleted} skipped={len(skipped)} errors={len(errors)}")
 	for name, err in errors:
