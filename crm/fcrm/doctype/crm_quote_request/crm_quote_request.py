@@ -9,6 +9,13 @@ from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, REVIEWER_ROLES, 
 _QR_BYPASS_ROLES = TIER1_FULL_RW | {"Estimation Team"}
 
 
+def clear_task_quote_request_link(doc, method):
+	frappe.db.sql(
+		"UPDATE `tabCRM Task` SET quote_request = NULL WHERE quote_request = %s",
+		doc.name,
+	)
+
+
 def _build_lead_updates(qr) -> dict:
 	"""Return CRM Lead custom-field updates from a QR doc or frappe._dict.
 
@@ -167,8 +174,7 @@ class CRMQuoteRequest(Document):
 			clash_lead = frappe.db.get_value("CRM Quote Request", clash, "lead")
 			frappe.throw(
 				_(
-					"Quotation number <b>{0}</b> is already used on <b>{1}</b>"
-					"{2}.  Enter a different number."
+					"Quotation number <b>{0}</b> is already used on <b>{1}</b>{2}.  Enter a different number."
 				).format(
 					self.quote_number,
 					clash,

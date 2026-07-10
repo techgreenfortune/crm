@@ -205,6 +205,7 @@ doc_events = {
 	},
 	"CRM Quote Request": {
 		"on_update": ["crm.integrations.brevo.quote_emails.on_quote_request_update"],
+		"on_trash": ["crm.fcrm.doctype.crm_quote_request.crm_quote_request.clear_task_quote_request_link"],
 	},
 	"CRM Lead": {
 		# Mandatory-fields check for affiliate leads — runs before before_save
@@ -215,6 +216,10 @@ doc_events = {
 		# after a previous submit/approve/reject.  See crm.api.affiliate
 		# for the rationale.
 		"before_save": ["crm.api.affiliate.on_lead_before_save"],
+		"on_trash": [
+			"crm.overrides.crm_lead_permissions.bust_downstream_users_cache",
+			"crm.fcrm.doctype.crm_lead.crm_lead.clear_contact_lead_link",
+		],
 	},
 	"Notification": {
 		"on_update": ["crm.api.desk_audit.on_desk_edit"],
@@ -329,7 +334,7 @@ before_tests = "crm.tests.before_tests"
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-ignore_links_on_delete = ["Failed Lead Sync Log"]
+ignore_links_on_delete = ["Failed Lead Sync Log", "CRM Quote Request"]
 
 # Request Events
 # ----------------

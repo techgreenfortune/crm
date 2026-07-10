@@ -202,14 +202,6 @@
   {
     "docstatus": 0,
     "doctype": "CRM Sub Source",
-    "modified": "2026-06-04 12:47:32.463364",
-    "name": "Lead Spotting - Projects",
-    "source": "IndiFrame Spotting",
-    "sub_source_name": "Lead Spotting - Projects"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
     "modified": "2026-06-04 14:35:51.171561",
     "name": "AceTech Hyderabad 2026",
     "source": "Events",
@@ -318,13 +310,5 @@
     "name": "IndiFrame Retail",
     "source": "Lead Spotting",
     "sub_source_name": "IndiFrame Retail"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
-    "modified": "2026-06-04 12:46:48.371730",
-    "name": "Lead Spotting - Retail",
-    "source": "IndiFrame Spotting",
-    "sub_source_name": "Lead Spotting - Retail"
   }
 ]
