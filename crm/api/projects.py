@@ -58,8 +58,12 @@ def create_project_for_lead(lead: str) -> str:
 			frappe.PermissionError,
 		)
 
-	# --- Idempotency: external project already created ---
-	if lead_doc.get("custom_external_project_id"):
+	# --- Idempotency: external project + draft order already created ---
+	# Only short-circuit when BOTH ids are set — a lead with a project but no
+	# draft order (interrupted prior handoff) must keep re-firing so it can
+	# reach `create_project_on_won`'s hard-gate and OpsGate's self-heal path,
+	# instead of silently returning as if the handoff had fully succeeded.
+	if lead_doc.get("custom_external_project_id") and lead_doc.get("custom_external_order_id"):
 		return lead_doc.custom_external_project_id
 
 	# --- Stage gate ---
@@ -112,6 +116,9 @@ def create_project_for_lead(lead: str) -> str:
 		lead_doc.validate_project_specific_fields()
 
 	# --- Fire the integration handler ---
+	# Raises (and never returns) if the project id or the draft order id is
+	# missing from OpsGate's response — see `create_project_on_won`'s hard
+	# gates. So reaching the code below means both ids are confirmed set.
 	from crm.integrations.project_api.api import create_project_on_won
 
 	create_project_on_won(lead_doc.name)

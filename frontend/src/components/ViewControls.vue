@@ -33,6 +33,7 @@
           class="m-1 min-w-36"
         >
           <UserMultiSelect
+            pill
             :model-value="selectedOwners"
             :users="visibleUsers.data"
             :all-label="__('All owners')"
@@ -197,6 +198,7 @@
         class="m-1 min-w-36"
       >
         <UserMultiSelect
+          pill
           :model-value="selectedOwners"
           :users="visibleUsers.data"
           :all-label="__('All owners')"
@@ -611,6 +613,11 @@ list.value = createResource({
       rows: data.rows,
       page_length: params.page_length,
       page_length_count: params.page_length_count,
+      // Carry the map viewport forward through filter/sort/page-length
+      // changes (which all reset params from defaultParams.value) so tweaking
+      // a filter while zoomed into an area doesn't silently snap back to the
+      // unbounded global view and yank the camera via renderMarkers' fitBounds.
+      map_bounds: params.map_bounds,
     }
   },
 })
@@ -621,7 +628,14 @@ const isLoading = computed(() => list.value?.loading)
 
 function reload() {
   if (isLoading.value) return
+  const mapBounds = list.value.params?.map_bounds
   list.value.params = getParams()
+  // Only carry the viewport forward if we're still on map view — a route/
+  // view-type switch away from the map should start fresh, not leak a stale
+  // bounds filter into a kanban/list fetch (harmless server-side, but stale).
+  if (mapBounds && list.value.params.view?.view_type === 'map') {
+    list.value.params.map_bounds = mapBounds
+  }
   list.value.reload()
 }
 

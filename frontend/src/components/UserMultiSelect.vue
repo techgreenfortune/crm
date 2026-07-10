@@ -13,7 +13,11 @@
     <template #target="{ togglePopover, isOpen }">
       <button
         type="button"
-        class="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-outline-gray-2 bg-surface-white px-3 text-sm text-ink-gray-8 hover:bg-surface-gray-2 focus:outline-none focus:ring-2 focus:ring-outline-gray-3"
+        :class="
+          pill
+            ? 'flex h-7 w-full items-center justify-between gap-2 rounded border border-[--surface-gray-2] bg-surface-gray-2 px-2 text-base text-ink-gray-8 hover:border-outline-gray-modals hover:bg-surface-gray-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-outline-gray-3'
+            : 'flex h-8 w-full items-center justify-between gap-2 rounded-md border border-outline-gray-2 bg-surface-white px-3 text-sm text-ink-gray-8 hover:bg-surface-gray-2 focus:outline-none focus:ring-2 focus:ring-outline-gray-3'
+        "
         @click="togglePopover()"
       >
         <span class="truncate">{{ label }}</span>
@@ -77,6 +81,10 @@ const props = defineProps({
   // Optional override for the single-selection / multi-selection summary.
   selectedLabel: { type: String, default: '' },
   placement: { type: String, default: 'bottom-start' },
+  // When true, the trigger matches the "subtle" pill look used by other
+  // quick filters (ViewControls). Default (false) keeps the outline look
+  // used by Dashboard.vue's hierarchy scope picker.
+  pill: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue'])
