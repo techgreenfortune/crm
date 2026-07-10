@@ -104,6 +104,8 @@ def clear_contact_lead_link(doc, method):
 		"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",
 		doc.name,
 	)
+	for qr_name in frappe.db.get_all("CRM Quote Request", {"lead": doc.name}, pluck="name"):
+		frappe.delete_doc("CRM Quote Request", qr_name, force=True, ignore_permissions=True)
 
 
 _ALLOWED_LEAD_STATUS_TRANSITIONS: dict[str, set] = {
