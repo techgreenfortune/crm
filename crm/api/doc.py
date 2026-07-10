@@ -296,6 +296,7 @@ def get_data(
 	kanban_fields: str | list | None = None,
 	view: str | dict | None = None,
 	default_filters: dict | None = None,
+	map_bounds: dict | str | None = None,
 ):
 	custom_view = False
 	filters = frappe._dict(filters)
@@ -344,16 +345,41 @@ def get_data(
 			map_settings = _list.default_map_settings()
 
 		latitude_field = map_settings.get("latitude_field", "custom_latitude")
+		longitude_field = map_settings.get("longitude_field", "custom_longitude")
 		rows = map_settings.get("rows") or default_rows or ["name"]
 
-		# only leads that actually have a latitude populated
-		filters[latitude_field] = ["is", "set"]
+		or_filters = []
+		if map_bounds:
+			map_bounds = frappe.parse_json(map_bounds) if isinstance(map_bounds, str) else map_bounds
+			# scope to the visible map viewport instead of every coordinate-bearing lead.
+			# "between" mishandles Float fields in this Frappe version (only Date/Datetime
+			# get real between support), so express each bound as its own >=/<= tuple —
+			# a dict can't hold two conditions on the same key, hence the list form.
+			filters = convert_filter_to_tuple(doctype, filters)
+			filters.append([doctype, latitude_field, ">=", map_bounds["min_lat"]])
+			filters.append([doctype, latitude_field, "<=", map_bounds["max_lat"]])
+			min_lng, max_lng = map_bounds["min_lng"], map_bounds["max_lng"]
+			if min_lng <= max_lng:
+				filters.append([doctype, longitude_field, ">=", min_lng])
+				filters.append([doctype, longitude_field, "<=", max_lng])
+			else:
+				# Viewport straddles the antimeridian (±180°) — an AND-ed
+				# >=min_lng <=max_lng would express an impossible range and
+				# return zero rows. Express it as an OR group instead.
+				or_filters = [
+					[doctype, longitude_field, ">=", min_lng],
+					[doctype, longitude_field, "<=", max_lng],
+				]
+		else:
+			# only leads that actually have a latitude populated
+			filters[latitude_field] = ["is", "set"]
 
 		data = (
 			frappe.get_list(
 				doctype,
 				fields=rows,
 				filters=filters,
+				or_filters=or_filters,
 				order_by=order_by,
 				page_length=MAP_MARKER_LIMIT,
 			)

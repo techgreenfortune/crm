@@ -9,21 +9,33 @@
       <span>
         {{
           __(
-            'Showing {0} of {1} leads with a location. Refine your filters to see the rest.',
+            'Showing {0} of {1} leads with a location in this area. Zoom in or refine your filters to see the rest.',
             [markers.length, totalWithCoords],
           )
         }}
       </span>
     </div>
 
-    <div v-if="!markers.length" class="flex flex-1 items-center justify-center">
-      <div class="flex flex-col items-center gap-2 text-ink-gray-4">
-        <FeatherIcon name="map-pin" class="h-8 w-8" />
-        <span class="text-base">{{ __('No leads with a location') }}</span>
+    <div class="relative min-h-0 flex-1">
+      <!--
+        Overlay, not a replacement: the map div below stays mounted and
+        interactive underneath so panning/zooming out of an empty patch of
+        the viewport still works. Hiding the map here (e.g. via v-if/v-show)
+        would strand the user with no way back once a bounds-scoped fetch
+        returns zero markers.
+      -->
+      <div
+        v-if="!markers.length"
+        class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+      >
+        <div class="flex flex-col items-center gap-2 text-ink-gray-4">
+          <FeatherIcon name="map-pin" class="h-8 w-8" />
+          <span class="text-base">{{ __('No leads with a location') }}</span>
+        </div>
       </div>
-    </div>
 
-    <div v-show="markers.length" :id="mapId" class="min-h-0 w-full flex-1" />
+      <div :id="mapId" class="h-full w-full" />
+    </div>
   </div>
 </template>
 
@@ -37,6 +49,7 @@ import { usersStore } from '@/stores/users'
 import { statusesStore } from '@/stores/statuses'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDebounceFn } from '@vueuse/core'
 
 const leads = defineModel()
 
@@ -108,7 +121,61 @@ async function initMap() {
 
   markerLayer = new L.FeatureGroup().addTo(mapInstance)
 
+  mapInstance.on('moveend', handleMoveEnd)
+
   renderMarkers()
+}
+
+// ─── Viewport-scoped fetching ─────────────────────────────────────────────
+// Refetch leads scoped to the current map bounds on pan/zoom, so a region
+// stays capped at MAP_MARKER_LIMIT per viewport instead of reusing whatever
+// slice of the original global fetch happened to land there.
+
+// Counter, not a boolean: two programmatic moves (or one overlapping a real
+// user drag) within the same animation window must each consume their own
+// suppression instead of a single flag getting misfired onto the wrong
+// moveend — a boolean can only ever "expect" one pending programmatic move.
+let suppressMoveEndCount = 0
+
+// Monotonic token so overlapping viewport fetches (slow network + a pan past
+// the 400ms debounce window) can't resolve out of order and leave stale
+// markers: if a newer fetch started before this one resolved, its result is
+// stale — re-fetch once more so the latest viewport always wins.
+let fetchToken = 0
+
+async function fetchBoundsData() {
+  if (!mapInstance || !leads.value?.params) return
+
+  const token = ++fetchToken
+  const bounds = mapInstance.getBounds()
+  const sw = bounds.getSouthWest()
+  const ne = bounds.getNorthEast()
+  leads.value.params.map_bounds = {
+    min_lat: sw.lat,
+    max_lat: ne.lat,
+    min_lng: sw.lng,
+    max_lng: ne.lng,
+  }
+  await leads.value.reload()
+  if (token !== fetchToken) {
+    // A newer fetch was issued while this one was in flight — this result
+    // may already be stale. Re-fetch to make sure the latest viewport wins.
+    debouncedFetchBoundsData()
+  }
+}
+const debouncedFetchBoundsData = useDebounceFn(fetchBoundsData, 400)
+
+// Consume the suppress count synchronously on every raw moveend, not inside
+// the debounced fetch — debounce coalesces rapid-fire moveend events into a
+// single deferred call, so if a programmatic move and a real user pan both
+// land within the same 400ms window, checking the flag inside the debounced
+// function would let the suppression swallow the user's own pan too.
+function handleMoveEnd() {
+  if (suppressMoveEndCount > 0) {
+    suppressMoveEndCount -= 1
+    return
+  }
+  debouncedFetchBoundsData()
 }
 
 function popupHtml(row) {
@@ -171,8 +238,15 @@ function renderMarkers() {
   })
 
   mapInstance.invalidateSize()
+
+  // Once a fetch is scoped to the visible viewport (map_bounds set by
+  // onMoveEnd), leave the camera alone — recentering here would yank the
+  // user's own pan/zoom away on every reload.
+  if (leads.value?.params?.map_bounds) return
+
   const bounds = markerLayer.getBounds()
   if (bounds.isValid()) {
+    suppressMoveEndCount += 1
     if (markers.value.length === 1) {
       mapInstance.setView(bounds.getCenter(), 14)
     } else {
@@ -180,6 +254,7 @@ function renderMarkers() {
     }
   } else {
     // Fallback view (India) when there is nothing to show yet.
+    suppressMoveEndCount += 1
     mapInstance.setView([22.97, 78.65], 5)
   }
 }

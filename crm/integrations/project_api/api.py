@@ -157,25 +157,32 @@ def _post_with_retry(url: str, json: dict, headers: dict, timeout: float):
 	return requests.post(url, json=json, headers=headers, timeout=timeout)
 
 
-def _extract_project_id(body: dict) -> tuple[str | None, bool]:
-	"""Return ``(project_id, idempotent)`` from the controller's response shape.
+def _extract_ids(body: dict) -> tuple[str | None, str | None, bool]:
+	"""Return ``(project_id, order_id, idempotent)`` from the controller's response shape.
 
 	V2 public endpoint (project.controller.ts → createProjectPublic) returns:
-	  201 { project: {...}, idempotent: false } on create
-	  200 { project: {...}, idempotent: true  } on retry of a known external_id
+	  201 { project: {...}, order: {...}|null, idempotent: false } on create
+	  200 { project: {...}, order: {...}|null, idempotent: true  } on retry of a known external_id
 
 	We also tolerate the older ``data``-wrapped shape (``{ data: { project: {...},
-	idempotent: bool } }``) in case the response goes through a wrapper layer —
-	cheap forward-compatibility for the transition window.
+	order: {...}, idempotent: bool } }``) in case the response goes through a wrapper
+	layer — cheap forward-compatibility for the transition window.
+
+	``order`` is ``null`` whenever the caller didn't send an order block, or the
+	backend legitimately has nothing to report yet — callers that always send an
+	order block (every CRM handoff does, via ``_build_order_block``) must treat a
+	``None`` order_id here as a failed/incomplete handoff, not a partial success.
 	"""
 	if not isinstance(body, dict):
-		return None, False
+		return None, None, False
 	# Prefer the flat shape; fall back to the wrapped one.
 	scope = body if "project" in body else (body.get("data") or {})
 	project = scope.get("project") or {}
 	pid = project.get("project_id") or project.get("id")
+	order = scope.get("order") or {}
+	oid = order.get("order_id") or order.get("id")
 	idempotent = bool(scope.get("idempotent"))
-	return (str(pid) if pid else None), idempotent
+	return (str(pid) if pid else None), (str(oid) if oid else None), idempotent
 
 
 @frappe.whitelist()
@@ -190,9 +197,14 @@ def create_project_on_won(lead_name: str) -> None:
 	The receiver does a ``timingSafeEqual`` against its ``FRAPPE_CRM_SECRET`` env var;
 	missing/wrong → 401 and the handler logs + drops an audit comment on the lead.
 
-	Idempotency: ``lead.custom_external_project_id`` is the local short-circuit; the
-	backend uses ``external_id=lead.name`` (unique with the source) as the second line
-	of defence and returns 200 + ``idempotent: true`` if it already saw the id.
+	Idempotency: both ``lead.custom_external_project_id`` AND
+	``lead.custom_external_order_id`` must already be set for this to no-op — a
+	lead with a project but no draft order (an interrupted prior handoff) must
+	keep re-firing so it can reach the backend's self-heal path (see
+	``reconcile_missing_draft_order`` for the same recovery, usable even after
+	the lead has already flipped to Won). The backend additionally uses
+	``external_id=lead.name`` (unique with the source) as its own line of
+	defence and returns 200 + ``idempotent: true`` if it already saw the id.
 	"""
 	lead = frappe.get_doc("CRM Lead", lead_name)
 
@@ -200,9 +212,51 @@ def create_project_on_won(lead_name: str) -> None:
 		# Defensive: a stage change between caller's gate and our run.
 		# Skip silently — the caller will surface its own error.
 		return
-	if lead.get("custom_external_project_id"):
+	if lead.get("custom_external_project_id") and lead.get("custom_external_order_id"):
 		return
 
+	_fire_project_handoff(lead)
+
+
+@frappe.whitelist()
+def reconcile_missing_draft_order(lead_name: str) -> None:
+	"""Admin repair tool: re-fire the OpsGate handoff for a lead stuck with a
+	project but no draft order (e.g. a handoff that predates the order-presence
+	hard-gate, or the standalone e2e smoke script having created a project-only
+	row for this external_id).
+
+	Unlike ``create_project_on_won``, this intentionally does NOT require
+	``lead.status == "C4"`` — it must work on leads that already flipped to Won
+	under the old, order-blind code path. It relies on OpsGate's self-heal
+	branch (an existing project for this ``external_id`` gets just its missing
+	draft order created) rather than re-creating the project.
+	"""
+	frappe.only_for(("System Manager", "Administrator"))
+
+	lead = frappe.get_doc("CRM Lead", lead_name)
+
+	if not lead.get("custom_external_project_id"):
+		frappe.throw(
+			frappe._("Lead {0} has no external project id yet — use Create Project instead.").format(
+				lead_name
+			)
+		)
+	if lead.get("custom_external_order_id"):
+		frappe.throw(frappe._("Lead {0} already has a draft order — nothing to reconcile.").format(lead_name))
+
+	_fire_project_handoff(lead)
+
+
+def _fire_project_handoff(lead) -> None:
+	"""Build the OpsGate payload for ``lead`` and POST it, handling the response.
+
+	Shared by ``create_project_on_won`` (first-time handoff at Won) and
+	``reconcile_missing_draft_order`` (repair for a lead that already has a
+	project but is missing its draft order) — both need the exact same
+	payload-building + POST + response-handling logic; only the caller-side
+	guards differ.
+	"""
+	lead_name = lead.name
 	settings = _get_settings()
 	if not settings.enabled:
 		return
@@ -544,11 +598,11 @@ def create_project_on_won(lead_name: str) -> None:
 	except ValueError:
 		body = {}
 
-	project_id, idempotent = _extract_project_id(body)
+	project_id, order_id, idempotent = _extract_ids(body)
 	if not project_id:
 		# 2xx but the response body didn't include a project id in either the
 		# flat (`body.project.project_id`/`id`) or wrapped (`body.data.project.*`)
-		# shape. Log the raw body trimmed to 1KB so we can fix `_extract_project_id`
+		# shape. Log the raw body trimmed to 1KB so we can fix `_extract_ids`
 		# or surface a backend contract drift. Caller (`create_project_for_lead`)
 		# detects the missing id and aborts the Won flip, so this is a recoverable
 		# state — user re-clicks once the shape is reconciled.
@@ -565,6 +619,10 @@ def create_project_on_won(lead_name: str) -> None:
 				f"in response body. Body excerpt: {body_excerpt}"
 			),
 		)
+		# Checkpoint: the throw() below rolls back the request — without this
+		# commit the Error Log entry above (the only diagnostic trail for this
+		# failure) would vanish along with it.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
 		frappe.throw(
 			frappe._(
 				"Project API returned {0} but no project id. Backend may not have "
@@ -573,29 +631,73 @@ def create_project_on_won(lead_name: str) -> None:
 			title=frappe._("Project Handoff Failed"),
 		)
 
-	if project_id:
-		frappe.db.set_value(
-			"CRM Lead",
-			lead_name,
-			"custom_external_project_id",
-			project_id,
+	frappe.db.set_value(
+		"CRM Lead",
+		lead_name,
+		"custom_external_project_id",
+		project_id,
+	)
+	if idempotent:
+		# Backend recognised the external_id from a prior call — useful audit
+		# signal for ops if the local short-circuit (custom_external_project_id)
+		# ever races a manual edit.
+		try:
+			lead.add_comment(
+				"Comment",
+				f"[AUTOMATION] Project API returned existing project "
+				f"(idempotent re-fire); external id: {project_id}.",
+			)
+		except Exception:
+			pass
+
+	# Checkpoint commit: a POST request rolls back everything written since
+	# the last commit if anything downstream throws (frappe/app.py rolls back
+	# on any exception for UNSAFE_HTTP_METHODS). The order-id check below can
+	# throw, which would otherwise silently wipe this project-id write too —
+	# defeating reconcile_missing_draft_order's precondition that it's set.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+	if not order_id:
+		# We always send an order block (`_build_order_block` throws before this
+		# point if the lead has no Quote Request), so a 2xx with no order id back
+		# means the draft order did NOT get created — same failure class as a
+		# missing project id, not a silent partial success. The project id is
+		# already persisted above, so a re-fire (or `reconcile_missing_draft_order`
+		# once the lead is Won) will hit the backend's self-heal branch instead of
+		# re-creating the project.
+		frappe.log_error(
+			title="Project API: draft order not created",
+			message=(
+				f"Lead {lead_name}: HTTP {response.status_code} OK, project id "
+				f"{project_id} committed, but no draft order id in response body. "
+				f"Response: {response.text[:500]}"
+			),
 		)
-		if idempotent:
-			# Backend recognised the external_id from a prior call — useful audit
-			# signal for ops if the local short-circuit (custom_external_project_id)
-			# ever races a manual edit.
-			try:
-				frappe.get_doc(
-					{
-						"doctype": "Comment",
-						"comment_type": "Comment",
-						"reference_doctype": "CRM Lead",
-						"reference_name": lead_name,
-						"content": (
-							f"[AUTOMATION] Project API returned existing project "
-							f"(idempotent re-fire); external id: {project_id}."
-						),
-					}
-				).insert(ignore_permissions=True)
-			except Exception:
-				pass
+		try:
+			lead.add_comment(
+				"Comment",
+				f"[AUTOMATION] External Project created (id: {project_id}) but the "
+				f"draft order was NOT created. Re-click Create Project (or ask an "
+				f"admin to reconcile) once the underlying issue is resolved.",
+			)
+		except Exception:
+			pass
+		# Checkpoint again: the throw() below is about to roll back this
+		# request. Without this commit, the Error Log entry and the Comment
+		# above — the only diagnostic trail for exactly the failure we're
+		# about to report — would vanish along with it.
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+		frappe.throw(
+			frappe._(
+				"Project created (id: {0}) but the draft order was not. Check Error "
+				"Log for the OpsGate response, fix the underlying issue, then retry."
+			).format(project_id),
+			title=frappe._("Draft Order Handoff Failed"),
+		)
+
+	frappe.db.set_value(
+		"CRM Lead",
+		lead_name,
+		"custom_external_order_id",
+		order_id,
+	)
