@@ -9,6 +9,13 @@ from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, REVIEWER_ROLES, 
 _QR_BYPASS_ROLES = TIER1_FULL_RW | {"Estimation Team"}
 
 
+def clear_task_quote_request_link(doc, method):
+	frappe.db.sql(
+		"UPDATE `tabCRM Task` SET quote_request = NULL WHERE quote_request = %s",
+		doc.name,
+	)
+
+
 def _build_lead_updates(qr) -> dict:
 	"""Return CRM Lead custom-field updates from a QR doc or frappe._dict.
 
