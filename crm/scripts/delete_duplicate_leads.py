@@ -129,9 +129,9 @@ def _find_targets():
 	)
 
 
-def _get_connections(lead_name):
+def _get_blocking_connections(lead_name):
+	"""Returns deals + retry logs — these block deletion and require manual review."""
 	return {
-		"qr": frappe.db.get_all("CRM Quote Request", {"lead": lead_name}, pluck="name"),
 		"deal": frappe.db.get_all("CRM Deal", {"lead": lead_name}, pluck="name"),
 		"retry_log": frappe.db.get_all("CRM Retry Log", {"lead": lead_name}, pluck="name"),
 	}
@@ -140,8 +140,9 @@ def _get_connections(lead_name):
 def run(dry_run=False):
 	"""
 	Find target leads by creation timestamp, report connections, then delete.
-	Linked QRs are deleted first; Deals and RetryLogs are reported but leads
-	are still deleted (force=True bypasses link check).
+	Leads with Deal or RetryLog connections are SKIPPED — review manually.
+	Contact.custom_lead clearing and QR deletion happen inside the on_trash hook
+	(crm_lead.py:clear_contact_lead_link), so this function just calls delete_doc.
 	"""
 	targets = _find_targets()
 	print(f"Matched {len(targets)} / {len(_TARGET_CREATIONS)} leads in DB")
@@ -157,47 +158,31 @@ def run(dry_run=False):
 	print()
 
 	deleted = 0
+	skipped = []
 	errors = []
 
 	for lead in targets:
 		name = lead["name"]
-		conn = _get_connections(name)
-		has_conn = conn["qr"] or conn["deal"] or conn["retry_log"]
+		conn = _get_blocking_connections(name)
+		has_blocking = conn["deal"] or conn["retry_log"]
+
+		if has_blocking:
+			skipped.append((name, lead["first_name"], conn))
+			print(
+				f"SKIP {name}  {lead['first_name']!r}"
+				f"  deal={conn['deal']} retry={conn['retry_log']}"
+				" — review manually"
+			)
+			continue
 
 		if dry_run:
-			conn_str = ""
-			if conn["qr"]:
-				conn_str += f" qr={conn['qr']}"
-			if conn["deal"]:
-				conn_str += f" deal={conn['deal']}"
-			if conn["retry_log"]:
-				conn_str += f" retry={conn['retry_log']}"
-			flag = " [HAS CONNECTIONS]" if has_conn else ""
-			print(f"[DRY RUN] {name}  {lead['first_name']!r}{flag}{conn_str}")
+			print(f"[DRY RUN] would delete: {name}  {lead['first_name']!r}")
 			deleted += 1
 			continue
 
 		try:
-			# Delete linked QRs first (they link back to this lead)
-			for qr_name in conn["qr"]:
-				frappe.delete_doc("CRM Quote Request", qr_name, force=True, ignore_permissions=True)
-				print(f"  Deleted QR {qr_name!r} (was linked to {name})")
-
-			# Clear Contact.custom_lead
-			frappe.db.sql(
-				"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",
-				name,
-			)
-
-			# Delete the lead (force=True bypasses remaining link checks for Deal/RetryLog)
 			frappe.delete_doc("CRM Lead", name, force=True, ignore_permissions=True)
 			deleted += 1
-
-			if conn["deal"]:
-				print(f"  NOTE: Deal(s) {conn['deal']} now have dangling lead ref — {name} deleted")
-			if conn["retry_log"]:
-				print(f"  NOTE: RetryLog(s) {conn['retry_log']} now have dangling lead ref — {name} deleted")
-
 		except Exception as exc:
 			frappe.db.rollback()
 			errors.append((name, str(exc)))
@@ -211,6 +196,6 @@ def run(dry_run=False):
 	if not dry_run:
 		frappe.db.commit()
 
-	print(f"\nDone. deleted={deleted} errors={len(errors)}")
+	print(f"\nDone. deleted={deleted} skipped={len(skipped)} errors={len(errors)}")
 	for name, err in errors:
 		print(f"  ERROR {name}: {err[:300]}")

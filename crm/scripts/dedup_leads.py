@@ -178,16 +178,14 @@ def delete_safe_duplicates(dry_run=False):
 			continue
 
 		try:
-			frappe.db.sql(
-				"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",
-				old_name,
-			)
 			frappe.delete_doc("CRM Lead", old_name, force=True, ignore_permissions=True)
 			deleted += 1
 		except Exception as exc:
+			frappe.db.rollback()
 			errors.append((old_name, str(exc)))
+			continue
 
-		if deleted % 100 == 0 and not dry_run:
+		if deleted > 0 and deleted % 100 == 0 and not dry_run:
 			frappe.db.commit()
 			print(f"  ... committed after {deleted} deletes")
 
