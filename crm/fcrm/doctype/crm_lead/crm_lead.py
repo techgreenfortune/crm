@@ -99,6 +99,27 @@ _ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
 	"C7": set(),
 }
 
+
+def clear_contact_lead_link(doc, method):
+	frappe.db.sql(
+		"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",
+		doc.name,
+	)
+	qr_names = frappe.db.get_all("CRM Quote Request", {"lead": doc.name}, pluck="name")
+	if qr_names:
+		if not frappe.has_permission("CRM Quote Request", "delete", raise_exception=False):
+			frappe.throw(
+				frappe._(
+					"Cannot delete this lead — it has linked Quote Requests and you do not have"
+					" permission to delete Quote Requests. Ask a Sales Head or Sales Executive to"
+					" delete the quote requests first."
+				),
+				frappe.PermissionError,
+			)
+		for qr_name in qr_names:
+			frappe.delete_doc("CRM Quote Request", qr_name, force=True, ignore_permissions=True)
+
+
 _ALLOWED_LEAD_STATUS_TRANSITIONS: dict[str, set] = {
 	"Active": {"Cold-Unresponsive", "Archived"},
 	"Cold-Unresponsive": {"Reactivated", "Archived", "Active"},
