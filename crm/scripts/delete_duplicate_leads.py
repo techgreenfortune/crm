@@ -1,14 +1,14 @@
 """
 Delete duplicate + test CRM Leads identified from 'CRM Lead (3).xlsx'.
 
-Two modes:
-    dry_run=True  — find leads, report connections, no changes
-    dry_run=False — delete linked QRs first, clear Contact link, then delete lead
+Timestamps are millisecond-precision Unix ms (derived from IST datetimes in the
+Excel). Matching uses ROUND(UNIX_TIMESTAMP(creation) * 1000) to survive the
+openpyxl ±1ms rounding vs DB microseconds.
 
 Run:
     bench --site crm.indiframe.com execute \
         crm.scripts.delete_duplicate_leads.run \
-        --kwargs '{"dry_run": true}'
+        --kwargs '{"dry_run": True}'
 
     bench --site crm.indiframe.com execute \
         crm.scripts.delete_duplicate_leads.run
@@ -16,121 +16,118 @@ Run:
 
 import frappe
 
-# Creation timestamps from 'dulicates leads' + 'Test leads remove from the crm' sheets.
-# Deduplicated (Siddu Test appeared in both sheets with same timestamp).
-_TARGET_CREATIONS = [
-	"2026-06-06 16:01:20.188000",
-	"2026-06-08 16:50:38.204000",
-	"2026-06-09 21:43:22.716000",
-	"2026-06-10 00:03:36.524000",
-	"2026-06-10 00:52:06.942000",
-	"2026-06-10 14:13:54.085000",
-	"2026-06-10 17:55:00.490000",
-	"2026-06-10 17:59:58.498000",
-	"2026-06-11 12:03:59.347000",
-	"2026-06-11 17:41:25.743000",
-	"2026-06-11 17:41:26.384000",
-	"2026-06-11 17:41:27.630000",
-	"2026-06-11 18:52:04.976000",
-	"2026-06-11 19:30:46.739000",
-	"2026-06-11 21:44:47.013000",
-	"2026-06-12 19:24:36.048000",
-	"2026-06-12 19:37:58.989000",
-	"2026-06-12 19:38:01.047000",
-	"2026-06-16 12:36:39.180000",
-	"2026-06-20 15:46:19.104000",
-	"2026-06-25 15:19:09.409000",
-	"2026-06-26 14:25:32.402000",
-	"2026-06-26 14:25:33.513000",
-	"2026-06-27 14:41:34.585000",
-	"2026-06-27 14:53:11.169000",
-	"2026-06-30 15:04:33.107000",
-	"2026-06-30 23:52:48.472000",
-	"2026-06-30 23:52:49.083000",
-	"2026-07-01 17:47:26.099000",
-	"2026-07-01 17:47:26.399000",
-	"2026-07-01 17:47:26.500000",
-	"2026-07-01 17:47:26.598000",
-	"2026-07-01 17:47:26.699000",
-	"2026-07-01 17:47:26.902000",
-	"2026-07-01 17:47:27.003000",
-	"2026-07-01 17:47:27.371000",
-	"2026-07-01 17:47:27.490000",
-	"2026-07-01 17:47:27.594000",
-	"2026-07-01 17:47:27.696000",
-	"2026-07-01 17:47:27.799000",
-	"2026-07-01 17:47:27.897000",
-	"2026-07-01 17:47:27.995000",
-	"2026-07-01 17:47:28.093000",
-	"2026-07-01 17:47:28.195000",
-	"2026-07-01 17:47:28.298000",
-	"2026-07-01 17:47:28.550000",
-	"2026-07-01 17:47:29.053000",
-	"2026-07-01 17:47:29.457000",
-	"2026-06-04 15:11:05.109000",
-	"2026-06-04 15:11:06.080000",
-	"2026-06-04 15:11:06.731000",
-	"2026-06-04 15:11:07.201000",
-	"2026-06-04 15:11:12.329000",
-	"2026-06-04 15:11:39.334000",
-	"2026-06-04 15:11:55.290000",
-	"2026-06-04 15:12:49.078000",
-	"2026-06-04 15:13:18.345000",
-	"2026-06-04 15:13:24.071000",
-	"2026-06-04 15:14:30.630000",
-	"2026-06-04 18:06:09.840000",
-	"2026-06-04 18:06:10.038000",
-	"2026-06-12 01:52:00.479000",
-	"2026-06-12 19:37:57.994000",
-	"2026-06-20 16:48:14.208000",
-	"2026-06-30 23:52:48.374000",
-	"2026-07-01 11:52:59.041000",
-	"2026-06-04 14:59:05.740000",
-	"2026-06-04 15:11:04.656000",
-	"2026-06-04 15:12:11.358000",
-	"2026-06-04 15:12:54.486000",
-	"2026-06-04 18:06:10.893000",
-	"2026-06-04 18:06:21.072000",
-	"2026-06-04 15:11:07.614000",
-	"2026-06-10 13:44:11.968000",
-	"2026-06-27 15:47:00.526000",
-	"2026-07-01 17:47:28.954000",
-	"2026-06-05 12:00:29.310000",
-	"2026-06-10 15:59:49.411000",
-	"2026-06-11 16:05:44.157000",
-	"2026-06-12 19:37:55.924000",
-	"2026-06-12 19:37:58.696000",
-	# Test leads sheet
-	"2026-06-05 12:05:41.961000",
-	"2026-06-05 12:55:02.957000",
-	"2026-06-11 15:45:27.666000",
-	"2026-06-29 15:12:42.309000",
-	# "2026-06-30 15:04:33.107000",  # already in dulicates leads
-	"2026-07-02 16:04:46.482000",
-	"2026-07-06 18:25:55.909000",
-	"2026-06-04 14:57:48.598000",
-	"2026-06-30 15:08:16.177000",
-	"2026-06-11 14:23:45.585000",
-	"2026-06-11 15:18:23.733000",
-	"2026-06-04 14:57:45.297000",
-	"2026-06-09 14:25:58.545000",
-	"2026-06-12 01:30:04.211000",
+# Millisecond-precision Unix timestamps (IST) from 'dulicates leads' + 'Test leads remove from the crm'.
+# Generated: round(ist_aware.timestamp() * 1000) per row.
+_TARGET_MS = [
+	1780565265297,  # Indiframetestq  mob=8345235664
+	1780565268598,  # Test            mob=9900111222
+	1780565345740,  # Surya           mob=7899083930
+	1780566064656,  # Sekhar          mob=9052228598
+	1780566065109,  # Vamshi          mob=8883999976
+	1780566066080,  # Chandrahas      mob=9505498165
+	1780566066731,  # Nagaraju        mob=9441312449
+	1780566067201,  # Nayan           mob=9908671717
+	1780566067614,  # Shriya          mob=7075743991
+	1780566072329,  # Siva            mob=9849976783
+	1780566099334,  # Venkat          mob=9059019495
+	1780566115290,  # Sreenu          mob=9642354572
+	1780566131358,  # Shankar         mob=9441534746
+	1780566169078,  # KADRU           mob=9440551878
+	1780566174486,  # Sashi           mob=8886813177
+	1780566198345,  # Venkatesh       mob=9391342723
+	1780566204071,  # Balaraju        mob=7396975185
+	1780566270630,  # Karthik         mob=9959602205
+	1780576569840,  # Prakash         mob=9010346631
+	1780576570038,  # Basha           mob=9490888746
+	1780576570893,  # Shaheda         mob=6303342161
+	1780576581072,  # Sharukh         mob=8121235209
+	1780641029310,  # siddu           mob=8686934847
+	1780641341961,  # test-1          mob=6593347093
+	1780644302957,  # Testing order   mob=8383046181
+	1780741880188,  # Hemant          mob=9112012676
+	1780917638204,  # Hemant          mob=9112012676
+	1780995358545,  # Shiva Test      mob=None
+	1781021602716,  # Namita          mob=8806667526
+	1781030016524,  # Manav           mob=9819634377
+	1781032926942,  # Adi             mob=9372673677
+	1781079251968,  # Harika          mob=9640511522
+	1781081034085,  # rahil           mob=9970431118
+	1781087389411,  # Mohan           mob=9822066887
+	1781094300490,  # Rahil Raza      mob=9970431118
+	1781094598498,  # Nitin           mob=7715872233
+	1781159639347,  # Shraddha        mob=9768363672
+	1781168025585,  # Test Lead       mob=9898989898
+	1781171303733,  # Test            mob=9797979797
+	1781172927666,  # Test Lead       mob=7676767676
+	1781174144157,  # Mohan lagdive   mob=9822066887
+	1781179885743,  # LIHAAN          mob=9372673677
+	1781179886384,  # Manav           mob=9819634377
+	1781179887630,  # Namita          mob=8806667526
+	1781184124976,  # Arvind          mob=9004383877
+	1781186446739,  # PRAVIN          mob=9869967106
+	1781194487013,  # Dilip           mob=9820253549
+	1781208004211,  # piyush test     mob=7049216515
+	1781209320479,  # Manish          mob=9765989664
+	1781272476048,  # Mithin          mob=7715872233
+	1781273275924,  # Shraddha Mhadse mob=9768363672
+	1781273277994,  # Dilip Dingankar mob=9820253549
+	1781273278696,  # Pravin          mob=9869967106
+	1781273278989,  # Arvind Bhadekar mob=9004383877
+	1781273281047,  # Manish Tudu     mob=9765989664
+	1781593599180,  # Elara Sculpted Sunlit Villas mob=9908671717
+	1781950579104,  # Ganesh          mob=9603478077
+	1781954294208,  # Acacia homes    mob=9885244427
+	1782380949409,  # shriya with Grill mob=7075743991
+	1782464132402,  # Azim            mob=9820718730
+	1782464133513,  # Azim            mob=9820718730
+	1782551494585,  # Jaleel          mob=9440866853
+	1782552191169,  # suresh kumar    mob=6305767951
+	1782555420526,  # Sashi Kumar     mob=8886813177
+	1782726162309,  # Test            mob=9381560435
+	1782812073107,  # Siddu Test      mob=8686934847
+	1782812296177,  # Test -03        mob=8686934878
+	1782843768374,  # Srinivas        mob=9948141081
+	1782843768472,  # Srinivas        mob=9948141081
+	1782843769083,  # Acacia Homes    mob=9885244427
+	1782886979041,  # Karthik Dasari  mob=9959602205
+	1782908246099,  # Sekhar          mob=9052228598
+	1782908246399,  # Vamsi Krishna   mob=8883999976
+	1782908246500,  # Rishi           mob=9505498165
+	1782908246598,  # Naga            mob=9441312449
+	1782908246699,  # Prakash         mob=9010346631
+	1782908246902,  # Basha           mob=9490888746
+	1782908247003,  # Siva            mob=9849976783
+	1782908247371,  # Syeda           mob=6303342161
+	1782908247490,  # Shankar         mob=9441534746
+	1782908247594,  # Sreenu          mob=9642354572
+	1782908247696,  # Harika          mob=9640511522
+	1782908247799,  # Ganesh          mob=9603478077
+	1782908247897,  # Suresh          mob=6305767951
+	1782908247995,  # Venkata         mob=9059019495
+	1782908248093,  # Krishna         mob=9440551878
+	1782908248195,  # Bala            mob=7396975185
+	1782908248298,  # Venkatesh       mob=9391342723
+	1782908248550,  # Sharuk          mob=8121235209
+	1782908248954,  # Surya           mob=7899083930
+	1782908249053,  # Harika          mob=9640511522
+	1782908249457,  # Jaleel          mob=9440866853
+	1782988486482,  # testing lead    mob=9391901901
+	1783342555909,  # testing lead    mob=8936725284
 ]
 
 
 def _find_targets():
-	placeholders = ", ".join(["%s"] * len(_TARGET_CREATIONS))
+	placeholders = ", ".join(["%s"] * len(_TARGET_MS))
 	return frappe.db.sql(
 		f"SELECT name, first_name, mobile_no, creation FROM `tabCRM Lead`"
-		f" WHERE creation IN ({placeholders})"
+		f" WHERE ROUND(UNIX_TIMESTAMP(creation) * 1000) IN ({placeholders})"
 		f" ORDER BY creation",
-		_TARGET_CREATIONS,
+		_TARGET_MS,
 		as_dict=True,
 	)
 
 
 def _get_blocking_connections(lead_name):
-	"""Returns deals + retry logs — these block deletion and require manual review."""
 	return {
 		"deal": frappe.db.get_all("CRM Deal", {"lead": lead_name}, pluck="name"),
 		"retry_log": frappe.db.get_all("CRM Retry Log", {"lead": lead_name}, pluck="name"),
@@ -139,22 +136,12 @@ def _get_blocking_connections(lead_name):
 
 def run(dry_run=False):
 	"""
-	Find target leads by creation timestamp, report connections, then delete.
+	Find target leads by ms-precision creation timestamp, then delete.
 	Leads with Deal or RetryLog connections are SKIPPED — review manually.
-	Contact.custom_lead clearing and QR deletion happen inside the on_trash hook
-	(crm_lead.py:clear_contact_lead_link), so this function just calls delete_doc.
+	Contact.custom_lead clearing and QR deletion happen inside the on_trash hook.
 	"""
 	targets = _find_targets()
-	print(f"Matched {len(targets)} / {len(_TARGET_CREATIONS)} leads in DB")
-
-	not_found = len(_TARGET_CREATIONS) - len(targets)
-	if not_found:
-		found_ts = {str(r["creation"]) for r in targets}
-		missing = [ts for ts in _TARGET_CREATIONS if ts not in found_ts]
-		print(f"  NOT FOUND ({not_found}):")
-		for ts in missing:
-			print(f"    {ts}")
-
+	print(f"Matched {len(targets)} leads (targeting 94)")
 	print()
 
 	deleted = 0
@@ -176,7 +163,7 @@ def run(dry_run=False):
 			continue
 
 		if dry_run:
-			print(f"[DRY RUN] would delete: {name}  {lead['first_name']!r}")
+			print(f"[DRY RUN] would delete: {name}  {lead['first_name']!r}  {lead['creation']}")
 			deleted += 1
 			continue
 
