@@ -99,6 +99,27 @@ _ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
 	"C7": set(),
 }
 
+
+def clear_contact_lead_link(doc, method):
+	frappe.db.sql(
+		"UPDATE `tabContact` SET custom_lead = NULL WHERE custom_lead = %s",
+		doc.name,
+	)
+	qr_names = frappe.db.get_all("CRM Quote Request", {"lead": doc.name}, pluck="name")
+	if qr_names:
+		if not frappe.has_permission("CRM Quote Request", "delete", raise_exception=False):
+			frappe.throw(
+				frappe._(
+					"Cannot delete this lead — it has linked Quote Requests and you do not have"
+					" permission to delete Quote Requests. Ask a Sales Head or Sales Executive to"
+					" delete the quote requests first."
+				),
+				frappe.PermissionError,
+			)
+		for qr_name in qr_names:
+			frappe.delete_doc("CRM Quote Request", qr_name, force=True, ignore_permissions=True)
+
+
 _ALLOWED_LEAD_STATUS_TRANSITIONS: dict[str, set] = {
 	"Active": {"Cold-Unresponsive", "Archived"},
 	"Cold-Unresponsive": {"Reactivated", "Archived", "Active"},
@@ -369,7 +390,21 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				)
 				is_qr_gate_bypass = bool(user_roles & {"Administrator", "System Manager"})
 
-				if not is_privileged:
+				# Narrow bypass for the public website endpoint's Cold-Unresponsive ->
+				# Reactivated auto-flip (crm/api/website.py) — that runs as Guest, which
+				# is never privileged/owner, so the ownership check below would otherwise
+				# always throw for real production traffic. Scoped tightly to exactly
+				# this transition so it can't be used as a backdoor for other status
+				# changes; does NOT skip the transition-validity check below (still a
+				# legitimate, already-allowed Cold-Unresponsive -> Reactivated move).
+				bypass_reactivation_guard = (
+					self.flags.get("ignore_stage_transition_guard")
+					and not status_changed
+					and old_lead_status == "Cold-Unresponsive"
+					and new_lead_status == "Reactivated"
+				)
+
+				if not is_privileged and not bypass_reactivation_guard:
 					if user_roles & DOWNSTREAM_SCOPE_ROLES:
 						from crm.overrides.crm_lead_permissions import downstream_users
 

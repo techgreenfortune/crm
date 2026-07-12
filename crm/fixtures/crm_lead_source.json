@@ -3,14 +3,6 @@
     "details": null,
     "docstatus": 0,
     "doctype": "CRM Lead Source",
-    "modified": "2026-06-04 12:45:56.792276",
-    "name": "GreenFortune Spotting",
-    "source_name": "GreenFortune Spotting"
-  },
-  {
-    "details": null,
-    "docstatus": 0,
-    "doctype": "CRM Lead Source",
     "modified": "2026-06-04 12:46:09.994624",
     "name": "India Mart",
     "source_name": "India Mart"
@@ -142,13 +134,5 @@
     "modified": "2026-05-08 00:00:00",
     "name": "Lead Spotting",
     "source_name": "Lead Spotting"
-  },
-  {
-    "details": null,
-    "docstatus": 0,
-    "doctype": "CRM Lead Source",
-    "modified": "2026-06-04 12:46:22.364180",
-    "name": "IndiFrame Spotting",
-    "source_name": "IndiFrame Spotting"
   }
 ]

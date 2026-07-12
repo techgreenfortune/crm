@@ -92,7 +92,7 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
             if (err.exc_type == 'TimestampMismatchError') {
               showErrorToastOnce(
                 __(
-                  'This record was updated elsewhere. Refreshing to the latest version — please retry your change.',
+                  'This lead was updated elsewhere. Please refresh and try again.',
                 ),
               )
               documentsCache[doctype]?.[docname || '']?.reload()

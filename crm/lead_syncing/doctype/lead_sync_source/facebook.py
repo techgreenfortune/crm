@@ -5,6 +5,9 @@ from frappe.integrations.utils import make_get_request
 FB_GRAPH_API_BASE = "https://graph.facebook.com"
 FB_GRAPH_API_VERSION = "v23.0"
 
+PAID_LEAD_SOURCE = "Paid"
+DEFAULT_SUB_SOURCE = "Meta Generic"
+
 
 class DuplicateLeadError(ValidationError):
 	pass
@@ -23,16 +26,25 @@ class FacebookSyncSource:
 		access_token: str,
 		form_id: str,
 		source_name: str | None = None,
+		sub_source: str | None = None,
 	):
 		self.access_token = access_token
 		self.form_id = form_id
 		self.source_name = source_name
+		self.sub_source = sub_source
 		self.form_questions_mapping = None
 
 	def get_api_url(self, endpoint: str) -> str:
 		return get_fb_graph_api_url(endpoint)
 
 	def sync(self):
+		if not frappe.db.exists("CRM Lead Source", PAID_LEAD_SOURCE):
+			frappe.log_error(
+				title="Facebook Lead Sync misconfigured",
+				message=f"CRM Lead Source {PAID_LEAD_SOURCE!r} does not exist; aborting sync.",
+			)
+			return
+
 		leads = self.fetch_leads()
 		for lead in leads:
 			self.sync_single_lead(lead)
@@ -44,7 +56,8 @@ class FacebookSyncSource:
 		crm_lead_data = {
 			question_to_field_map.get(k): v for k, v in lead_data.items() if k in question_to_field_map
 		}
-		crm_lead_data["source"] = "Facebook"
+		crm_lead_data["source"] = PAID_LEAD_SOURCE
+		crm_lead_data["custom_sub_source"] = self.sub_source or DEFAULT_SUB_SOURCE
 		crm_lead_data["facebook_lead_id"] = lead["id"]
 		crm_lead_data["facebook_form_id"] = self.form_id
 
