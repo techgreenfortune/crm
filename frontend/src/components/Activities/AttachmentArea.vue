@@ -39,6 +39,15 @@
           </Tooltip>
           <div class="flex gap-1">
             <Button
+              :tooltip="__('Download')"
+              class="!size-5"
+              @click.stop="downloadFile(attachment)"
+            >
+              <template #icon>
+                <FeatherIcon name="download" class="size-3 text-ink-gray-7" />
+              </template>
+            </Button>
+            <Button
               :tooltip="
                 attachment.is_private ? __('Make Public') : __('Make Private')
               "
@@ -91,6 +100,13 @@ const { $dialog } = globalStore()
 
 function openFile(attachment) {
   window.open(attachment.file_url, '_blank')
+}
+
+function downloadFile(attachment) {
+  const a = document.createElement('a')
+  a.href = attachment.file_url
+  a.download = attachment.file_name
+  a.click()
 }
 
 function togglePrivate(fileName, isPrivate) {
