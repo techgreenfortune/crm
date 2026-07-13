@@ -107,7 +107,7 @@ def clear_contact_lead_link(doc, method):
 	)
 	qr_names = frappe.db.get_all("CRM Quote Request", {"lead": doc.name}, pluck="name")
 	if qr_names:
-		if not frappe.has_permission("CRM Quote Request", "delete", raise_exception=False):
+		if not frappe.has_permission("CRM Quote Request", "delete"):
 			frappe.throw(
 				frappe._(
 					"Cannot delete this lead — it has linked Quote Requests and you do not have"
