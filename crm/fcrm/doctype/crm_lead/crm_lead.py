@@ -377,6 +377,11 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			# C6 (Lost) — archive so Lost leads don't pollute Active queries.
 			elif new_status == "C6" and self.lead_status != "Archived":
 				self.lead_status = "Archived"
+			# Reversing OUT of C4/C6 (admin-only) — the Active/Archived
+			# engagement forced on entry no longer applies once the C-stage
+			# itself moves elsewhere; reset to Active like any other C-stage.
+			elif old_status in ("C4", "C6") and new_status not in ("C4", "C6"):
+				self.lead_status = "Active"
 
 			new_lead_status = self.lead_status
 			status_changed = bool(old_status) and old_status != new_status
@@ -388,7 +393,10 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				is_privileged = bool(
 					user_roles & {"Administrator", "System Manager", "Sales Head", "Sales Coordinator"}
 				)
-				is_qr_gate_bypass = bool(user_roles & {"Administrator", "System Manager"})
+				is_admin_bypass = bool(user_roles & {"Administrator", "System Manager"})
+				# Owner gets the same freedom to jump/reverse C-stages on leads they
+				# own — the QR-approval gate below stays admin-only, though.
+				is_owner_bypass = is_admin_bypass or self.lead_owner == user
 
 				# Narrow bypass for the public website endpoint's Cold-Unresponsive ->
 				# Reactivated auto-flip (crm/api/website.py) — that runs as Guest, which
@@ -447,7 +455,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 						if self.lead_owner != user:
 							frappe.throw(_("You can only change the status of leads you own"))
 
-				if not is_qr_gate_bypass:
+				if not is_owner_bypass:
 					if status_changed and old_status in _ALLOWED_STATUS_TRANSITIONS:
 						allowed = set(_ALLOWED_STATUS_TRANSITIONS[old_status])
 						if "Calling Team" in user_roles:
@@ -461,6 +469,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 								_(f"Cannot move engagement from {old_lead_status} to {new_lead_status}")
 							)
 
+				if not is_admin_bypass:
 					if status_changed and old_status == "C2" and new_status == "C4":
 						latest_qr_status = frappe.db.get_value(
 							"CRM Quote Request",
