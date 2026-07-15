@@ -8,6 +8,50 @@ FB_GRAPH_API_VERSION = "v23.0"
 PAID_LEAD_SOURCE = "Paid"
 DEFAULT_SUB_SOURCE = "Meta Generic"
 
+# Meta's standard Lead Ads question keys, mapped to their most common CRM Lead
+# counterpart. Only fires when mapped_to_crm_field would otherwise be blank —
+# never overwrites a value someone already set. Custom (advertiser-typed) questions
+# won't match anything here and stay unmapped, same as before — manual mapping via
+# the Questions grid still works for those.
+STANDARD_QUESTION_FIELD_MAP = {
+	"full_name": "first_name",
+	"first_name": "first_name",
+	"last_name": "last_name",
+	"email": "email",
+	"work_email": "email",
+	"phone_number": "mobile_no",
+	"phone": "mobile_no",
+	"mobile_phone_number": "mobile_no",
+	"city": "custom_city",
+	"state": "custom_state",
+	"zip_code": "custom_pincode",
+	"post_code": "custom_pincode",
+	"company_name": "organization",
+}
+
+
+def _auto_map_questions(questions: list[dict]) -> list[dict]:
+	"""Auto-fill mapped_to_crm_field for recognized standard keys.
+
+	Tracks targets already claimed (by an existing mapping or an earlier question
+	in this same list) so two synonym questions on one form (e.g. "email" and
+	"work_email") never both auto-map to the same CRM field — sync_single_lead's
+	dict comprehension keys by target field name, so a silent collision would
+	drop one answer with no error. Leave the second one unmapped; admin resolves
+	it manually via the Questions grid if needed.
+	"""
+	mapped = []
+	used_targets = {q.get("mapped_to_crm_field") for q in questions if q.get("mapped_to_crm_field")}
+	for q in questions:
+		q = dict(q)
+		if not q.get("mapped_to_crm_field"):
+			guess = STANDARD_QUESTION_FIELD_MAP.get((q.get("key") or "").strip().lower())
+			if guess and guess not in used_targets:
+				q["mapped_to_crm_field"] = guess
+				used_targets.add(guess)
+		mapped.append(q)
+	return mapped
+
 
 class DuplicateLeadError(ValidationError):
 	pass
@@ -146,7 +190,15 @@ class FacebookSyncSource:
 		return frappe.db.get_value("Lead Sync Source", {"facebook_lead_form": self.form_id}, "name")
 
 	def validate_duplicate_lead(self, lead_data: dict, field_mapping: dict):
-		validation_filters = {crm_field: lead_data[crm_field] for crm_field in field_mapping.values()}
+		# field_mapping.values() is every field the FORM has mapped; lead_data only has
+		# keys for fields THIS lead actually answered. A form can have more mapped
+		# fields than a given lead filled in (an optional question left blank), so
+		# filter to fields actually present rather than indexing blindly — auto-mapping
+		# now wires up more optional fields (city/state/company) by default, making an
+		# unanswered-but-mapped field a real, expected case, not just a theoretical one.
+		validation_filters = {
+			crm_field: lead_data[crm_field] for crm_field in field_mapping.values() if crm_field in lead_data
+		}
 		validation_filters["facebook_form_id"] = lead_data["facebook_form_id"]  # only for this campaign
 		if frappe.db.exists("CRM Lead", validation_filters):
 			raise DuplicateLeadError
@@ -212,7 +264,19 @@ def fetch_and_store_leadgen_forms_from_facebook(page_id: str, page_access_token:
 		already_synced = frappe.db.exists("Facebook Lead Form", form_id)
 		if already_synced:
 			continue
-		create_facebook_lead_form_in_db(form, page_id)
+		try:
+			create_facebook_lead_form_in_db(form, page_id)
+		except frappe.ValidationError:
+			# check_mandatory_crm_fields_mapped (facebook_lead_form.py) rejects a form
+			# with no first_name mapping — e.g. a fully custom name question
+			# _auto_map_questions doesn't recognize. One bad form must not abort
+			# discovery for every other page/form in this same token-connect flow;
+			# skip it, log for visibility, admin maps it manually via Desk if needed.
+			frappe.log_error(
+				title="Facebook Lead Form not created",
+				message=f"Form {form_id!r} ({form.get('name')!r}) on page {page_id!r} "
+				f"has no recognized name field mapping; skipped.",
+			)
 
 	return forms
 
@@ -224,7 +288,7 @@ def create_facebook_lead_form_in_db(form: dict, page_id: str) -> None:
 			"form_name": form["name"],
 			"id": form["id"],
 			"page": page_id,
-			"questions": form["questions"],
+			"questions": _auto_map_questions(form["questions"]),
 		}
 	)
 	form_doc.insert(ignore_permissions=True)

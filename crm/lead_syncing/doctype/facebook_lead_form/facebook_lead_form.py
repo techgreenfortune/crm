@@ -34,9 +34,6 @@ class FacebookLeadForm(Document):
 		mandatory_crm_lead_fields = [{"label": "First Name", "fieldname": "first_name"}]
 		mandatory_crm_lead_fieldnames = set(f["fieldname"] for f in mandatory_crm_lead_fields)
 
-		if self.is_new():
-			return
-
 		mapped_fields = set(q.mapped_to_crm_field for q in self.questions)
 		not_mapped = list(mandatory_crm_lead_fieldnames.difference(mapped_fields))
 
