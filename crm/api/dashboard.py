@@ -1500,10 +1500,10 @@ def get_leads_over_time(from_date: str | None = None, to_date: str | None = None
 
 
 # ─── Quotes Sent over time ──────────────────────────────────────────
-# "Quote sent" is proxied by the date the Quote Request was created — a
-# QR is created the moment a sales user requests a quote with intent to
-# send it to the customer.  Estimation typically completes within 24h, so
-# creation date ≈ "quote going to customer" for analytics purposes.
+# "Quote sent" counts UNIQUE LEADS, not QR rows — a lead re-quoted 3x
+# (rejected, rejected, approved) still counts once. The count lands on
+# the date of that lead's FIRST-EVER QR (across all time, not just the
+# window), since re-quotes are revisions of the same "quote sent" event.
 #
 # Hierarchy scope joins back to the parent CRM Lead's lead_owner (NOT the
 # requested_by user on the QR itself — that distinction matters when a
@@ -1511,22 +1511,27 @@ def get_leads_over_time(from_date: str | None = None, to_date: str | None = None
 
 
 def get_quotes_sent_over_time(from_date: str | None = None, to_date: str | None = None, owners=None):
-	"""Daily quote-request creation count, scoped by parent lead's owner."""
+	"""Daily unique-lead quote-sent count, bucketed by each lead's first QR, scoped by lead owner."""
 	from_date, to_date = _date_window(from_date, to_date)
 
-	# Join QR → CRM Lead to filter on lead_owner instead of QR.requested_by.
+	# Join first-QR-per-lead → CRM Lead to filter on lead_owner instead of QR.requested_by.
 	owner_clause = _owner_sql_in(owners, "l.lead_owner")
 	params = {"from_date": from_date, "to_date": to_date}
 
 	rows = frappe.db.sql(  # nosemgrep
 		f"""
-		SELECT DATE(qr.creation) AS date, COUNT(*) AS quotes
-		FROM `tabCRM Quote Request` qr
-		LEFT JOIN `tabCRM Lead` l ON l.name = qr.lead
-		WHERE DATE(qr.creation) BETWEEN %(from_date)s AND %(to_date)s
+		SELECT DATE(first_qr.first_creation) AS date, COUNT(*) AS quotes
+		FROM (
+			SELECT qr.lead AS lead, MIN(qr.creation) AS first_creation
+			FROM `tabCRM Quote Request` qr
+			WHERE qr.lead IS NOT NULL
+			GROUP BY qr.lead
+		) first_qr
+		LEFT JOIN `tabCRM Lead` l ON l.name = first_qr.lead
+		WHERE DATE(first_qr.first_creation) BETWEEN %(from_date)s AND %(to_date)s
 		      {owner_clause}
-		GROUP BY DATE(qr.creation)
-		ORDER BY DATE(qr.creation)
+		GROUP BY DATE(first_qr.first_creation)
+		ORDER BY DATE(first_qr.first_creation)
 		""",
 		params,
 		as_dict=True,
@@ -1537,7 +1542,7 @@ def get_quotes_sent_over_time(from_date: str | None = None, to_date: str | None 
 	return {
 		"data": data,
 		"title": _("Quotes Sent"),
-		"subtitle": _("Daily quote requests created"),
+		"subtitle": _("Daily unique leads first quoted"),
 		"xAxis": {"title": _("Date"), "key": "date", "type": "time", "timeGrain": "day"},
 		"yAxis": {"title": _("Quotes")},
 		"series": [{"name": "quotes", "type": "line", "showDataPoints": True}],
