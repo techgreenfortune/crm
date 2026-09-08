@@ -1,6 +1,8 @@
 import frappe
+import pytz
 from frappe.exceptions import ValidationError
 from frappe.integrations.utils import make_get_request
+from frappe.utils import get_datetime, get_system_timezone
 
 FB_GRAPH_API_BASE = "https://graph.facebook.com"
 FB_GRAPH_API_VERSION = "v23.0"
@@ -57,6 +59,33 @@ class DuplicateLeadError(ValidationError):
 	pass
 
 
+def fb_created_time_to_site_datetime(created_time: str):
+	"""Meta returns an ISO-8601 UTC timestamp (e.g. "2026-09-07T05:23:11+0000").
+	Frappe Datetime fields are naive-local — convert to the site timezone before
+	storing, otherwise the lead's displayed submit time drifts from what Meta shows
+	by the site's UTC offset."""
+	utc_dt = get_datetime(created_time)
+	if utc_dt is None:
+		frappe.throw(frappe._("Invalid Facebook lead created_time: {0}").format(created_time))
+	assert utc_dt is not None
+	if utc_dt.tzinfo is None:
+		utc_dt = pytz.UTC.localize(utc_dt)
+	return utc_dt.astimezone(pytz.timezone(get_system_timezone())).replace(tzinfo=None)
+
+
+def site_datetime_to_utc_timestamp(dt) -> int:
+	"""Inverse of the above, for building the Graph API `GREATER_THAN` filter.
+	Doesn't use frappe.utils.data.get_timestamp — that truncates to midnight
+	(getdate() drops time-of-day) and resolves via the OS/process local timezone,
+	not the site timezone, so it under- or over-shoots the real last-sync instant."""
+	local_dt = get_datetime(dt)
+	if local_dt is None:
+		frappe.throw(frappe._("Invalid last_synced_at value: {0}").format(dt))
+	assert local_dt is not None
+	aware = pytz.timezone(get_system_timezone()).localize(local_dt)
+	return int(aware.astimezone(pytz.UTC).timestamp())
+
+
 def get_fb_graph_api_url(endpoint: str) -> str:
 	if endpoint.startswith("/"):
 		endpoint = endpoint[1:]
@@ -107,7 +136,7 @@ class FacebookSyncSource:
 
 		try:
 			self.validate_duplicate_lead(crm_lead_data, question_to_field_map)
-			return frappe.get_doc(
+			doc = frappe.get_doc(
 				{
 					"doctype": "CRM Lead",
 					**crm_lead_data,
@@ -117,10 +146,39 @@ class FacebookSyncSource:
 			self.create_failure_log(lead, "Duplicate")
 			if raise_exception:
 				raise
+			return None
 		except Exception:
 			self.create_failure_log(lead, traceback=frappe.get_traceback(with_context=True))
 			if raise_exception:
 				raise
+			return None
+
+		if lead.get("created_time"):
+			try:
+				self._backdate_creation(doc, lead["created_time"])
+			except Exception:
+				frappe.log_error(
+					title="Facebook lead backdate failed",
+					message=f"Lead {doc.name} created but creation timestamp not backdated:\n{frappe.get_traceback(with_context=True)}",
+				)
+
+		return doc
+
+	def _backdate_creation(self, doc, fb_created_time: str) -> None:
+		"""`creation` gets stamped to now() unconditionally in
+		Document.set_user_and_timestamp() before db_insert ever runs, so passing
+		`creation` through crm_lead_data on the insert dict has no effect — it's
+		overwritten before the INSERT. Patch it via a direct DB write after insert
+		instead (the standard Frappe data-import pattern); update_modified=False
+		so `modified` still reflects the real sync time, only `creation` (the
+		"Created" column users see) is corrected to Meta's actual submit time."""
+		frappe.db.set_value(
+			"CRM Lead",
+			doc.name,
+			"creation",
+			fb_created_time_to_site_datetime(fb_created_time),
+			update_modified=False,
+		)
 
 	def fetch_leads(self):
 		url = self.get_api_url(f"/{self.form_id}/leads")
@@ -132,7 +190,7 @@ class FacebookSyncSource:
 
 		filtering = []
 		if self.last_synced_at:
-			timestamp = frappe.utils.data.get_timestamp(self.last_synced_at)
+			timestamp = site_datetime_to_utc_timestamp(self.last_synced_at)
 			filtering.append({"field": "time_created", "operator": "GREATER_THAN", "value": timestamp})
 			params["filtering"] = frappe.as_json(filtering)
 
