@@ -619,6 +619,13 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 							frappe.get_doc(
 								{
 									"doctype": "Notification Log",
+									"title": "C7 routing: empty B2F pool",
+									"description": (
+										f"Lead {self.lead_name or self.name} routed to C7 but no B2F "
+										f"users are configured. The Handle Fabricator Lead task is "
+										f"orphaned until a B2F user is added."
+									),
+									"app": "crm",
 									"subject": "C7 routing: empty B2F pool",
 									"email_content": (
 										f"Lead {self.lead_name or self.name} routed to C7 but no B2F "
