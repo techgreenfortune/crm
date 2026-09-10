@@ -494,6 +494,9 @@ def process_quote_request_comment(comment_name: str):
 		notif = frappe.new_doc("Notification Log")
 		notif.update(
 			{
+				"title": subject,
+				"description": message,
+				"app": "crm",
 				"subject": subject,
 				"email_content": message,
 				"for_user": user,
@@ -588,6 +591,9 @@ def notify_role_users(
 		notif = frappe.new_doc("Notification Log")
 		notif.update(
 			{
+				"title": subject,
+				"description": email_content,
+				"app": "crm",
 				"subject": subject,
 				"email_content": email_content,
 				"for_user": user,
