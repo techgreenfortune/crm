@@ -8,6 +8,11 @@
   "enabled",
   "column_break_uxtz",
   "record_call",
+  "softphone_section",
+  "softphone_enabled",
+  "column_break_softphone",
+  "softphone_app_id",
+  "softphone_app_secret",
   "section_break_kfez",
   "account_sid",
   "subdomain",
@@ -75,6 +80,38 @@
    "label": "Record Outgoing Calls"
   },
   {
+   "depends_on": "enabled",
+   "fieldname": "softphone_section",
+   "fieldtype": "Section Break",
+   "label": "Browser Softphone"
+  },
+  {
+   "default": "0",
+   "depends_on": "enabled",
+   "description": "Global kill switch for Exotel browser calling.",
+   "fieldname": "softphone_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Browser Softphone"
+  },
+  {
+   "fieldname": "column_break_softphone",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enabled && doc.softphone_enabled",
+   "fieldname": "softphone_app_id",
+   "fieldtype": "Data",
+   "label": "Softphone App ID",
+   "mandatory_depends_on": "eval:doc.enabled && doc.softphone_enabled"
+  },
+  {
+   "depends_on": "eval:doc.enabled && doc.softphone_enabled",
+   "fieldname": "softphone_app_secret",
+   "fieldtype": "Password",
+   "label": "Softphone App Secret",
+   "mandatory_depends_on": "eval:doc.enabled && doc.softphone_enabled"
+  },
+  {
    "fieldname": "column_break_qwfn",
    "fieldtype": "Column Break"
   },
@@ -96,7 +133,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-02-23 12:31:01.281017",
+ "modified": "2026-09-25 16:26:12.034517",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Exotel Settings",

@@ -117,6 +117,23 @@
       >
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Exotel Browser Softphone') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{ __('Use Chrome audio instead of your mobile for Exotel calls') }}
+          </div>
+        </div>
+        <Switch
+          v-model="telephonyAgent.doc.exotel_softphone_enabled"
+          size="sm"
+        />
+      </div>
+      <div
+        v-if="exotelEnabled"
+        class="flex items-center justify-between gap-8 py-3 pl-2 pr-1"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
             {{ __('Personal Mobile No.') }}
           </div>
           <div class="text-p-sm text-ink-gray-5">
@@ -199,6 +216,7 @@ import {
   FormControl,
   Badge,
   ErrorMessage,
+  Switch,
   createResource,
   toast,
 } from 'frappe-ui'

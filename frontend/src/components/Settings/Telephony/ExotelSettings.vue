@@ -95,6 +95,40 @@
               <Switch v-model="exotel.doc.record_call" size="sm" />
             </div>
           </div>
+          <div class="h-px border-t border-outline-gray-modals" />
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col">
+              <div class="text-p-base font-medium text-ink-gray-7 truncate">
+                {{ __('Browser Softphone') }}
+              </div>
+              <div class="text-p-sm text-ink-gray-5">
+                {{
+                  __(
+                    'Global kill switch for agents enabled to call through Chrome',
+                  )
+                }}
+              </div>
+            </div>
+            <Switch v-model="exotel.doc.softphone_enabled" size="sm" />
+          </div>
+          <div
+            v-if="exotel.doc.softphone_enabled"
+            class="grid grid-cols-2 gap-4"
+          >
+            <FormControl
+              v-model="exotel.doc.softphone_app_id"
+              :label="__('Softphone App ID')"
+              type="text"
+              required
+              autocomplete="off"
+            />
+            <Password
+              v-model="exotel.doc.softphone_app_secret"
+              :label="__('Softphone App Secret')"
+              placeholder="************"
+              required
+            />
+          </div>
         </div>
         <!--  Disabled state -->
         <div v-else class="relative flex h-full w-full justify-center">

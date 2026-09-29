@@ -23,6 +23,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		duration: DF.Duration | None
 		end_time: DF.Datetime | None
 		id: DF.Data | None
+		is_softphone_call: DF.Check
 		links: DF.Table[DynamicLink]
 		medium: DF.Data | None
 		note: DF.Link | None

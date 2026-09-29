@@ -1,9 +1,31 @@
+from zoneinfo import ZoneInfo
+
 import frappe
 import requests
 from frappe import _
 from frappe.integrations.utils import create_request_log
+from frappe.utils import add_to_date, get_datetime, get_system_timezone, now_datetime
+from frappe.utils.data import cstr
 
 from crm.integrations.api import get_contact_by_phone_number
+
+SOFTPHONE_API_BASE = "https://integrationscore.mum1.exotel.com/v2/integrations"
+SOFTPHONE_TOKEN_CACHE_SECONDS = 60 * 60
+# The only usermapping fields the browser needs to register its own SIP device.
+SOFTPHONE_BROWSER_MAPPING_FIELDS = (
+	"AppID",
+	"AppUserId",
+	"SipId",
+	"SipSecret",
+	"ExotelUserName",
+	"ExotelAccountSid",
+)
+SOFTPHONE_DIALS_PER_MINUTE = 10
+
+
+class ExotelDialOutcomeUnknown(frappe.ValidationError):
+	"""Exotel may have placed the call even though its response never arrived."""
+
 
 # Endpoints for webhook
 
@@ -16,8 +38,8 @@ from crm.integrations.api import get_contact_by_phone_number
 
 
 # Incoming Call
-# Security review: guest access is intentional. Exotel webhook authenticated via
-# validate_request() (signature check on AccountSid/CallSid). Reviewed: 2026-06-01.
+# Security review: guest access is intentional. Exotel sends no request signature, so
+# validate_request() only checks a shared `key` query parameter against webhook_verify_token.
 # fmt: off
 @frappe.whitelist(allow_guest=True)  # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 # fmt: on
@@ -40,7 +62,10 @@ def handle_request(**kwargs):
 		if not exotel_settings.enabled:
 			return
 
-		call_payload = kwargs
+		call_payload = normalize_call_payload(kwargs)
+		if call_payload.get("AppUserID"):
+			# Guest webhook: an unverified AppUserID must not become the call's agent.
+			call_payload.AgentEmail = get_softphone_agent_user(call_payload.AppUserID)
 		agent_email = call_payload.get("AgentEmail")
 
 		frappe.logger("exotel").info(
@@ -49,24 +74,43 @@ def handle_request(**kwargs):
 			f"CallSid={call_payload.get('CallSid')}"
 		)
 
-		# Skip "free" status (agent available) before any side-effects.
+		# "free" = agent released. Softphone inbound notifications send it for answered, missed
+		# and rejected calls alike, so the outcome comes from the Calls API instead.
 		status = call_payload.get("Status")
 		if status == "free":
+			if call_payload.get("AppUserID") and frappe.db.exists("CRM Call Log", call_payload.get("CallSid")):
+				frappe.enqueue(
+					"crm.integrations.exotel.handler.reconcile_call_log",
+					call_sid=call_payload.get("CallSid"),
+					created_at=now_datetime(),
+					user="Administrator",
+					enqueue_after_commit=True,
+				)
 			return
 
 		if call_log := get_call_log(call_payload):
 			try:
-				update_call_log(call_payload, call_log=call_log)
+				call_log = update_call_log(call_payload, call_log=call_log)
+				if not call_log:
+					return
 			except Exception:
 				frappe.log_error(title="Error while updating call log")
 		else:
+			if call_payload.get("AppUserID") and not agent_email:
+				frappe.logger("exotel").warning(
+					f"[Exotel] skipped call log create for unknown AppUserID | CallSid={call_payload.get('CallSid')}"
+				)
+				return
+			outgoing = (call_payload.get("Direction") or "").startswith("outbound")
+			status = get_call_log_status(call_payload, call_payload.get("Direction"))
 			call_log = create_call_log(
 				call_id=call_payload.get("CallSid"),
 				from_number=call_payload.get("CallFrom"),
-				to_number=call_payload.get("DialWhomNumber"),
-				medium=call_payload.get("To"),
-				status=get_call_log_status(call_payload),
-				agent=call_payload.get("AgentEmail"),
+				to_number=get_call_log_to_number(call_payload),
+				medium=call_payload.get("VirtualNumber") or call_payload.get("To"),
+				status=status if is_valid_call_log_status(status) else "Ringing",
+				agent=agent_email,
+				call_type="Outgoing" if outgoing else "Incoming",
 			)
 
 		# Publish realtime AFTER DB commit so the call log exists when the
@@ -166,6 +210,358 @@ def make_a_call(
 		return call_details
 
 
+@frappe.whitelist()
+def get_softphone_config():
+	settings = get_exotel_settings()
+	agent = _get_current_softphone_agent()
+	if not settings.enabled or not settings.softphone_enabled or not agent:
+		return {"enabled": False}
+	_require_softphone_agent_setup(agent)
+
+	mapping = _get_softphone_user_mapping(_get_configured_softphone_token(settings), _get_agent_email(agent))
+	if not mapping:
+		frappe.throw(
+			_("No Exotel softphone user is linked to you. Save your Telephony Agent again."),
+			title=_("Softphone Unavailable"),
+		)
+	if cstr(mapping.get("SipId")).strip() != agent.exotel_sip_id:
+		frappe.throw(
+			_("Your Exotel SIP device has changed. Save your Telephony Agent again."),
+			title=_("Softphone Unavailable"),
+		)
+
+	config = {field: mapping.get(field) for field in SOFTPHONE_BROWSER_MAPPING_FIELDS}
+	if not all(config.values()):
+		frappe.log_error(
+			title="Incomplete Exotel softphone user mapping",
+			message=f"Missing: {[field for field, value in config.items() if not value]}",
+		)
+		frappe.throw(_("Exotel returned incomplete softphone details."), title=_("Softphone Unavailable"))
+	return {"enabled": True, **config}
+
+
+@frappe.whitelist(methods=["POST"])
+def make_softphone_call(
+	phone_number: str,
+	reference_doctype: str | None = None,
+	reference_docname: str | None = None,
+):
+	settings = get_exotel_settings()
+	agent = _get_current_softphone_agent()
+	if not settings.enabled or not settings.softphone_enabled or not agent:
+		frappe.throw(_("Exotel browser softphone is not enabled for this user."), frappe.PermissionError)
+	_require_softphone_agent_setup(agent)
+
+	phone_number = cstr(phone_number).strip()
+	if len(last_ten_digits(phone_number)) < 10:
+		frappe.throw(_("Enter a valid phone number to call."))
+	_validate_softphone_reference(reference_doctype, reference_docname)
+	_check_softphone_dial_rate()
+
+	call_sid = _place_softphone_call(settings, agent, phone_number)
+	_create_softphone_call_log(agent, call_sid, phone_number, "Outgoing", reference_doctype, reference_docname)
+	return {"CallSid": call_sid}
+
+
+@frappe.whitelist()
+def register_softphone_call(
+	call_sid: str,
+	phone_number: str,
+	call_type: str,
+	reference_doctype: str | None = None,
+	reference_docname: str | None = None,
+):
+	settings = get_exotel_settings()
+	agent = _get_current_softphone_agent()
+	if not settings.enabled or not settings.softphone_enabled or not agent:
+		frappe.throw(_("Exotel browser softphone is not enabled for this user."), frappe.PermissionError)
+	_require_softphone_agent_setup(agent)
+
+	call_sid = cstr(call_sid).strip()
+	phone_number = cstr(phone_number).strip()
+	if not call_sid or len(call_sid) > 140 or not phone_number:
+		frappe.throw(_("Invalid softphone call details."))
+	# Outgoing logs are created by make_softphone_call from Exotel's own dial response.
+	if call_type != "Incoming":
+		frappe.throw(_("Invalid softphone call type."))
+
+	if existing := frappe.db.exists("CRM Call Log", call_sid):
+		_claim_existing_softphone_call(existing)
+		return {"CallSid": call_sid}
+
+	_validate_softphone_reference(reference_doctype, reference_docname)
+	_create_softphone_call_log(agent, call_sid, phone_number, call_type, reference_doctype, reference_docname)
+	return {"CallSid": call_sid}
+
+
+def _require_softphone_agent_setup(agent):
+	if not agent.exotel_number:
+		frappe.throw(_("Exotel Number is required for browser calling."), title=_("Softphone Unavailable"))
+	if not agent.exotel_sip_id:
+		frappe.throw(
+			_("Save your Telephony Agent again to link your Exotel SIP ID before browser calling."),
+			title=_("Softphone Unavailable"),
+		)
+
+
+def _create_softphone_call_log(agent, call_sid, phone_number, call_type, reference_doctype, reference_docname):
+	outgoing = call_type == "Outgoing"
+	try:
+		create_call_log(
+			call_id=call_sid,
+			from_number=(agent.mobile_no or frappe.session.user) if outgoing else phone_number,
+			to_number=phone_number if outgoing else agent.exotel_number,
+			medium=agent.exotel_number,
+			agent=frappe.session.user,
+			call_type=call_type,
+			reference_doctype=reference_doctype,
+			reference_docname=reference_docname,
+			is_softphone_call=True,
+		)
+	except frappe.DuplicateEntryError:
+		_claim_existing_softphone_call(call_sid)
+
+
+def _check_softphone_dial_rate():
+	# Frappe's rate_limit is keyed by IP, and a whole office dials from one IP.
+	key = frappe.cache.make_key(f"crm:exotel:softphone-dials:{frappe.session.user}")
+	dials = frappe.cache.incrby(key, 1)
+	if dials == 1:
+		frappe.cache.expire(key, 60)
+	if dials > SOFTPHONE_DIALS_PER_MINUTE:
+		frappe.throw(_("Too many calls started in the last minute. Wait a moment."), frappe.RateLimitExceededError)
+
+
+def _place_softphone_call(settings, agent, phone_number):
+	unknown_message = _(
+		"Exotel did not confirm the call. It may still ring: check your call log before dialling again."
+	)
+	try:
+		response = requests.post(
+			f"{SOFTPHONE_API_BASE}/call/outbound_call",
+			headers={"Authorization": _get_configured_softphone_token(settings)},
+			# Same fields the SDK's own MakeCall sends; it never sends a usable customer_id.
+			json={
+				"app_id": cstr(settings.softphone_app_id).strip(),
+				"to": phone_number,
+				"user_id": _get_agent_email(agent),
+			},
+			timeout=10,
+		)
+	except (requests.ConnectTimeout, requests.ConnectionError):
+		frappe.log_error(title="Exotel softphone dial failed")
+		frappe.throw(_("Could not reach Exotel. The call was not placed."))
+	except requests.RequestException:
+		frappe.log_error(title="Exotel softphone dial outcome unknown")
+		frappe.throw(unknown_message, ExotelDialOutcomeUnknown)
+
+	if response.status_code >= 500:
+		frappe.log_error(title="Exotel softphone dial outcome unknown", message=response.text)
+		frappe.throw(unknown_message, ExotelDialOutcomeUnknown)
+	try:
+		payload = response.json()
+	except ValueError:
+		frappe.log_error(title="Exotel softphone dial outcome unknown", message=response.text)
+		frappe.throw(unknown_message, ExotelDialOutcomeUnknown)
+
+	data = payload.get("Data") if isinstance(payload, dict) else None
+	call_sid = cstr((data or {}).get("CallSid")).strip() if isinstance(data, dict) else ""
+	if not response.ok or payload.get("Status") != "Success" or not call_sid:
+		frappe.log_error(title="Exotel softphone dial rejected", message=response.text)
+		frappe.throw(
+			_("Exotel rejected the call: {0}").format(
+				cstr(payload.get("Error") if isinstance(payload, dict) else "") or response.status_code
+			)
+		)
+
+	from_sip = cstr(data.get("FromNumber")).strip()
+	if from_sip and from_sip != agent.exotel_sip_id:
+		frappe.log_error(
+			title="Exotel softphone dial rang another SIP device",
+			message=f"CallSid {call_sid}: expected {agent.exotel_sip_id}, got {from_sip}",
+		)
+		frappe.throw(_("Exotel placed the call on a different SIP device. Contact an administrator."))
+	return call_sid
+
+
+def get_softphone_agent_user(app_user_id):
+	app_user_id = cstr(app_user_id).strip()
+	if not app_user_id:
+		return None
+	user = frappe.db.get_value("User", {"email": app_user_id}, "name")
+	if user and frappe.db.exists("CRM Telephony Agent", {"user": user, "exotel_softphone_enabled": 1}):
+		return user
+	return None
+
+
+def _get_current_softphone_agent():
+	if frappe.session.user == "Guest":
+		return None
+	return frappe.db.get_value(
+		"CRM Telephony Agent",
+		{"user": frappe.session.user, "exotel_softphone_enabled": 1},
+		["user", "mobile_no", "exotel_number", "exotel_sip_id"],
+		as_dict=True,
+	)
+
+
+def ensure_softphone_user_mapping(agent):
+	"""Return the agent's Exotel SIP ID, creating their Integration Core user mapping if missing."""
+	settings = get_exotel_settings()
+	app_id = cstr(settings.softphone_app_id).strip()
+	app_secret = settings.get_password("softphone_app_secret", raise_exception=False)
+	if not settings.softphone_enabled or not app_id or not app_secret:
+		frappe.throw(_("Configure the browser softphone in Exotel Settings before enabling it for an agent."))
+
+	email = _get_agent_email(agent)
+	token = _get_softphone_app_token(app_id, app_secret)
+	mapping = _get_softphone_user_mapping(token, email)
+	if not mapping:
+		if not agent.mobile_no or not agent.exotel_number:
+			frappe.throw(_("Mobile No and Exotel Number are required to enable the browser softphone."))
+		_create_softphone_user_mapping(token, settings, agent, email)
+		mapping = _get_softphone_user_mapping(token, email)
+
+	sip_id = cstr((mapping or {}).get("SipId")).strip()
+	if not sip_id:
+		frappe.throw(
+			_("Exotel user {0} has no SIP device. Add a SIP extension for this user in the Exotel dashboard.").format(
+				email
+			)
+		)
+	return sip_id
+
+
+def _get_softphone_user_mapping(token, email):
+	response = _softphone_request("GET", "/usermapping", token, params={"user_id": email})
+	if response.status_code == 404:
+		return None
+	payload = response.json()
+	# Integration Core also reports "not found" as HTTP 200 with Code 404 in the body.
+	if payload.get("Code") == 404 or not isinstance(payload.get("Data"), dict):
+		return None
+	return payload["Data"]
+
+
+def _get_agent_email(agent):
+	return frappe.db.get_value("User", agent.user, "email") or agent.user
+
+
+def _get_configured_softphone_token(settings):
+	app_id = cstr(settings.softphone_app_id).strip()
+	app_secret = settings.get_password("softphone_app_secret", raise_exception=False)
+	if not app_id or not app_secret:
+		frappe.throw(_("Exotel browser softphone is not configured."), title=_("Softphone Unavailable"))
+	return _get_softphone_app_token(app_id, app_secret)
+
+
+def _create_softphone_user_mapping(token, settings, agent, email):
+	response = _softphone_request(
+		"POST",
+		"/usermapping",
+		token,
+		json=[
+			{
+				"AppUserId": email,
+				"AppUsername": email,
+				"Email": email,
+				"ExotelAccountSid": settings.account_sid,
+				"ExotelUserName": frappe.db.get_value("User", agent.user, "full_name") or email,
+				"AgentNumber": last_ten_digits(agent.mobile_no),
+				"VirtualNumber": agent.exotel_number,
+			}
+		],
+	)
+	# 409 = mapping already exists for this AppUserId/email, which is the state we want.
+	if response.status_code not in (200, 409):
+		frappe.log_error(title="Exotel softphone user mapping failed", message=response.text)
+		frappe.throw(_("Could not create the Exotel softphone user for {0}.").format(email))
+
+
+def _softphone_request(method, path, token, **kwargs):
+	try:
+		response = requests.request(
+			method,
+			f"{SOFTPHONE_API_BASE}{path}",
+			headers={"Authorization": token},
+			timeout=10,
+			**kwargs,
+		)
+	except requests.RequestException:
+		frappe.log_error(title="Exotel softphone request failed")
+		frappe.throw(_("Could not reach Exotel. Try again later."))
+	if response.status_code >= 500:
+		frappe.log_error(title="Exotel softphone request failed", message=response.text)
+		frappe.throw(_("Exotel returned an error. Try again later."))
+	return response
+
+
+def last_ten_digits(number):
+	return "".join(ch for ch in cstr(number) if ch.isdigit())[-10:]
+
+
+def _get_softphone_app_token(app_id: str, app_secret: str):
+	cache_key = f"crm:exotel:softphone-token:{app_id}"
+	if token := frappe.cache().get_value(cache_key):
+		return token
+
+	try:
+		response = requests.post(
+			f"{SOFTPHONE_API_BASE}/token",
+			json={"Id": app_id, "Secret": app_secret, "Entity": "app"},
+			timeout=10,
+		)
+		response.raise_for_status()
+		payload = response.json()
+	except (requests.RequestException, ValueError):
+		frappe.log_error(title="Exotel softphone token request failed")
+		frappe.throw(
+			_("Could not initialize Exotel browser softphone. Try mobile calling or contact an administrator."),
+			title=_("Softphone Unavailable"),
+		)
+
+	token = (
+		payload.get("Data")
+		if isinstance(payload, dict) and payload.get("Status") == "Success"
+		else None
+	)
+	if not isinstance(token, str) or not token:
+		frappe.log_error(title="Invalid Exotel softphone token response")
+		frappe.throw(
+			_("Exotel returned an invalid softphone token response."),
+			title=_("Softphone Unavailable"),
+		)
+
+	frappe.cache().set_value(cache_key, token, expires_in_sec=SOFTPHONE_TOKEN_CACHE_SECONDS)
+	return token
+
+
+def _validate_softphone_reference(reference_doctype, reference_docname):
+	if not reference_doctype and not reference_docname:
+		return
+	if reference_doctype not in {"CRM Lead", "CRM Deal"} or not reference_docname:
+		frappe.throw(_("Invalid call reference."))
+	if not frappe.has_permission(reference_doctype, "read", reference_docname):
+		frappe.throw(_("Not permitted to access this call reference."), frappe.PermissionError)
+
+
+def _validate_softphone_call_owner(call_sid):
+	call_log = frappe.get_doc("CRM Call Log", call_sid)
+	handlers = {handler for handler in (call_log.caller, call_log.receiver) if handler}
+	if handlers and frappe.session.user not in handlers:
+		frappe.throw(_("Not permitted to access this call."), frappe.PermissionError)
+	return handlers
+
+
+def _claim_existing_softphone_call(call_sid):
+	# A webhook can create the log before the browser registers it. The browser still vouched
+	# for this CallSid, so the log gets the same strict SIP verification as one it created.
+	# Logs with no handler are left alone: flagging them would let any agent get them failed.
+	handlers = _validate_softphone_call_owner(call_sid)
+	if frappe.session.user in handlers:
+		frappe.db.set_value("CRM Call Log", call_sid, "is_softphone_call", 1, update_modified=False)
+
+
 def get_exotel_endpoint(action=None, version="v1"):
 	settings = get_exotel_settings()
 	return "https://{api_key}:{api_token}@{subdomain}/{version}/Accounts/{sid}/{action}".format(
@@ -222,6 +618,7 @@ def create_call_log(
 	call_type="Incoming",
 	reference_doctype=None,
 	reference_docname=None,
+	is_softphone_call=False,
 ):
 	call_log = frappe.new_doc("CRM Call Log")
 	call_log.id = call_id
@@ -230,6 +627,7 @@ def create_call_log(
 	call_log.type = call_type
 	call_log.status = status
 	call_log.telephony_medium = "Exotel"
+	call_log.is_softphone_call = 1 if is_softphone_call else 0
 	setattr(call_log, "from", from_number)
 
 	if call_type == "Incoming":
@@ -244,6 +642,10 @@ def create_call_log(
 	else:
 		contact_number = from_number if call_type == "Incoming" else to_number
 		link(contact_number, call_log)
+
+	# reference_doctype defaults to "CRM Lead"; without a docname that is a dangling half-reference.
+	if not call_log.reference_docname:
+		call_log.reference_doctype = None
 
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()
@@ -270,7 +672,80 @@ def get_call_log(call_payload):
 		return frappe.get_doc("CRM Call Log", call_log_id)
 
 
+CALL_LOG_TERMINAL_STATUSES = {"Completed", "Failed", "Busy", "Call Not Answered", "Canceled"}
+
+# Integration Core (softphone) status words. Only "completed" and the active state are confirmed
+# from captured callbacks; the rest follow Exotel's classic Calls API vocabulary.
+INTEGRATION_CORE_STATUS_MAP = {
+	"completed": "Completed",
+	"in-progress": "In Progress",
+	"no-answer": "Call Not Answered",
+	"missed": "Call Not Answered",
+	"busy": "Busy",
+	"failed": "Failed",
+	"canceled": "Canceled",
+	"cancelled": "Canceled",
+}
+
+
+def is_integration_core_payload(call_payload):
+	return any(key in call_payload for key in ("AppUserID", "CallState", "CallStatus"))
+
+
+def normalize_direction(direction):
+	direction = (direction or "").lower()
+	if direction in ("inbound", "incoming"):
+		return "incoming"
+	if direction == "outbound":
+		return "outbound-dial"
+	return direction
+
+
+def normalize_call_payload(call_payload):
+	payload = frappe._dict(call_payload.copy())
+	if not is_integration_core_payload(payload):
+		return payload
+
+	payload.Direction = normalize_direction(payload.get("Direction"))
+	outgoing = payload.Direction.startswith("outbound")
+
+	payload.AgentEmail = payload.get("AgentEmail") or payload.get("AppUserID")
+	payload.CallFrom = payload.get("CallFrom") or payload.get("FromNumber")
+	if outgoing:
+		payload.To = payload.get("ToNumber") or payload.get("To")
+	else:
+		payload.To = payload.get("To") or payload.get("VirtualNumber") or payload.get("ToNumber")
+	payload.RecordingUrl = payload.get("RecordingUrl") or payload.get("CallRecordings")
+	duration = payload.get("ConversationDuration") or payload.get("TotalDuration")
+	payload.ConversationDuration = float(duration) if duration not in (None, "") else 0
+	payload.StartTime = normalize_exotel_datetime(payload.get("StartTime"))
+	payload.EndTime = normalize_exotel_datetime(payload.get("EndTime"))
+
+	status = (payload.get("Status") or payload.get("CallStatus") or "").lower()
+	if not status and payload.get("CallState") == "active":
+		status = "in-progress"
+	payload.Status = status
+	if payload.Direction == "incoming" and status == "busy":
+		# Inbound notifications report agent state: "busy" means the agent is being rung.
+		payload.CallLogStatus = "Ringing"
+	else:
+		payload.CallLogStatus = INTEGRATION_CORE_STATUS_MAP.get(status)
+	return payload
+
+
+def normalize_exotel_datetime(value):
+	if not value:
+		return None
+	value = get_datetime(value)
+	if value.tzinfo:
+		value = value.astimezone(ZoneInfo(get_system_timezone())).replace(tzinfo=None)
+	return value
+
+
 def get_call_log_status(call_payload, direction="inbound"):
+	if "CallLogStatus" in call_payload:
+		return call_payload.CallLogStatus
+
 	if direction == "outbound-api" or direction == "outbound-dial":
 		status = call_payload.get("Status")
 		if status == "completed":
@@ -293,6 +768,9 @@ def get_call_log_status(call_payload, direction="inbound"):
 		status = "Canceled"
 	elif call_type == "incomplete" and status == "failed":
 		status = "Failed"
+	elif call_type == "incomplete" and status == "busy":
+		# Agent declined (Leg CauseCode USER_BUSY); the bare "busy" branch below is a mid-call state.
+		status = "Busy"
 	elif call_type == "completed":
 		status = "Completed"
 	elif status == "busy":
@@ -301,31 +779,241 @@ def get_call_log_status(call_payload, direction="inbound"):
 	return status or "Ringing"
 
 
+RECONCILE_MIN_AGE_MINUTES = 5
+RECONCILE_MAX_AGE_DAYS = 7
+RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES = 60
+RECONCILE_BATCH_SIZE = 50
+# Exotel publishes recordings a few minutes after the call (RecordingAvailableBy); calls without
+# recording enabled never get one, so stop looking after this window.
+RECONCILE_RECORDING_WINDOW_HOURS = 2
+CALLS_API_STATUS_MAP = {**INTEGRATION_CORE_STATUS_MAP, "ringing": "Ringing", "queued": "Queued"}
+CALL_API_FINAL_STATUSES = {"completed", "no-answer", "busy", "failed", "canceled"}
+
+
+def reconcile_stale_call_logs():
+	"""Complete Exotel call logs whose status webhooks never arrived, using the Calls API."""
+	if not frappe.db.get_single_value("CRM Exotel Settings", "enabled"):
+		return
+
+	from frappe.utils.file_lock import LockTimeoutError
+	from frappe.utils.synchronization import filelock
+
+	try:
+		with filelock("exotel_call_log_reconcile", timeout=1):
+			_reconcile_stale_call_logs()
+	except LockTimeoutError:
+		return
+
+
+def _reconcile_stale_call_logs():
+	now = now_datetime()
+	min_age = add_to_date(now, minutes=-RECONCILE_MIN_AGE_MINUTES)
+	stale_logs = frappe.get_all(
+		"CRM Call Log",
+		filters={
+			"telephony_medium": "Exotel",
+			# Failed logs have no end_time by nature (incl. ones this job failed for missing calls).
+			"status": ["!=", "Failed"],
+			"creation": ["between", [add_to_date(now, days=-RECONCILE_MAX_AGE_DAYS), min_age]],
+		},
+		# Terminal logs still qualify while end_time is missing: a Passthru can finish a call
+		# with Exotel's epoch EndTime placeholder, and only the Calls API has the real one.
+		or_filters={
+			"status": ["in", ["Initiated", "Ringing", "In Progress", "Queued"]],
+			"end_time": ["is", "not set"],
+		},
+		fields=["name", "creation"],
+		order_by="creation asc",
+		limit=RECONCILE_BATCH_SIZE,
+	)
+	awaiting_recording = frappe.get_all(
+		"CRM Call Log",
+		filters={
+			"telephony_medium": "Exotel",
+			"status": "Completed",
+			"recording_url": ["is", "not set"],
+			"creation": ["between", [add_to_date(now, hours=-RECONCILE_RECORDING_WINDOW_HOURS), min_age]],
+		},
+		fields=["name", "creation"],
+		order_by="creation asc",
+		limit=RECONCILE_BATCH_SIZE,
+	)
+	# One Calls API budget per run across both selections.
+	batch = list({log.name: log for log in stale_logs + awaiting_recording}.values())[:RECONCILE_BATCH_SIZE]
+	for log in batch:
+		try:
+			reconcile_call_log(log.name, log.creation)
+		except Exception:
+			frappe.db.rollback()
+			frappe.log_error(title=f"Exotel call log reconcile failed: {log.name}")
+
+
+def reconcile_call_log(call_sid, created_at):
+	call = fetch_exotel_call(call_sid)
+	if call is None:
+		if created_at < add_to_date(now_datetime(), minutes=-RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES):
+			frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
+			frappe.db.commit()  # nosemgrep: frappe-manual-commit
+			frappe.log_error(
+				title="Exotel call not found during reconcile",
+				message=f"CRM Call Log {call_sid} has no matching Exotel call; marked Failed.",
+			)
+		return
+
+	if not softphone_call_matches_log(call_sid, call):
+		frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit
+		frappe.log_error(
+			title="Exotel softphone call does not match its call log",
+			message=f"CRM Call Log {call_sid}: Exotel From={call.get('From')} To={call.get('To')}; marked Failed.",
+		)
+		return
+
+	# Exotel fills Duration/EndTime/leg details asynchronously (~2 min after the call ends). Deciding
+	# before then could lock an answered call as missed, so wait for a later run.
+	if (call.get("Status") or "").lower() in CALL_API_FINAL_STATUSES and not call.get("EndTime"):
+		return
+
+	details = call.get("Details") or {}
+	duration = details.get("ConversationDuration")
+	payload = frappe._dict(
+		CallSid=call_sid,
+		Direction=normalize_direction(call.get("Direction")),
+		CallLogStatus=get_calls_api_call_log_status(call),
+		ConversationDuration=duration if duration is not None else call.get("Duration"),
+		StartTime=call.get("StartTime") or None,
+		EndTime=call.get("EndTime") or None,
+		RecordingUrl=call.get("RecordingUrl"),
+	)
+	update_call_log(payload)
+
+
+def softphone_call_matches_log(call_sid, call):
+	"""Check a browser-registered log against Exotel's record of the call.
+
+	The browser supplies the CallSid and number, so such a log must match a SIP leg of the
+	registering agent. Server-created logs (webhooks, click-to-call) are trusted.
+	"""
+	log = frappe.db.get_value(
+		"CRM Call Log", call_sid, ["type", "caller", "receiver", "to", "is_softphone_call"], as_dict=True
+	)
+	if not log or not log.is_softphone_call:
+		return True
+	agent = log.caller if log.type == "Outgoing" else log.receiver
+	expected_sip = cstr(frappe.db.get_value("CRM Telephony Agent", {"user": agent}, "exotel_sip_id")).lower()
+	caller_leg, callee_leg = cstr(call.get("From")).lower(), cstr(call.get("To")).lower()
+	if not expected_sip:
+		return False
+	if log.type == "Outgoing":
+		return caller_leg == expected_sip and last_ten_digits(callee_leg) == last_ten_digits(log.to)
+	return callee_leg == expected_sip
+
+
+def get_calls_api_call_log_status(call):
+	status = (call.get("Status") or "").lower()
+	if normalize_direction(call.get("Direction")) != "incoming" or status != "completed":
+		return CALLS_API_STATUS_MAP.get(status)
+
+	# An inbound call is "completed" from the caller's side even when no agent picked up;
+	# the agent leg (Leg2) and conversation time say whether it was actually answered.
+	details = call.get("Details") or {}
+	conversation = details.get("ConversationDuration") or 0
+	agent_leg = (details.get("Leg2Status") or "").lower()
+	if agent_leg == "completed" or float(conversation) > 0:
+		return "Completed"
+	# Agent rejected in the softphone; shown as "Declined" in the UI, separate from a missed call.
+	if agent_leg == "busy":
+		return "Busy"
+	return "Call Not Answered"
+
+
+def fetch_exotel_call(call_sid):
+	response = requests.get(get_exotel_endpoint(f"Calls/{call_sid}.json?details=true"), timeout=10)
+	if response.status_code == 404:
+		return None
+	response.raise_for_status()
+	return response.json().get("Call")
+
+
+def get_call_log_to_number(call_payload):
+	# For inbound calls DialWhomNumber is the agent's device (e.g. a SIP ID), not the number dialled.
+	if (call_payload.get("Direction") or "").startswith("outbound"):
+		return call_payload.get("DialWhomNumber") or call_payload.get("To")
+	return call_payload.get("To")
+
+
+def valid_exotel_end_time(value):
+	# Flow Passthru sends the Unix epoch (rendered in IST) as EndTime while the call is wrapping up.
+	if not value or str(value).startswith("1970-01-01"):
+		return None
+	return value
+
+
+def is_valid_call_log_status(status):
+	options = frappe.get_meta("CRM Call Log").get_field("status").options or ""
+	return bool(status) and status in options.split("\n")
+
+
 def update_call_log(call_payload, call_log=None):
 	direction = call_payload.get("Direction")
 	call_log = call_log or get_call_log(call_payload)
 	status = get_call_log_status(call_payload, direction)
-	if call_log:
-		call_log.status = status
-		# resetting this because call might be redirected to other number
-		call_log.to = call_payload.get("DialWhomNumber") or call_payload.get("To")
-		call_log.duration = (
-			call_payload.get("DialCallDuration") or call_payload.get("ConversationDuration") or 0
+	if not call_log:
+		return
+
+	if not is_valid_call_log_status(status):
+		frappe.logger("exotel").warning(
+			f"[Exotel] ignoring unknown status {status!r} for CallSid={call_payload.get('CallSid')}"
 		)
+		status = None
 
-		# Only set recording_url when Exotel provides one — never overwrite
-		# an existing URL with an empty string from an intermediate event.
-		if call_payload.get("RecordingUrl"):
-			call_log.recording_url = call_payload.get("RecordingUrl")
+	updates = {
+		"status": status,
+		"to": get_call_log_to_number(call_payload),
+		# DialCallDuration includes ring time; the dialled leg's OnCallDuration is talk time.
+		"duration": 0
+		if call_payload.get("CallType") == "incomplete"
+		else call_payload.get("Legs[0][OnCallDuration]")
+		or call_payload.get("DialCallDuration")
+		or call_payload.get("ConversationDuration")
+		or 0,
+		"start_time": call_payload.get("StartTime"),
+		"end_time": valid_exotel_end_time(call_payload.get("EndTime")),
+	}
 
-		call_log.start_time = call_payload.get("StartTime")
-		call_log.end_time = call_payload.get("EndTime")
+	# Only set recording_url when Exotel provides one — never overwrite
+	# an existing URL with an empty string from an intermediate event.
+	if call_payload.get("RecordingUrl"):
+		updates["recording_url"] = call_payload.get("RecordingUrl")
 
-		if direction == "incoming" and call_payload.get("AgentEmail"):
-			call_log.receiver = call_payload.get("AgentEmail")
+	if direction == "incoming" and call_payload.get("AgentEmail"):
+		updates["receiver"] = call_payload.get("AgentEmail")
 
-		call_log.save(ignore_permissions=True)
-		# Webhook handler runs outside request transaction; explicit commit so call log
-		# survives downstream errors in subsequent processing.
-		frappe.db.commit()  # nosemgrep: frappe-manual-commit
-		return call_log
+	# Exotel retries and reorders callbacks, so a stale "answered" can arrive after "completed".
+	# A terminal log keeps its status and number; later callbacks may only fill gaps.
+	terminal = call_log.status in CALL_LOG_TERMINAL_STATUSES
+	if terminal:
+		updates = {
+			field: value
+			for field, value in updates.items()
+			if field not in ("status", "to", "receiver") and not call_log.get(field) and value
+		}
+
+	changed = False
+	for field, value in updates.items():
+		if value is None:
+			continue
+		current_value = call_log.get(field)
+		if current_value == value or str(current_value or "") == str(value or ""):
+			continue
+		call_log.set(field, value)
+		changed = True
+
+	if not changed:
+		return
+
+	call_log.save(ignore_permissions=True)
+	# Webhook handler runs outside request transaction; explicit commit so call log
+	# survives downstream errors in subsequent processing.
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+	return call_log
