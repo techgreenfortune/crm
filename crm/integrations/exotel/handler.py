@@ -83,7 +83,6 @@ def handle_request(**kwargs):
 					"crm.integrations.exotel.handler.reconcile_call_log",
 					call_sid=call_payload.get("CallSid"),
 					created_at=now_datetime(),
-					user="Administrator",
 					enqueue_after_commit=True,
 				)
 			return
@@ -318,7 +317,12 @@ def _create_softphone_call_log(agent, call_sid, phone_number, call_type, referen
 			reference_docname=reference_docname,
 			is_softphone_call=True,
 		)
-	except frappe.DuplicateEntryError:
+	# MariaDB reports a concurrent insert of the same CallSid as error 1020, which Frappe raises
+	# as QueryDeadlockError rather than DuplicateEntryError.
+	except (frappe.DuplicateEntryError, frappe.QueryDeadlockError):
+		frappe.db.rollback()
+		if not frappe.db.exists("CRM Call Log", call_sid):
+			raise
 		_claim_existing_softphone_call(call_sid)
 
 
@@ -348,9 +352,10 @@ def _place_softphone_call(settings, agent, phone_number):
 			},
 			timeout=10,
 		)
-	except (requests.ConnectTimeout, requests.ConnectionError):
+	except requests.ConnectTimeout:
 		frappe.log_error(title="Exotel softphone dial failed")
 		frappe.throw(_("Could not reach Exotel. The call was not placed."))
+	# Any other failure, including a connection reset, can happen after Exotel accepted the dial.
 	except requests.RequestException:
 		frappe.log_error(title="Exotel softphone dial outcome unknown")
 		frappe.throw(unknown_message, ExotelDialOutcomeUnknown)
@@ -644,8 +649,10 @@ def create_call_log(
 		link(contact_number, call_log)
 
 	# reference_doctype defaults to "CRM Lead"; without a docname that is a dangling half-reference.
+	# insert() re-applies defaults to empty fields unless they are listed in dont_update_if_missing.
 	if not call_log.reference_docname:
 		call_log.reference_doctype = None
+		call_log.dont_update_if_missing.append("reference_doctype")
 
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()
@@ -681,6 +688,8 @@ INTEGRATION_CORE_STATUS_MAP = {
 	"in-progress": "In Progress",
 	"no-answer": "Call Not Answered",
 	"missed": "Call Not Answered",
+	# Outbound customer leg that never connected; Exotel sends it for rejected calls too.
+	"to_leg_unanswered": "Call Not Answered",
 	"busy": "Busy",
 	"failed": "Failed",
 	"canceled": "Canceled",

@@ -35,9 +35,9 @@ CAPTURED_OUTBOUND_TERMINAL = {
 	"EndTime": "2026-09-28T14:31:29+05:30",
 	"FromNumber": "sip:agentsip",
 	"StartTime": "2026-09-28T14:31:08+05:30",
-	"ToNumber": "09370844535",
+	"ToNumber": "09000000002",
 	"TotalDuration": "10",
-	"VirtualNumber": "+914069326588",
+	"VirtualNumber": "+914000000001",
 }
 
 # Inbound Integration Core notification captured on 2026-09-29; identical shape for answered,
@@ -53,11 +53,11 @@ CAPTURED_INBOUND_NOTIFICATION = {
 	"DialWhomNumber": "sip:agentsip",
 	"Direction": "incoming",
 	"EndTime": "",
-	"FromNumber": "08383046181",
+	"FromNumber": "09000000001",
 	"StartTime": "",
-	"ToNumber": "04069326588",
+	"ToNumber": "04000000001",
 	"TotalDuration": 0,
-	"VirtualNumber": "04069326588",
+	"VirtualNumber": "04000000001",
 }
 
 
@@ -121,18 +121,26 @@ class TestExotelSoftphone(FrappeTestCase):
 		self.assertEqual(payload.CallLogStatus, "Completed")
 		self.assertEqual(payload.Direction, "outbound-dial")
 		self.assertEqual(payload.CallFrom, "sip:agentsip")
-		self.assertEqual(payload.To, "09370844535")
+		self.assertEqual(payload.To, "09000000002")
 		self.assertEqual(payload.ConversationDuration, 10.0)
 		self.assertEqual(payload.RecordingUrl, "https://recording.example/call.mp3")
+
+	def test_outbound_customer_leg_unanswered_is_not_answered(self):
+		# Captured 2026-09-30 for both a rejected and an unanswered outbound call.
+		payload = normalize_call_payload(
+			{**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "to_leg_unanswered", "TotalDuration": 0}
+		)
+
+		self.assertEqual(payload.CallLogStatus, "Call Not Answered")
 
 	def test_normalizes_inbound_direction_and_keeps_exophone_as_to(self):
 		for direction in ("inbound", "incoming"):
 			payload = normalize_call_payload(
-				dict(CAPTURED_OUTBOUND_TERMINAL, Direction=direction, FromNumber="09370844535")
+				dict(CAPTURED_OUTBOUND_TERMINAL, Direction=direction, FromNumber="09000000002")
 			)
 			self.assertEqual(payload.Direction, "incoming")
-			self.assertEqual(payload.CallFrom, "09370844535")
-			self.assertEqual(payload.To, "+914069326588")
+			self.assertEqual(payload.CallFrom, "09000000002")
+			self.assertEqual(payload.To, "+914000000001")
 
 	def test_classic_payload_passes_through_unchanged(self):
 		classic = {"CallSid": "sid", "Direction": "outbound-api", "Status": "completed", "To": "9123456789"}
@@ -191,7 +199,7 @@ class TestExotelSoftphone(FrappeTestCase):
 
 	@patch("crm.integrations.exotel.handler.frappe.db.commit")
 	def test_terminal_call_log_accepts_late_enrichment(self, commit):
-		call_log = fake_call_log(status="Completed", duration=0, recording_url=None, to="09370844535")
+		call_log = fake_call_log(status="Completed", duration=0, recording_url=None, to="09000000002")
 
 		result = update_call_log(
 			frappe._dict(
@@ -199,14 +207,14 @@ class TestExotelSoftphone(FrappeTestCase):
 				CallLogStatus="Call Not Answered",
 				ConversationDuration=10,
 				RecordingUrl="https://recording.example/call.mp3",
-				To="+914069326588",
+				To="+914000000001",
 			),
 			call_log=call_log,
 		)
 
 		self.assertIs(result, call_log)
 		self.assertEqual(call_log.status, "Completed")
-		self.assertEqual(call_log.to, "09370844535")
+		self.assertEqual(call_log.to, "09000000002")
 		self.assertEqual(call_log.duration, 10)
 		self.assertEqual(call_log.recording_url, "https://recording.example/call.mp3")
 		call_log.save.assert_called_once()
@@ -275,7 +283,7 @@ class TestExotelSoftphone(FrappeTestCase):
 
 		self.assertEqual(payload.Direction, "incoming")
 		self.assertEqual(payload.CallLogStatus, "Ringing")
-		self.assertEqual(payload.CallFrom, "08383046181")
+		self.assertEqual(payload.CallFrom, "09000000001")
 
 	def test_inbound_outcome_comes_from_agent_leg(self):
 		# Captured 2026-09-29: missed, rejected and answered all report top-level "completed".
@@ -359,13 +367,13 @@ class TestExotelSoftphone(FrappeTestCase):
 	def test_inbound_to_is_exophone_not_agent_device(self):
 		from crm.integrations.exotel.handler import get_call_log_to_number
 
-		inbound_passthru = {"Direction": "incoming", "DialWhomNumber": "sip:agentsip", "To": "04069326588"}
+		inbound_passthru = {"Direction": "incoming", "DialWhomNumber": "sip:agentsip", "To": "04000000001"}
 		inbound_notification = normalize_call_payload(CAPTURED_INBOUND_NOTIFICATION)
-		outbound = {"Direction": "outbound-api", "DialWhomNumber": "", "To": "09370844535"}
+		outbound = {"Direction": "outbound-api", "DialWhomNumber": "", "To": "09000000002"}
 
-		self.assertEqual(get_call_log_to_number(inbound_passthru), "04069326588")
-		self.assertEqual(get_call_log_to_number(inbound_notification), "04069326588")
-		self.assertEqual(get_call_log_to_number(outbound), "09370844535")
+		self.assertEqual(get_call_log_to_number(inbound_passthru), "04000000001")
+		self.assertEqual(get_call_log_to_number(inbound_notification), "04000000001")
+		self.assertEqual(get_call_log_to_number(outbound), "09000000002")
 
 	@patch("crm.integrations.exotel.handler.reconcile_call_log")
 	@patch("crm.integrations.exotel.handler.frappe.get_all", return_value=[])
@@ -407,7 +415,7 @@ SOFTPHONE_SETTINGS = SimpleNamespace(
 	account_sid="acct",
 	get_password=lambda field, raise_exception=True: "app-secret",
 )
-AGENT = frappe._dict(user="agent@example.com", mobile_no="+91 83830 46181", exotel_number="04069326588")
+AGENT = frappe._dict(user="agent@example.com", mobile_no="+91 90000 00001", exotel_number="04000000001")
 
 
 class TestExotelSoftphoneProvisioning(FrappeTestCase):
@@ -439,8 +447,8 @@ class TestExotelSoftphoneProvisioning(FrappeTestCase):
 		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
 		body = request.call_args_list[1].kwargs["json"][0]
 		self.assertEqual(body["AppUserId"], "agent@example.com")
-		self.assertEqual(body["AgentNumber"], "8383046181")
-		self.assertEqual(body["VirtualNumber"], "04069326588")
+		self.assertEqual(body["AgentNumber"], "9000000001")
+		self.assertEqual(body["VirtualNumber"], "04000000001")
 
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
@@ -468,57 +476,75 @@ class TestExotelSoftphoneCallVerification(FrappeTestCase):
 		log = {
 			"type": "Outgoing",
 			"caller": "agent@example.com",
-			"to": "+919370844535",
+			"to": "+919000000002",
 			"is_softphone_call": 1,
 		}
-		self.assertTrue(self._check(log, {"From": "sip:agentsip", "To": "09370844535"}))
+		self.assertTrue(self._check(log, {"From": "sip:agentsip", "To": "09000000002"}))
 
 	def test_outbound_from_another_agents_sip_fails(self):
-		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09370844535", "is_softphone_call": 1}
-		self.assertFalse(self._check(log, {"From": "sip:someoneelse", "To": "09370844535"}))
+		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09000000002", "is_softphone_call": 1}
+		self.assertFalse(self._check(log, {"From": "sip:someoneelse", "To": "09000000002"}))
 
 	def test_outbound_to_a_different_number_fails(self):
-		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09370844535", "is_softphone_call": 1}
+		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09000000002", "is_softphone_call": 1}
 		self.assertFalse(self._check(log, {"From": "sip:agentsip", "To": "09999999999"}))
 
 	def test_inbound_must_ring_the_receivers_sip(self):
 		log = {
 			"type": "Incoming",
 			"receiver": "agent@example.com",
-			"to": "04069326588",
+			"to": "04000000001",
 			"is_softphone_call": 1,
 		}
-		self.assertTrue(self._check(log, {"From": "08383046181", "To": "sip:agentsip"}))
-		self.assertFalse(self._check(log, {"From": "08383046181", "To": "sip:someoneelse"}))
+		self.assertTrue(self._check(log, {"From": "09000000001", "To": "sip:agentsip"}))
+		self.assertFalse(self._check(log, {"From": "09000000001", "To": "sip:someoneelse"}))
 
 	def test_browser_log_pointing_at_a_non_sip_call_fails(self):
 		# A spoofed CallSid of an unrelated click-to-call has phone-number legs only.
-		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09370844535", "is_softphone_call": 1}
-		self.assertFalse(self._check(log, {"From": "08383046181", "To": "09370844535"}))
+		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09000000002", "is_softphone_call": 1}
+		self.assertFalse(self._check(log, {"From": "09000000001", "To": "09000000002"}))
 
 	def test_browser_log_without_agent_sip_id_fails(self):
-		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09370844535", "is_softphone_call": 1}
-		self.assertFalse(self._check(log, {"From": "sip:agentsip", "To": "09370844535"}, sip=None))
+		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09000000002", "is_softphone_call": 1}
+		self.assertFalse(self._check(log, {"From": "sip:agentsip", "To": "09000000002"}, sip=None))
 
 	def test_server_created_logs_are_trusted(self):
-		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09370844535", "is_softphone_call": 0}
-		self.assertTrue(self._check(log, {"From": "08383046181", "To": "09370844535"}))
+		log = {"type": "Outgoing", "caller": "agent@example.com", "to": "09000000002", "is_softphone_call": 0}
+		self.assertTrue(self._check(log, {"From": "09000000001", "To": "09000000002"}))
 
 
 class TestExotelCallLogReference(FrappeTestCase):
 	@patch("crm.integrations.exotel.handler.frappe.db.commit")
 	@patch("crm.integrations.exotel.handler.link")
-	@patch("crm.integrations.exotel.handler.frappe.new_doc")
-	def test_unmatched_call_does_not_keep_default_reference_doctype(self, new_doc, _link, _commit):
+	def test_unmatched_call_does_not_keep_default_reference_doctype(self, _link, _commit):
 		from crm.integrations.exotel.handler import create_call_log
 
-		call_log = frappe._dict(reference_doctype="CRM Lead", reference_docname=None)
-		call_log.save = MagicMock()
-		new_doc.return_value = call_log
+		# A real insert: Frappe re-applies DocType defaults on insert, which a mocked doc hides.
+		create_call_log("test-unmatched-sid", "09000000001", "04000000001", "04000000001", "Administrator")
 
-		create_call_log("sid", "08383046181", "04069326588", "04069326588", "agent@example.com")
+		self.assertFalse(frappe.db.get_value("CRM Call Log", "test-unmatched-sid", "reference_doctype"))
 
-		self.assertIsNone(call_log.reference_doctype)
+
+class TestExotelSoftphoneConcurrentInsert(FrappeTestCase):
+	@patch("crm.integrations.exotel.handler._claim_existing_softphone_call")
+	@patch("crm.integrations.exotel.handler.frappe.db.exists", return_value="call-sid")
+	@patch("crm.integrations.exotel.handler.frappe.db.rollback")
+	@patch("crm.integrations.exotel.handler.create_call_log", side_effect=frappe.QueryDeadlockError)
+	def test_concurrent_insert_of_same_call_claims_existing_log(self, _create, _rollback, _exists, claim):
+		from crm.integrations.exotel.handler import _create_softphone_call_log
+
+		_create_softphone_call_log(SOFTPHONE_AGENT, "call-sid", "9123456789", "Incoming", None, None)
+
+		claim.assert_called_once_with("call-sid")
+
+	@patch("crm.integrations.exotel.handler.frappe.db.exists", return_value=None)
+	@patch("crm.integrations.exotel.handler.frappe.db.rollback")
+	@patch("crm.integrations.exotel.handler.create_call_log", side_effect=frappe.QueryDeadlockError)
+	def test_real_deadlock_without_a_log_is_raised(self, *_):
+		from crm.integrations.exotel.handler import _create_softphone_call_log
+
+		with self.assertRaises(frappe.QueryDeadlockError):
+			_create_softphone_call_log(SOFTPHONE_AGENT, "call-sid", "9123456789", "Incoming", None, None)
 
 
 class TestExotelReconcileBudget(FrappeTestCase):
@@ -577,7 +603,7 @@ class TestExotelSoftphoneClaimExistingLog(FrappeTestCase):
 SOFTPHONE_AGENT = frappe._dict(
 	user="agent@example.com",
 	mobile_no="9876543210",
-	exotel_number="04069326588",
+	exotel_number="04000000001",
 	exotel_sip_id="sip:agentsip",
 )
 USER_MAPPING = {
@@ -586,8 +612,8 @@ USER_MAPPING = {
 	"AppUserId": "agent@example.com",
 	"ExotelAccountSid": "acct",
 	"ExotelUserName": "Agent",
-	"AgentNumber": "8383046181",
-	"VirtualNumber": "04069326588",
+	"AgentNumber": "9000000001",
+	"VirtualNumber": "04000000001",
 	"SipId": "sip:agentsip",
 	"SipSecret": "encrypted-secret",
 }
@@ -678,7 +704,7 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
 	@patch("crm.integrations.exotel.handler.requests.post")
 	def test_timeout_or_server_error_means_outcome_unknown(self, post, create_log, *_):
-		for outcome in (requests.ReadTimeout(), fake_response(502, {})):
+		for outcome in (requests.ReadTimeout(), requests.ConnectionError(), fake_response(502, {})):
 			post.reset_mock()
 			post.side_effect = outcome if isinstance(outcome, Exception) else None
 			post.return_value = outcome
@@ -697,6 +723,16 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 
 		with self.assertRaises(frappe.ValidationError):
 			make_softphone_call("9123456789")
+		create_log.assert_not_called()
+
+	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
+	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
+	@patch("crm.integrations.exotel.handler.requests.post", side_effect=requests.ConnectTimeout())
+	def test_connect_timeout_is_a_definite_failure(self, _post, create_log, *_):
+		with self.assertRaises(frappe.ValidationError) as raised:
+			make_softphone_call("9123456789")
+
+		self.assertNotIsInstance(raised.exception, ExotelDialOutcomeUnknown)
 		create_log.assert_not_called()
 
 	@patch("crm.integrations.exotel.handler.requests.post")
@@ -720,3 +756,32 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 	def test_browser_can_no_longer_register_outgoing_calls(self, *_):
 		with self.assertRaises(frappe.ValidationError):
 			register_softphone_call("call-sid", "9123456789", "Outgoing")
+
+
+class TestExotelFreeNotificationReconcile(FrappeTestCase):
+	@patch("crm.integrations.exotel.handler.frappe.enqueue")
+	@patch("crm.integrations.exotel.handler.frappe.db.exists", return_value=True)
+	@patch("crm.integrations.exotel.handler.get_softphone_agent_user", return_value="agent@example.com")
+	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SimpleNamespace(enabled=1))
+	@patch("crm.integrations.exotel.handler.create_request_log")
+	@patch("crm.integrations.exotel.handler.is_integration_enabled", return_value=True)
+	@patch("crm.integrations.exotel.handler.validate_request")
+	@patch("crm.integrations.exotel.handler.frappe.request", new=MagicMock())
+	def test_free_notification_enqueues_a_callable_reconcile_job(self, *mocks):
+		import inspect
+
+		from frappe.utils.background_jobs import enqueue as real_enqueue
+
+		from crm.integrations.exotel.handler import handle_request, reconcile_call_log
+
+		enqueue = mocks[-1]
+		handle_request(**{**CAPTURED_INBOUND_NOTIFICATION, "CallStatus": "free"})
+
+		enqueue.assert_called_once()
+		job_kwargs = {
+			key: value
+			for key, value in enqueue.call_args.kwargs.items()
+			if key not in inspect.signature(real_enqueue).parameters
+		}
+		# The worker calls the job with every non-enqueue kwarg; an extra one (e.g. user=) raises TypeError.
+		inspect.signature(reconcile_call_log).bind(**job_kwargs)

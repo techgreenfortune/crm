@@ -39,7 +39,9 @@
   "resolutions": {
     "dompurify": "3.4.0",
     "brace-expansion": "2.1.0",
-    "picomatch": "4.0.4"
+    "picomatch": "4.0.4",
+    "@exotel-npm-dev/webrtc-client-sdk": "2.0.5",
+    "@exotel-npm-dev/webrtc-core-sdk": "1.0.24"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

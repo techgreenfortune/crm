@@ -384,7 +384,10 @@ import {
   toggleExotelSoftphoneMute,
   unregisterExotelSoftphone,
 } from '@/utils/exotelSoftphone'
-import { extractExotelCallSid } from '@/utils/exotelSoftphoneCall'
+import {
+  createOutboundDialTracker,
+  extractExotelCallSid,
+} from '@/utils/exotelSoftphoneCall'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import {
   TextEditor,
@@ -431,8 +434,7 @@ const softphoneHeld = ref(false)
 let softphoneConnected = false
 let softphoneSetupPromise = null
 let softphoneUnsubscribe = null
-let pendingOutboundCallSid = ''
-let pendingOutboundInviteSid = ''
+const outboundDial = createOutboundDialTracker()
 let softphoneWasReady = false
 
 const contact = ref({
@@ -987,6 +989,7 @@ async function makeSoftphoneOutgoingCall(number, context) {
   softphoneHeld.value = false
   lastSocketAt.value = Date.now()
 
+  outboundDial.start()
   try {
     const response = await call(
       'crm.integrations.exotel.handler.make_softphone_call',
@@ -1000,16 +1003,24 @@ async function makeSoftphoneOutgoingCall(number, context) {
     if (!callSid)
       throw new Error(__('Exotel dial response did not include CallSid'))
 
-    pendingOutboundCallSid = callSid
     callData.value = {
       CallSid: callSid,
       AgentEmail: sessionStore().user,
       Direction: 'outbound-dial',
       To: number,
     }
-    if (pendingOutboundInviteSid === callSid) acceptPendingOutboundCall()
+    const next = outboundDial.dialSucceeded(callSid)
+    if (next.action === 'accept') {
+      softphoneCallAvailable.value = true
+      acceptPendingOutboundCall()
+    } else if (next.action === 'reject') {
+      hangupExotelSoftphoneCall()
+    }
   } catch (error) {
-    hangupExotelSoftphoneCall()
+    const next = outboundDial.dialFailed({
+      outcomeUnknown: error.exc_type === 'ExotelDialOutcomeUnknown',
+    })
+    if (next.action === 'reject') hangupExotelSoftphoneCall()
     resetSoftphoneSession()
     closeCallPopup()
     toast.error(
@@ -1017,6 +1028,8 @@ async function makeSoftphoneOutgoingCall(number, context) {
         error.message ||
         __('Could not start browser call. No mobile fallback was placed.'),
     )
+    if (next.action === 'inbound')
+      prepareSoftphoneIncomingCall(next.callSid, next.details)
   }
 }
 
@@ -1030,13 +1043,15 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
       toast.error(__('Rejected softphone call without a verifiable CallSid.'))
       return
     }
-    if (pendingOutboundCallSid && callSid === pendingOutboundCallSid) {
-      pendingOutboundInviteSid = callSid
+    const next = outboundDial.onIncoming(callSid, details)
+    if (next.action === 'accept') {
       softphoneCallAvailable.value = true
       acceptPendingOutboundCall()
-      return
+    } else if (next.action === 'reject') {
+      hangupExotelSoftphoneCall()
+    } else if (next.action === 'inbound') {
+      prepareSoftphoneIncomingCall(callSid, details)
     }
-    prepareSoftphoneIncomingCall(callSid, details)
     return
   }
 
@@ -1052,6 +1067,13 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
   }
 
   if (eventType === 'callEnded') {
+    if (outboundDial.pending) {
+      outboundDial.onCallEnded(callSid)
+      return
+    }
+    // A rejected INVITE ending must not tear down the call the agent is on.
+    if (callSid && callData.value?.CallSid && callSid !== callData.value.CallSid)
+      return
     counterUp.value?.stop()
     callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
     resetSoftphoneSession()
@@ -1141,8 +1163,7 @@ function resetSoftphoneSession() {
   softphoneMuted.value = false
   softphoneHeld.value = false
   softphoneConnected = false
-  pendingOutboundCallSid = ''
-  pendingOutboundInviteSid = ''
+  outboundDial.reset()
 }
 
 function startStaleCheck() {

@@ -28,6 +28,7 @@ export function subscribeToExotelSoftphone({ onCallEvent, onRegistration }) {
 }
 
 // Mirrors ExotelCRMWebSDK's private getSIPInfo so the app token can stay on the server.
+// Re-check it on every SDK upgrade (docs/exotel-softphone.md, "Exotel SDK versions and upgrades").
 // The doubled ":443" is what the SDK has always sent and is proven on real calls.
 export function buildExotelSipInfo(user, exotelAccountSid) {
   const sipUser = user.sipId.split(':')[1]
