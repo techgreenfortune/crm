@@ -38,7 +38,10 @@ describe('extractExotelCallSid', () => {
 
 describe('Exotel SDK surface the softphone relies on', () => {
   it('still exports the low-level classes', () => {
-    const types = readFileSync(require.resolve(`${SDK}/output/index.d.ts`), 'utf8')
+    const types = readFileSync(
+      require.resolve(`${SDK}/output/index.d.ts`),
+      'utf8',
+    )
     expect(types).toContain(
       'export { default as ExotelWebPhoneSDK } from "./ExotelWebPhoneSDK"',
     )

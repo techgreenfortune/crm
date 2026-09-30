@@ -1039,14 +1039,14 @@
     crypto-js "^4.1.1"
     uuid "^10.0.0"
 
-"@exotel-npm-dev/webrtc-client-sdk@^2.0.1":
+"@exotel-npm-dev/webrtc-client-sdk@2.0.5", "@exotel-npm-dev/webrtc-client-sdk@^2.0.1":
   version "2.0.5"
   resolved "https://registry.yarnpkg.com/@exotel-npm-dev/webrtc-client-sdk/-/webrtc-client-sdk-2.0.5.tgz#4f13dd5ebf2006a03c5197fc124a9aed75fdfd16"
   integrity sha512-zv8HgnxIJxjmtYbIAgjHlXxSmAlC+NJE2KDWYIsB4HEvSFvkCMkSD+ZVljPGOEv7rawMsK7SdWwwilk59uT2IQ==
   dependencies:
     "@exotel-npm-dev/webrtc-core-sdk" "^1.0.24"
 
-"@exotel-npm-dev/webrtc-core-sdk@^1.0.24":
+"@exotel-npm-dev/webrtc-core-sdk@1.0.24", "@exotel-npm-dev/webrtc-core-sdk@^1.0.24":
   version "1.0.24"
   resolved "https://registry.yarnpkg.com/@exotel-npm-dev/webrtc-core-sdk/-/webrtc-core-sdk-1.0.24.tgz#989dd149b56847dce3c75fe91bbb730aadcce217"
   integrity sha512-cPsLmd067pjcgfF8bvQ8KmO+QsisYy3TPMB551zyJaWfiRaL0lPNQ13X5N8vx+6BLe0FtOjX/uA2EVMOcrZtEQ==
