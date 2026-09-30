@@ -147,6 +147,33 @@ class TestExotelSoftphone(FrappeTestCase):
 
 		self.assertEqual(payload.CallLogStatus, "Call Not Answered")
 
+	def test_agent_hanging_up_while_customer_rings_is_canceled(self):
+		# Captured 2026-09-30 on UAT: agent hung up in the CRM before the customer answered.
+		payload = normalize_call_payload(
+			{**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "from_leg_cancelled", "TotalDuration": 0}
+		)
+
+		self.assertEqual(payload.CallLogStatus, "Canceled")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_unmapped_terminal_status_is_logged(self, log_error):
+		payload = normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "some_new_value"})
+
+		self.assertIsNone(payload.CallLogStatus)
+		log_error.assert_called_once_with(title="Unmapped Exotel softphone status: some_new_value")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_non_terminal_unmapped_status_is_not_logged(self, log_error):
+		normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallState": "active", "CallStatus": "ringing"})
+
+		log_error.assert_not_called()
+		# Inbound outcomes come from the flow Passthru and reconcile, not this status.
+		normalize_call_payload(
+			{**CAPTURED_INBOUND_NOTIFICATION, "CallState": "terminal", "CallStatus": "free"}
+		)
+
+		log_error.assert_not_called()
+
 	def test_normalizes_inbound_direction_and_keeps_exophone_as_to(self):
 		for direction in ("inbound", "incoming"):
 			payload = normalize_call_payload(
@@ -318,6 +345,18 @@ class TestExotelSoftphone(FrappeTestCase):
 		)
 		self.assertEqual(
 			get_calls_api_call_log_status({"Direction": "outbound-dial", "Status": "completed"}), "Completed"
+		)
+
+	def test_outbound_agent_cancel_matches_the_webhook(self):
+		# Calls API shape captured 2026-09-30 for an agent hanging up while the customer rang.
+		cancelled = {
+			"Direction": "outbound-dial",
+			"Status": "failed",
+			"Details": {"Leg1Status": "completed", "Leg2Status": "canceled", "ConversationDuration": 0},
+		}
+		self.assertEqual(get_calls_api_call_log_status(cancelled), "Canceled")
+		self.assertEqual(
+			get_calls_api_call_log_status({**cancelled, "Details": {"Leg2Status": "failed"}}), "Failed"
 		)
 
 	@patch("crm.integrations.exotel.handler.update_call_log")

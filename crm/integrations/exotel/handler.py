@@ -733,6 +733,9 @@ INTEGRATION_CORE_STATUS_MAP = {
 	"missed": "Call Not Answered",
 	# Outbound customer leg that never connected; Exotel sends it for rejected calls too.
 	"to_leg_unanswered": "Call Not Answered",
+	# Agent hung up in the CRM while the customer was still ringing.
+	"from_leg_cancelled": "Canceled",
+	"from_leg_canceled": "Canceled",
 	"busy": "Busy",
 	"failed": "Failed",
 	"canceled": "Canceled",
@@ -782,6 +785,9 @@ def normalize_call_payload(call_payload):
 		payload.CallLogStatus = "Ringing"
 	else:
 		payload.CallLogStatus = INTEGRATION_CORE_STATUS_MAP.get(status)
+	if outgoing and payload.CallLogStatus is None and payload.get("CallState") == "terminal":
+		# Otherwise the log stays In Progress until reconcile; surface new Exotel values instead.
+		frappe.log_error(title=f"Unmapped Exotel softphone status: {status or '(empty)'}")
 	return payload
 
 
@@ -1024,12 +1030,17 @@ def softphone_call_matches_log(call_sid, call):
 
 def get_calls_api_call_log_status(call):
 	status = (call.get("Status") or "").lower()
-	if normalize_direction(call.get("Direction")) != "incoming" or status != "completed":
+	details = call.get("Details") or {}
+	if normalize_direction(call.get("Direction")) != "incoming":
+		# The Calls API reports an agent hanging up during ringing as "failed"; the customer leg says canceled.
+		if status == "failed" and (details.get("Leg2Status") or "").lower() == "canceled":
+			return "Canceled"
+		return CALLS_API_STATUS_MAP.get(status)
+	if status != "completed":
 		return CALLS_API_STATUS_MAP.get(status)
 
 	# An inbound call is "completed" from the caller's side even when no agent picked up;
 	# the agent leg (Leg2) and conversation time say whether it was actually answered.
-	details = call.get("Details") or {}
 	conversation = details.get("ConversationDuration") or 0
 	agent_leg = (details.get("Leg2Status") or "").lower()
 	if agent_leg == "completed" or float(conversation) > 0:
