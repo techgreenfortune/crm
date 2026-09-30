@@ -44,28 +44,139 @@ The browser never receives the app token and never calls Integration Core. The o
 
 ## Setup
 
-### Exotel
+A runbook for a new environment (local, UAT, production). Follow the steps in order: each one needs values from the one before. Every environment gets **its own** Integration Core app, webhook key and call flow, because an app sends all its webhooks to one CRM.
 
-1. **Integration Core app** (one per environment — an app has a single set of webhook URLs). Create it with the customer token and keep the App ID and Secret out of source control.
-2. **App settings** on that app:
-   - `callback`, `popup`, `missedCall`, `incomingCallHangup` → `https://<site>/api/method/crm.integrations.exotel.handler.handle_request?key=<webhook_verify_token>`
-   - `record` → `true`
-   - At least one setting must exist or the SDK can't initialise.
-3. **Exotel users**: each agent needs a dashboard user with a SIP device and the same email as their CRM user.
-4. **Call flow** attached to the Exophone:
-   - Connect → Exotel **users or groups**, not phone numbers. Check that an empty "numbers" option is not the selected one; it still dials a default number.
-   - Connect → "Create popup" = `https://<softphone api host>/v2/integrations/call/inbound_call/<app id>?type=popup`, and Record on.
-   - "After the call conversation ends" and "If nobody answers" → Passthru to the `handle_request` URL above, each followed by a **Hangup** applet. A Passthru with nothing after it leaves the call hanging.
-5. **Network**: allow outbound TCP 443 to Exotel and UDP 10000–40000 for media. Signalling can work while media is blocked, which gives connected calls with no audio.
+Keep every value below (secrets, keys, App ID) out of Git, chat and tickets. Hold them in a local, git-ignored env file or a password manager.
 
-### CRM
+### Before you start
 
-1. `bench --site <site> migrate` (adds `CRM Telephony Agent.exotel_sip_id` and `CRM Call Log.is_softphone_call`).
-2. Scheduler enabled and a worker running.
-3. **CRM Exotel Settings**: integration enabled, account SID, API key/token, a strong random `webhook_verify_token`, "Enable Browser Softphone" on, App ID and App Secret. "Softphone API Host" defaults to `integrationscore.mum1.exotel.com` (India); change it only for an account in another Exotel region. The browser SDK connects to Exotel's India VoIP domain from inside the package, so another region also needs an SDK-side change.
-4. **CRM Telephony Agent** per agent, set up by a manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only): Mobile No, Exotel Number, "Use Exotel Browser Softphone" on, then save. Agents see only their own record and can change only their default calling medium. Saving finds or creates the agent's Integration Core user mapping (App User ID = email) and fills the read-only **Exotel SIP ID**; it refuses to save if the Exotel user has no SIP device.
-5. Agents use Chrome (or Edge) and allow microphone access. Safari connects calls without audio: softphone agents on Safari are blocked from calling with "Browser calling needs Chrome or Edge".
-6. **Fallback:** an agent with "Use Exotel Browser Softphone" on never falls back to click-to-call (mobile). To move an agent back to click-to-call, switch that toggle off.
+| Need | From |
+|---|---|
+| Exotel account SID, API key, API token | Exotel dashboard → API settings (the same ones classic click-to-call uses) |
+| Integration Core **customer ID and secret** | Issued by Exotel for the account; required to create an app |
+| Each agent as an Exotel dashboard user with a **SIP device**, same email as their CRM user | Exotel dashboard → Users |
+| The CRM deployed at `https://<site>` | Deployment |
+
+Integration Core base URL (India): `https://integrationscore.mum1.exotel.com/v2/integrations`. The examples use:
+
+```bash
+IC=https://integrationscore.mum1.exotel.com/v2/integrations
+```
+
+Tokens go in the `Authorization` header as the raw token (no `Bearer`).
+
+### 1. Generate the webhook key
+
+```bash
+openssl rand -hex 24
+```
+
+This key goes in three places: CRM Exotel Settings (step 3), the app's webhook URLs (step 2c) and the flow's Passthru URLs (step 5). Store it on its own line: appending with `echo … >> file` to a file with no trailing newline glues it onto the previous line.
+
+### 2. Create the Integration Core app (Exotel side, API only)
+
+The app is not visible anywhere in the Exotel dashboard; it exists only through this API. It holds the App ID/Secret, the agent SIP mappings and the webhook URLs.
+
+a. Customer token:
+
+```bash
+curl -s -X POST "$IC/token" -H 'Content-Type: application/json' \
+  -d '{"Id":"<customer id>","Secret":"<customer secret>","Entity":"customer"}'
+# → Data = customer token
+```
+
+b. Create the app. Use a name that says which environment it serves (e.g. "CRM Softphone UAT"); it is only a label.
+
+```bash
+curl -s -X POST "$IC/app" -H 'Content-Type: application/json' -H "Authorization: <customer token>" \
+  -d '{"AppName":"CRM Softphone <env>","ExotelAccountSid":"<account sid>","ExotelApiKey":"<api key>",
+       "ExotelApiToken":"<api token>","ExotelDomain":"mumbai","IsActive":true}'
+# → Data.AppID and Data.AppSecret: save both now
+```
+
+The app stores the account API key and token given here and uses them to place calls. If the account API token is ever rotated, check with Exotel whether each app needs updating.
+
+List apps later with `GET $IC/app?entity=customer` (customer token).
+
+c. App settings, with an **app** token (`POST $IC/token` with `"Entity":"app"`, AppID and AppSecret):
+
+```bash
+URL="https://<site>/api/method/crm.integrations.exotel.handler.handle_request?key=<webhook key>"
+for KEY in callback popup missedCall incomingCallHangup; do
+  curl -s -X POST "$IC/app_setting" -H 'Content-Type: application/json' -H "Authorization: <app token>" \
+    -d "{\"Key\":\"$KEY\",\"Value\":\"$URL\"}"
+done
+curl -s -X POST "$IC/app_setting" -H 'Content-Type: application/json' -H "Authorization: <app token>" \
+  -d '{"Key":"record","Value":"true"}'
+```
+
+| Setting | What Exotel sends there |
+|---|---|
+| `callback` | Outbound browser call events (answered, terminal status, recording) |
+| `popup` | Inbound call is ringing an agent (`busy`) |
+| `missedCall`, `incomingCallHangup` | Inbound call ended (`free`) |
+| `record` | Record softphone calls |
+
+Posting a key again replaces its value. At least one setting must exist or the SDK can't initialise. Check with `GET $IC/app_setting`, and mask the `key=` part before pasting the output anywhere.
+
+### 3. CRM Exotel Settings
+
+As System Manager: **Settings → Telephony → Exotel**.
+
+| Field | Value |
+|---|---|
+| Enabled | on |
+| Account SID, API Key, API Token | from "Before you start" |
+| Webhook Verify Token | the key from step 1 |
+| Subdomain | the classic API host, e.g. `api.in.exotel.com` for India |
+| Record Calls | as needed (click-to-call) |
+| Browser Softphone | on (global switch; agents still need their own toggle) |
+| Softphone App ID, Softphone App Secret | from step 2b |
+| Softphone API Host | leave empty for India; set only for an account in another Exotel region |
+
+The browser SDK connects to Exotel's India VoIP domain from inside the package, so another region also needs an SDK-side change.
+
+### 4. CRM Telephony Agents
+
+A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.)
+
+Saving finds or creates the agent's user mapping in the app (App User ID = email) and fills the read-only **Exotel SIP ID**. It refuses to save if the agent's Exotel user has no SIP device. Agents see only their own record and can change only their default calling medium.
+
+### 5. Call flow (Exotel dashboard, inbound)
+
+Inbound calls always run the flow attached to the Exophone; the Integration Core app does not replace it.
+
+- **Connect** → Exotel **users or groups**, not phone numbers. Check that an empty "numbers" option is not the selected one; it still dials a default number.
+- Connect → **Create popup** = `https://<softphone api host>/v2/integrations/call/inbound_call/<AppID>?type=popup`, and Record on.
+- **After the call conversation ends** and **If nobody answers** → Passthru to `https://<site>/api/method/crm.integrations.exotel.handler.handle_request?key=<webhook key>`, each followed by a **Hangup** applet. A Passthru with nothing after it leaves the call hanging.
+- Keep any other Passthrus the production flow already has (other systems may depend on them), and remove them from test copies of the flow, or test calls are posted to those systems.
+- Test environments use a separate test flow. Never move the production Exophone to a test flow; to test inbound, start a call into the test flow through the Calls API (`Calls/connect` with `Url=http://my.exotel.com/<account sid>/exoml/start_voice/<flow id>`).
+
+Anyone with dashboard access can edit or delete flows, so give dashboard access per person and keep a written copy of the production flow's steps.
+
+### 6. Server and network
+
+1. `bench --site <site> migrate` (adds `CRM Telephony Agent.exotel_sip_id`, `CRM Call Log.is_softphone_call`, `CRM Exotel Settings.softphone_api_host`).
+2. Scheduler enabled and a worker running (reconcile job).
+3. Agents' networks allow outbound TCP 443 to Exotel and UDP 10000–40000 for media. Signalling can work while media is blocked, which gives connected calls with no audio.
+4. Agents use Chrome or Edge and allow microphone access. Safari connects calls without audio, so softphone agents on Safari are blocked with "Browser calling needs Chrome or Edge".
+
+### 7. Verify
+
+1. `curl -s -X POST "https://<site>/api/method/crm.integrations.exotel.handler.handle_request"` without a key → 403 (the webhook refuses unkeyed requests).
+2. An agent opens the CRM: the header badge shows **Phone ready**.
+3. Outbound: answered, not answered, rejected → Call Log `Completed` (with recording), `Call Not Answered`, `Call Not Answered`.
+4. Inbound through the flow: answered, missed, rejected → `Completed`, `Call Not Answered`, `Busy`.
+5. Error Log has no "Exotel softphone" entries.
+
+### Changing things later
+
+| Change | Do |
+|---|---|
+| Rotate the webhook key | Update CRM Exotel Settings, all four app settings (step 2c) and the flow Passthrus together; webhooks with the old key are refused |
+| Point an app at another CRM URL | Re-post the four app settings |
+| Move an agent back to click-to-call | Turn off their **Use Exotel Browser Softphone**; softphone agents never fall back to the mobile on their own |
+| Turn the softphone off for everyone | Turn off **Browser Softphone** in CRM Exotel Settings |
 
 ## Page load
 
