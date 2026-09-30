@@ -21,6 +21,8 @@ SOFTPHONE_BROWSER_MAPPING_FIELDS = (
 	"ExotelAccountSid",
 )
 SOFTPHONE_DIALS_PER_MINUTE = 10
+# Looked up while the call rings; the agent can't accept until registration returns.
+REGISTER_LOOKUP_TIMEOUT_SECONDS = 3
 
 
 class ExotelDialOutcomeUnknown(frappe.ValidationError):
@@ -258,7 +260,15 @@ def make_softphone_call(
 	_check_softphone_dial_rate()
 
 	call_sid = _place_softphone_call(settings, agent, phone_number)
-	_create_softphone_call_log(agent, call_sid, phone_number, "Outgoing", reference_doctype, reference_docname)
+	# The call is live from here on. A failure now must not tell the browser "not placed": it would
+	# treat the agent leg as a new inbound call and let the agent dial again. The Integration Core
+	# callback creates the missing log when its first event arrives (handle_request's create path);
+	# reconcile can't, because it only repairs logs that exist.
+	try:
+		_create_softphone_call_log(agent, call_sid, phone_number, "Outgoing", reference_doctype, reference_docname)
+	except Exception:
+		frappe.db.rollback()
+		frappe.log_error(title=f"Exotel softphone call log not created: {call_sid}")
 	return {"CallSid": call_sid}
 
 
@@ -289,6 +299,7 @@ def register_softphone_call(
 		return {"CallSid": call_sid}
 
 	_validate_softphone_reference(reference_doctype, reference_docname)
+	phone_number = _exotel_inbound_caller(call_sid) or phone_number
 	_create_softphone_call_log(agent, call_sid, phone_number, call_type, reference_doctype, reference_docname)
 	return {"CallSid": call_sid}
 
@@ -301,6 +312,22 @@ def _require_softphone_agent_setup(agent):
 			_("Save your Telephony Agent again to link your Exotel SIP ID before browser calling."),
 			title=_("Softphone Unavailable"),
 		)
+
+
+def _exotel_inbound_caller(call_sid):
+	"""Exotel's caller number for a ringing call, or None if Exotel can't say yet.
+
+	The browser's number comes from the SIP caller ID, which can be wrong (a SIP user or a platform
+	number) or forged. Ownership of the call is not checked here: Exotel's "To" is only confirmed for
+	finished calls, so the reconcile job verifies it.
+	"""
+	try:
+		call = fetch_exotel_call(call_sid, timeout=REGISTER_LOOKUP_TIMEOUT_SECONDS)
+	except requests.RequestException:
+		return None
+	if not call or normalize_direction(call.get("Direction")) != "incoming":
+		return None
+	return cstr(call.get("From")).strip() or None
 
 
 def _create_softphone_call_log(agent, call_sid, phone_number, call_type, reference_doctype, reference_docname):
@@ -385,7 +412,11 @@ def _place_softphone_call(settings, agent, phone_number):
 			title="Exotel softphone dial rang another SIP device",
 			message=f"CallSid {call_sid}: expected {agent.exotel_sip_id}, got {from_sip}",
 		)
-		frappe.throw(_("Exotel placed the call on a different SIP device. Contact an administrator."))
+		# Exotel accepted the dial, so this is not a definite failure: stray rings must be rejected.
+		frappe.throw(
+			_("Exotel placed the call on a different SIP device. Contact an administrator."),
+			ExotelDialOutcomeUnknown,
+		)
 	return call_sid
 
 
@@ -507,7 +538,8 @@ def last_ten_digits(number):
 
 def _get_softphone_app_token(app_id: str, app_secret: str):
 	cache_key = f"crm:exotel:softphone-token:{app_id}"
-	if token := frappe.cache().get_value(cache_key):
+	# expires=True: an expiring key must not be pinned in the per-request local cache.
+	if token := frappe.cache().get_value(cache_key, expires=True):
 		return token
 
 	try:
@@ -792,6 +824,13 @@ RECONCILE_MIN_AGE_MINUTES = 5
 RECONCILE_MAX_AGE_DAYS = 7
 RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES = 60
 RECONCILE_BATCH_SIZE = 50
+# Recording lookups get their own small budget so they never crowd out status repairs.
+RECONCILE_RECORDING_BATCH_SIZE = 10
+# Enough candidates that logs waiting on their backoff don't hide ones that are due.
+RECONCILE_CANDIDATE_LIMIT = 500
+# A log that stays eligible after a run is retried after 5, 10, 20, … minutes, up to this cap, so a
+# few stuck logs can't take the whole budget every run.
+RECONCILE_MAX_BACKOFF_MINUTES = 6 * 60
 # Exotel publishes recordings a few minutes after the call (RecordingAvailableBy); calls without
 # recording enabled never get one, so stop looking after this window.
 RECONCILE_RECORDING_WINDOW_HOURS = 2
@@ -833,7 +872,7 @@ def _reconcile_stale_call_logs():
 		},
 		fields=["name", "creation"],
 		order_by="creation asc",
-		limit=RECONCILE_BATCH_SIZE,
+		limit=RECONCILE_CANDIDATE_LIMIT,
 	)
 	awaiting_recording = frappe.get_all(
 		"CRM Call Log",
@@ -845,16 +884,41 @@ def _reconcile_stale_call_logs():
 		},
 		fields=["name", "creation"],
 		order_by="creation asc",
-		limit=RECONCILE_BATCH_SIZE,
+		limit=RECONCILE_CANDIDATE_LIMIT,
 	)
-	# One Calls API budget per run across both selections.
-	batch = list({log.name: log for log in stale_logs + awaiting_recording}.values())[:RECONCILE_BATCH_SIZE]
-	for log in batch:
+	status_batch = [log for log in stale_logs if _reconcile_due(log.name)][:RECONCILE_BATCH_SIZE]
+	in_status_batch = {log.name for log in status_batch}
+	recording_batch = [
+		log for log in awaiting_recording if log.name not in in_status_batch and _reconcile_due(log.name)
+	][:RECONCILE_RECORDING_BATCH_SIZE]
+	for log in status_batch + recording_batch:
 		try:
 			reconcile_call_log(log.name, log.creation)
 		except Exception:
 			frappe.db.rollback()
 			frappe.log_error(title=f"Exotel call log reconcile failed: {log.name}")
+		# Logs that got resolved drop out of the selection; the rest wait before the next try.
+		_schedule_next_reconcile(log.name)
+
+
+def _reconcile_backoff_key(call_sid):
+	return f"crm:exotel:reconcile-backoff:{call_sid}"
+
+
+def _reconcile_due(call_sid):
+	state = frappe.cache.get_value(_reconcile_backoff_key(call_sid), expires=True)
+	return not state or state["next_at"] <= now_datetime().timestamp()
+
+
+def _schedule_next_reconcile(call_sid):
+	key = _reconcile_backoff_key(call_sid)
+	attempts = ((frappe.cache.get_value(key, expires=True) or {}).get("attempts") or 0) + 1
+	delay_minutes = min(RECONCILE_MIN_AGE_MINUTES * 2 ** (attempts - 1), RECONCILE_MAX_BACKOFF_MINUTES)
+	frappe.cache.set_value(
+		key,
+		{"attempts": attempts, "next_at": now_datetime().timestamp() + delay_minutes * 60},
+		expires_in_sec=RECONCILE_MAX_AGE_DAYS * 24 * 60 * 60,
+	)
 
 
 def reconcile_call_log(call_sid, created_at):
@@ -878,6 +942,8 @@ def reconcile_call_log(call_sid, created_at):
 		)
 		return
 
+	correct_inbound_caller(call_sid, call)
+
 	# Exotel fills Duration/EndTime/leg details asynchronously (~2 min after the call ends). Deciding
 	# before then could lock an answered call as missed, so wait for a later run.
 	if (call.get("Status") or "").lower() in CALL_API_FINAL_STATUSES and not call.get("EndTime"):
@@ -895,6 +961,33 @@ def reconcile_call_log(call_sid, created_at):
 		RecordingUrl=call.get("RecordingUrl"),
 	)
 	update_call_log(payload)
+
+
+def correct_inbound_caller(call_sid, call):
+	"""Replace a browser-supplied caller number with Exotel's, and re-link the call log to match.
+
+	The ownership check has already passed, so the call did ring this agent; only the number
+	the browser reported can be wrong.
+	"""
+	log = frappe.db.get_value("CRM Call Log", call_sid, ["type", "from", "is_softphone_call"], as_dict=True)
+	if not log or not log.is_softphone_call or log.type != "Incoming":
+		return
+	exotel_from = cstr(call.get("From")).strip()
+	if not exotel_from or last_ten_digits(exotel_from) == last_ten_digits(log.get("from")):
+		return
+
+	call_log = frappe.get_doc("CRM Call Log", call_sid)
+	frappe.log_error(
+		title="Exotel softphone caller corrected",
+		message=f"CRM Call Log {call_sid}: browser reported {call_log.get('from')}, Exotel says {exotel_from}.",
+	)
+	call_log.set("from", exotel_from)
+	call_log.set("links", [])
+	call_log.reference_doctype = None
+	call_log.reference_docname = None
+	link(exotel_from, call_log)
+	call_log.save(ignore_permissions=True)
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 
 
 def softphone_call_matches_log(call_sid, call):
@@ -936,8 +1029,8 @@ def get_calls_api_call_log_status(call):
 	return "Call Not Answered"
 
 
-def fetch_exotel_call(call_sid):
-	response = requests.get(get_exotel_endpoint(f"Calls/{call_sid}.json?details=true"), timeout=10)
+def fetch_exotel_call(call_sid, timeout=10):
+	response = requests.get(get_exotel_endpoint(f"Calls/{call_sid}.json?details=true"), timeout=timeout)
 	if response.status_code == 404:
 		return None
 	response.raise_for_status()

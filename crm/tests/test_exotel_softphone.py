@@ -389,9 +389,11 @@ class TestExotelSoftphone(FrappeTestCase):
 		self.assertEqual(awaiting_recording["filters"]["status"], "Completed")
 		self.assertEqual(awaiting_recording["filters"]["recording_url"], ["is", "not set"])
 
+	@patch("crm.integrations.exotel.handler._schedule_next_reconcile")
+	@patch("crm.integrations.exotel.handler._reconcile_due", return_value=True)
 	@patch("crm.integrations.exotel.handler.reconcile_call_log")
 	@patch("crm.integrations.exotel.handler.frappe.get_all")
-	def test_reconcile_processes_each_log_once(self, get_all, reconcile):
+	def test_reconcile_processes_each_log_once(self, get_all, reconcile, *_):
 		from crm.integrations.exotel.handler import _reconcile_stale_call_logs
 
 		log = frappe._dict(name="call-sid", creation=frappe.utils.now_datetime())
@@ -547,20 +549,71 @@ class TestExotelSoftphoneConcurrentInsert(FrappeTestCase):
 			_create_softphone_call_log(SOFTPHONE_AGENT, "call-sid", "9123456789", "Incoming", None, None)
 
 
+@patch("crm.integrations.exotel.handler._schedule_next_reconcile")
+@patch("crm.integrations.exotel.handler.reconcile_call_log")
+@patch("crm.integrations.exotel.handler.frappe.get_all")
 class TestExotelReconcileBudget(FrappeTestCase):
-	@patch("crm.integrations.exotel.handler.reconcile_call_log")
-	@patch("crm.integrations.exotel.handler.frappe.get_all")
-	def test_both_selections_share_one_batch_budget(self, get_all, reconcile):
-		from crm.integrations.exotel.handler import RECONCILE_BATCH_SIZE, _reconcile_stale_call_logs
+	def test_status_repairs_and_recordings_have_separate_budgets(self, get_all, reconcile, _schedule):
+		from crm.integrations.exotel.handler import (
+			RECONCILE_BATCH_SIZE,
+			RECONCILE_RECORDING_BATCH_SIZE,
+			_reconcile_stale_call_logs,
+		)
 
 		now = frappe.utils.now_datetime()
-		stale = [frappe._dict(name=f"stale-{i}", creation=now) for i in range(RECONCILE_BATCH_SIZE)]
+		stale = [frappe._dict(name=f"stale-{i}", creation=now) for i in range(RECONCILE_BATCH_SIZE * 2)]
 		awaiting = [frappe._dict(name=f"rec-{i}", creation=now) for i in range(RECONCILE_BATCH_SIZE)]
 		get_all.side_effect = [stale, awaiting]
 
-		_reconcile_stale_call_logs()
+		with patch("crm.integrations.exotel.handler._reconcile_due", return_value=True):
+			_reconcile_stale_call_logs()
 
-		self.assertEqual(reconcile.call_count, RECONCILE_BATCH_SIZE)
+		called = [c.args[0] for c in reconcile.call_args_list]
+		self.assertEqual(sum(name.startswith("stale-") for name in called), RECONCILE_BATCH_SIZE)
+		self.assertEqual(sum(name.startswith("rec-") for name in called), RECONCILE_RECORDING_BATCH_SIZE)
+
+	def test_logs_waiting_on_backoff_dont_block_newer_ones(self, get_all, reconcile, schedule):
+		from crm.integrations.exotel.handler import RECONCILE_BATCH_SIZE, _reconcile_stale_call_logs
+
+		now = frappe.utils.now_datetime()
+		stuck = [frappe._dict(name=f"stuck-{i}", creation=now) for i in range(RECONCILE_BATCH_SIZE)]
+		fresh = [frappe._dict(name="fresh", creation=now)]
+		get_all.side_effect = [stuck + fresh, []]
+
+		with patch(
+			"crm.integrations.exotel.handler._reconcile_due",
+			side_effect=lambda sid: not sid.startswith("stuck"),
+		):
+			_reconcile_stale_call_logs()
+
+		reconcile.assert_called_once_with("fresh", now)
+		schedule.assert_called_once_with("fresh")
+
+
+class TestExotelReconcileBackoff(FrappeTestCase):
+	def setUp(self):
+		frappe.cache.delete_value("crm:exotel:reconcile-backoff:backoff-sid")
+
+	def tearDown(self):
+		frappe.cache.delete_value("crm:exotel:reconcile-backoff:backoff-sid")
+
+	def test_retries_back_off_and_are_capped(self):
+		from crm.integrations.exotel.handler import (
+			RECONCILE_MAX_BACKOFF_MINUTES,
+			_reconcile_due,
+			_schedule_next_reconcile,
+		)
+
+		self.assertTrue(_reconcile_due("backoff-sid"))
+		_schedule_next_reconcile("backoff-sid")
+		self.assertFalse(_reconcile_due("backoff-sid"))
+
+		start = frappe.utils.now_datetime().timestamp()
+		for _attempt in range(20):
+			_schedule_next_reconcile("backoff-sid")
+		state = frappe.cache.get_value("crm:exotel:reconcile-backoff:backoff-sid", expires=True)
+		self.assertEqual(state["attempts"], 21)
+		self.assertLessEqual(state["next_at"] - start, RECONCILE_MAX_BACKOFF_MINUTES * 60 + 5)
 
 
 class TestExotelSoftphoneClaimExistingLog(FrappeTestCase):
@@ -715,15 +768,27 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
 	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
 	@patch("crm.integrations.exotel.handler.requests.post")
-	def test_dial_ringing_another_sip_device_is_refused(self, post, create_log, *_):
+	def test_dial_ringing_another_sip_device_is_outcome_unknown(self, post, create_log, *_):
 		post.return_value = fake_response(
 			200, {**DIAL_SUCCESS, "Data": {**DIAL_SUCCESS["Data"], "FromNumber": "sip:other"}}
 		)
 		post.return_value.ok = True
 
-		with self.assertRaises(frappe.ValidationError):
+		# Exotel accepted the dial, so the browser must treat stray rings as possibly this call.
+		with self.assertRaises(ExotelDialOutcomeUnknown):
 			make_softphone_call("9123456789")
 		create_log.assert_not_called()
+
+	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
+	@patch("crm.integrations.exotel.handler.frappe.db.rollback")
+	@patch("crm.integrations.exotel.handler._create_softphone_call_log", side_effect=Exception("db down"))
+	@patch("crm.integrations.exotel.handler.requests.post")
+	def test_log_failure_after_exotel_accepts_still_returns_the_call(self, post, _create_log, rollback, *_):
+		post.return_value = fake_response(200, DIAL_SUCCESS)
+		post.return_value.ok = True
+
+		self.assertEqual(make_softphone_call("9123456789"), {"CallSid": "call-sid"})
+		rollback.assert_called_once()
 
 	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
 	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
@@ -785,3 +850,64 @@ class TestExotelFreeNotificationReconcile(FrappeTestCase):
 		}
 		# The worker calls the job with every non-enqueue kwarg; an extra one (e.g. user=) raises TypeError.
 		inspect.signature(reconcile_call_log).bind(**job_kwargs)
+
+
+@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
+@patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=SOFTPHONE_AGENT)
+@patch("crm.integrations.exotel.handler.frappe.db.exists", return_value=None)
+@patch("crm.integrations.exotel.handler._create_softphone_call_log")
+class TestExotelInboundCallerNumber(FrappeTestCase):
+	@patch(
+		"crm.integrations.exotel.handler.fetch_exotel_call",
+		return_value={"Direction": "inbound", "From": "09000000002", "To": "sip:agentsip"},
+	)
+	def test_registration_uses_exotels_caller_not_the_browsers(self, fetch, create_log, *_):
+		register_softphone_call("call-sid", "cxuseri-junk", "Incoming")
+
+		self.assertEqual(fetch.call_args.kwargs["timeout"], 3)
+		self.assertEqual(create_log.call_args.args[2], "09000000002")
+
+	@patch("crm.integrations.exotel.handler.fetch_exotel_call", side_effect=requests.ReadTimeout())
+	def test_registration_falls_back_to_the_browser_number(self, _fetch, create_log, *_):
+		register_softphone_call("call-sid", "09000000002", "Incoming")
+
+		self.assertEqual(create_log.call_args.args[2], "09000000002")
+
+
+class TestExotelInboundCallerCorrection(FrappeTestCase):
+	@patch("crm.integrations.exotel.handler.frappe.db.commit")
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	@patch("crm.integrations.exotel.handler.link")
+	@patch("crm.integrations.exotel.handler.frappe.get_doc")
+	@patch("crm.integrations.exotel.handler.frappe.db.get_value")
+	def test_reconcile_replaces_a_wrong_browser_number_and_relinks(
+		self, get_value, get_doc, link, log_error, _commit
+	):
+		from crm.integrations.exotel.handler import correct_inbound_caller
+
+		get_value.return_value = frappe._dict(type="Incoming", is_softphone_call=1, **{"from": "09999999999"})
+		call_log = MagicMock()
+		call_log.get.return_value = "09999999999"
+		get_doc.return_value = call_log
+
+		correct_inbound_caller("call-sid", {"From": "09000000002"})
+
+		call_log.set.assert_any_call("from", "09000000002")
+		call_log.set.assert_any_call("links", [])
+		link.assert_called_once_with("09000000002", call_log)
+		call_log.save.assert_called_once_with(ignore_permissions=True)
+		log_error.assert_called_once()
+
+	@patch("crm.integrations.exotel.handler.frappe.get_doc")
+	@patch("crm.integrations.exotel.handler.frappe.db.get_value")
+	def test_matching_or_server_created_logs_are_left_alone(self, get_value, get_doc):
+		from crm.integrations.exotel.handler import correct_inbound_caller
+
+		for log in (
+			frappe._dict(type="Incoming", is_softphone_call=1, **{"from": "+91 90000 00002"}),
+			frappe._dict(type="Incoming", is_softphone_call=0, **{"from": "09999999999"}),
+			frappe._dict(type="Outgoing", is_softphone_call=1, **{"from": "09999999999"}),
+		):
+			get_value.return_value = log
+			correct_inbound_caller("call-sid", {"From": "09000000002"})
+		get_doc.assert_not_called()

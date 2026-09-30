@@ -30,6 +30,9 @@ class CRMTelephonyAgent(Document):
 	# end: auto-generated types
 
 	def validate(self):
+		from crm.permissions.telephony_agent import validate_self_edit
+
+		validate_self_edit(self)
 		self.update_phone_nos_based_on_mobile_no()
 		self.set_primary()
 		self.sync_exotel_softphone_mapping()

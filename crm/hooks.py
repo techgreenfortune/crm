@@ -136,11 +136,13 @@ permission_query_conditions = {
 	"CRM Deal": "crm.permissions.org_hierarchy.get_deal_permission_query_conditions",
 	"CRM Task": "crm.fcrm.doctype.crm_task.crm_task.get_permission_query_conditions",
 	"CRM Quote Request": "crm.fcrm.doctype.crm_quote_request.crm_quote_request.get_permission_query_conditions",
+	"CRM Telephony Agent": "crm.permissions.telephony_agent.get_permission_query_conditions",
 }
 
 has_permission = {
 	"CRM Lead": "crm.overrides.crm_lead_permissions.has_permission",
 	"CRM Deal": "crm.permissions.org_hierarchy.has_deal_permission",
+	"CRM Telephony Agent": "crm.permissions.telephony_agent.has_permission",
 }
 
 # DocType Class

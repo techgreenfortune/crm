@@ -63,7 +63,7 @@ The browser never receives the app token and never calls Integration Core. The o
 1. `bench --site <site> migrate` (adds `CRM Telephony Agent.exotel_sip_id` and `CRM Call Log.is_softphone_call`).
 2. Scheduler enabled and a worker running.
 3. **CRM Exotel Settings**: integration enabled, account SID, API key/token, a strong random `webhook_verify_token`, "Enable Browser Softphone" on, App ID and App Secret.
-4. **CRM Telephony Agent** per agent: Mobile No, Exotel Number, "Use Exotel Browser Softphone" on, then save. Saving finds or creates the agent's Integration Core user mapping (App User ID = email) and fills the read-only **Exotel SIP ID**; it refuses to save if the Exotel user has no SIP device.
+4. **CRM Telephony Agent** per agent, set up by a manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`): Mobile No, Exotel Number, "Use Exotel Browser Softphone" on, then save. Agents see only their own record and can change only their default calling medium. Saving finds or creates the agent's Integration Core user mapping (App User ID = email) and fills the read-only **Exotel SIP ID**; it refuses to save if the Exotel user has no SIP device.
 5. Agents use Chrome (or Edge) and allow microphone access. Safari connects calls without audio: softphone agents on Safari are blocked from calling with "Browser calling needs Chrome or Edge".
 6. **Fallback:** an agent with "Use Exotel Browser Softphone" on never falls back to click-to-call (mobile). To move an agent back to click-to-call, switch that toggle off.
 
@@ -106,6 +106,7 @@ The browser never receives the app token and never calls Integration Core. The o
    - requires `Status: Success`, a `CallSid`, and `FromNumber` equal to the agent's SIP ID
    - creates the CRM Call Log (Outgoing, Ringing, `is_softphone_call`, linked to the Lead/Deal) and returns only the CallSid
    - a connect timeout or an Exotel rejection is a definite failure; any other request error, a 5xx or an unreadable reply raises `ExotelDialOutcomeUnknown` ("the call may still ring")
+   - once Exotel has accepted, nothing is reported as a definite failure: a `FromNumber` mismatch raises `ExotelDialOutcomeUnknown`, and a failed call-log insert is logged while the CallSid is still returned; the Integration Core callback creates the log when its first event arrives (reconcile only repairs logs that already exist)
 3. **Agent leg** — Exotel rings the agent's SIP device first, with the same CallSid:
 
    | Situation | Action |
@@ -134,7 +135,7 @@ The browser never receives the app token and never calls Integration Core. The o
 
 1. The customer calls the Exophone; the flow's Connect dials Exotel users, which rings the agent's SIP device.
 2. Integration Core posts the `popup` webhook (`CallStatus=busy`, `AppUserID`); the CRM creates an Incoming, Ringing log for that agent.
-3. The browser gets the ring and calls `register_softphone_call(CallSid, caller, "Incoming")`. The CRM creates the log or, if the webhook created it, checks the agent is its receiver and flags it `is_softphone_call`. A simultaneous insert of the same CallSid (duplicate entry or MariaDB error 1020) is caught and the existing log is used. The popup shows Accept / Reject and the caller's Lead.
+3. The browser gets the ring and calls `register_softphone_call(CallSid, caller, "Incoming")`. If no log exists yet, the CRM looks the call up in Exotel (3 s timeout) and uses Exotel's caller number rather than the browser's (the SIP caller ID can be wrong or forged); if Exotel doesn't have it yet, the browser's number is used and reconcile corrects it later. The CRM creates the log or, if the webhook created it, checks the agent is its receiver and flags it `is_softphone_call`. A simultaneous insert of the same CallSid (duplicate entry or MariaDB error 1020) is caught and the existing log is used. The popup shows Accept / Reject and the caller's Lead.
 4. Accept → audio. Reject → SIP 486.
 5. Outcome:
    - Integration Core posts `free` (agent released). It is identical for every outcome, so the CRM only queues a reconcile.
@@ -158,17 +159,19 @@ The browser never receives the app token and never calls Integration Core. The o
 
 ## Reconcile job
 
-`reconcile_stale_call_logs` runs every 5 minutes, one run at a time, with a budget of 50 Calls API requests per run. It picks Exotel logs 5 minutes to 7 days old that are still Initiated / Ringing / In Progress / Queued or have no end time, plus Completed logs from the last 2 hours without a recording. For each call:
+`reconcile_stale_call_logs` runs every 5 minutes, one run at a time. It considers Exotel logs 5 minutes to 7 days old that are still Initiated / Ringing / In Progress / Queued or have no end time (up to 50 per run), plus Completed logs from the last 2 hours without a recording (a separate budget of 10). A log that is still eligible after a run is retried after 5, 10, 20, … minutes, capped at 6 hours (backoff kept in Redis), so stuck logs can't take the whole budget. For each call:
 
 1. Not found in Exotel → Failed, once the log is over 60 minutes old.
 2. Logs flagged `is_softphone_call` must match a SIP leg of their agent (outbound: `From` = caller's SIP ID and `To` = logged number; inbound: `To` = receiver's SIP ID). Otherwise → Failed with an error log. This stops a browser from registering an arbitrary CallSid.
-3. A final status without `EndTime` is skipped until a later run; Exotel fills it in about 2 minutes after the call.
-4. Inbound `completed` is judged by the agent leg (answered → Completed, busy → Busy, otherwise Call Not Answered).
+3. For an inbound softphone log whose caller number doesn't match Exotel's `From`, the number is corrected, the Lead is re-linked, and an error log is written.
+4. A final status without `EndTime` is skipped until a later run; Exotel fills it in about 2 minutes after the call.
+5. Inbound `completed` is judged by the agent leg (answered → Completed, busy → Busy, otherwise Call Not Answered).
 
 ## Security model
 
 - The app token stays on the server; the browser gets only its own agent's mapping, looked up by the session user's email.
 - Dialling is server-side, rate-limited per agent, and checked against the agent's SIP ID.
+- Only managers can create or change Telephony Agent records (they decide which phone Exotel rings); agents can read their own and change only their default medium.
 - Webhooks are authenticated only by the shared `key` query parameter (Exotel sends no signature), so use a long random value and treat Integration Request records as sensitive.
 - The agent's SIP secret is in their own browser; the SDK decrypts it with a key shipped in the SDK. This is inherent to any browser phone.
 
