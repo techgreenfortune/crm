@@ -229,7 +229,6 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 					frappe.enqueue(
 						"crm.api.call_log.cancel_retry_log",
 						queue="short",
-						user="Administrator",
 						lead_name=lead_name,
 						permanent=False,
 					)
@@ -253,7 +252,6 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 			frappe.enqueue(
 				"crm.api.call_log.register_no_answer",
 				queue="short",
-				user="Administrator",
 				lead_name=lead_name,
 			)
 

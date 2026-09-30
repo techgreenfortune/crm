@@ -10,6 +10,70 @@ export function extractExotelCallSid(payload) {
   return ''
 }
 
+// Agents opted in to the softphone never fall back to click-to-call; the per-agent toggle is the fallback.
+export function chooseOutboundRoute({
+  softphoneRequired,
+  registered,
+  registrationState,
+}) {
+  if (!softphoneRequired) return 'click-to-call'
+  if (registered) return 'softphone'
+  if (registrationState === 'unsupported browser') return 'blocked-browser'
+  if (registrationState === 'other tab') return 'blocked-other-tab'
+  return 'blocked-reconnect'
+}
+
+// Header badge for the agent's browser phone. SDK states: registered, unregistered, sent_request;
+// ExotelCallUI adds initializing, failed, unsupported browser and other tab.
+export function softphoneStatusBadge(state) {
+  if (state === 'registered') return { label: 'Phone ready', theme: 'green' }
+  if (state === 'initializing' || state === 'sent_request')
+    return { label: 'Phone connecting', theme: 'orange' }
+  if (state === 'unsupported browser')
+    return { label: 'Use Chrome for calls', theme: 'red' }
+  if (state === 'other tab')
+    return { label: 'Phone in another tab', theme: 'gray' }
+  return { label: 'Phone offline', theme: 'red' }
+}
+
+// The SDK retries a dropped WebSocket every 5 s by itself; give it this long before rebuilding.
+export const RECONNECT_GRACE_MS = 15_000
+export const RECONNECT_MAX_DELAY_MS = 5 * 60_000
+
+export function createReconnectPolicy({ now = () => Date.now() } = {}) {
+  let downSince = null
+  let attempts = 0
+  let nextAt = 0
+
+  return {
+    onState(state) {
+      if (state === 'registered') {
+        downSince = null
+        attempts = 0
+        nextAt = 0
+      } else if (downSince === null) {
+        downSince = now()
+        nextAt = downSince + RECONNECT_GRACE_MS
+      }
+    },
+
+    shouldReconnect({ inCall = false, online = true } = {}) {
+      return downSince !== null && !inCall && online && now() >= nextAt
+    },
+
+    attempted() {
+      attempts += 1
+      nextAt =
+        now() +
+        Math.min(RECONNECT_GRACE_MS * 2 ** attempts, RECONNECT_MAX_DELAY_MS)
+    },
+
+    reconnectSoon() {
+      if (downSince !== null) nextAt = now()
+    },
+  }
+}
+
 export const BUFFERED_INVITE_TTL_MS = 30_000
 export const UNKNOWN_DIAL_GUARD_MS = 30_000
 
@@ -99,11 +163,17 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       if (outcomeUnknown) {
         // Exotel may still ring our agent leg; without its CallSid it can't be told apart.
         rejectUntil = now() + UNKNOWN_DIAL_GUARD_MS
-        return invite ? { action: 'reject', callSid: invite.callSid } : { action: 'none' }
+        return invite
+          ? { action: 'reject', callSid: invite.callSid }
+          : { action: 'none' }
       }
       // The dial definitely failed, so a buffered INVITE is a genuine inbound call.
       return invite
-        ? { action: 'inbound', callSid: invite.callSid, details: invite.details }
+        ? {
+            action: 'inbound',
+            callSid: invite.callSid,
+            details: invite.details,
+          }
         : { action: 'none' }
     },
 

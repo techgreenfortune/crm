@@ -8,6 +8,8 @@ import {
 let phone = null
 let initializePromise = null
 let registrationState = ''
+// Bumped on every unregister; events from an older SDK instance are dropped.
+let generation = 0
 const callListeners = new Set()
 const registrationListeners = new Set()
 
@@ -49,6 +51,8 @@ export async function initializeExotelSoftphone(mapping) {
   if (phone) return phone
   if (initializePromise) return initializePromise
 
+  const instance = generation
+  const current = () => instance === generation
   initializePromise = (async () => {
     const user = new User(mapping)
     const sipInfo = buildExotelSipInfo(user, mapping.ExotelAccountSid)
@@ -57,9 +61,12 @@ export async function initializeExotelSoftphone(mapping) {
     }
     phone = new ExotelWebPhoneSDK(null, user).Initialize(
       sipInfo,
-      (eventType, details) => emit(callListeners, eventType, details),
+      (eventType, details) => {
+        if (current()) emit(callListeners, eventType, details)
+      },
       true,
       (state) => {
+        if (!current()) return
         registrationState = state
         emit(registrationListeners, state)
       },
@@ -98,8 +105,13 @@ export function toggleExotelSoftphoneHold() {
 }
 
 export function unregisterExotelSoftphone() {
-  phone?.UnRegisterDevice()
-  phone = null
-  initializePromise = null
-  registrationState = ''
+  try {
+    phone?.UnRegisterDevice()
+  } finally {
+    // Always drop the instance so a reconnect builds a fresh one, even if the SDK threw.
+    generation += 1
+    phone = null
+    initializePromise = null
+    registrationState = ''
+  }
 }

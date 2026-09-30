@@ -1,5 +1,10 @@
 import {
   BUFFERED_INVITE_TTL_MS,
+  RECONNECT_GRACE_MS,
+  RECONNECT_MAX_DELAY_MS,
+  chooseOutboundRoute,
+  createReconnectPolicy,
+  softphoneStatusBadge,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
 } from '@/utils/exotelSoftphoneCall'
@@ -114,5 +119,131 @@ describe('createOutboundDialTracker', () => {
     dial.reset()
     expect(dial.pending).toBe(false)
     expect(dial.onIncoming('sid-1')).toEqual({ action: 'inbound' })
+  })
+})
+
+describe('chooseOutboundRoute', () => {
+  it('keeps click-to-call for agents without the softphone', () => {
+    expect(
+      chooseOutboundRoute({ softphoneRequired: false, registered: false }),
+    ).toBe('click-to-call')
+  })
+
+  it('uses the softphone when registered', () => {
+    expect(
+      chooseOutboundRoute({ softphoneRequired: true, registered: true }),
+    ).toBe('softphone')
+  })
+
+  it('never falls back to the mobile for a softphone agent', () => {
+    for (const registrationState of [
+      'initializing',
+      'failed',
+      'unregistered',
+      'terminated',
+    ]) {
+      expect(
+        chooseOutboundRoute({
+          softphoneRequired: true,
+          registered: false,
+          registrationState,
+        }),
+      ).toBe('blocked-reconnect')
+    }
+  })
+
+  it('sends calls to the tab that holds the softphone', () => {
+    expect(
+      chooseOutboundRoute({
+        softphoneRequired: true,
+        registered: false,
+        registrationState: 'other tab',
+      }),
+    ).toBe('blocked-other-tab')
+  })
+
+  it('blocks Safari without offering a reconnect', () => {
+    expect(
+      chooseOutboundRoute({
+        softphoneRequired: true,
+        registered: false,
+        registrationState: 'unsupported browser',
+      }),
+    ).toBe('blocked-browser')
+  })
+})
+
+describe('softphoneStatusBadge', () => {
+  it('maps registration states to a header badge', () => {
+    expect(softphoneStatusBadge('registered').theme).toBe('green')
+    expect(softphoneStatusBadge('initializing').theme).toBe('orange')
+    expect(softphoneStatusBadge('sent_request').theme).toBe('orange')
+    expect(softphoneStatusBadge('other tab')).toEqual({
+      label: 'Phone in another tab',
+      theme: 'gray',
+    })
+    expect(softphoneStatusBadge('unsupported browser').label).toBe(
+      'Use Chrome for calls',
+    )
+    for (const state of ['unregistered', 'failed', 'terminated', 'unknown'])
+      expect(softphoneStatusBadge(state)).toEqual({
+        label: 'Phone offline',
+        theme: 'red',
+      })
+  })
+})
+
+describe('createReconnectPolicy', () => {
+  function policy() {
+    let time = 0
+    const reconnect = createReconnectPolicy({ now: () => time })
+    return { reconnect, advance: (ms) => (time += ms) }
+  }
+
+  it('leaves the SDK its own retry window before rebuilding', () => {
+    const { reconnect, advance } = policy()
+    reconnect.onState('unregistered')
+    expect(reconnect.shouldReconnect()).toBe(false)
+    advance(RECONNECT_GRACE_MS)
+    expect(reconnect.shouldReconnect()).toBe(true)
+  })
+
+  it('backs off between attempts up to the maximum', () => {
+    const { reconnect, advance } = policy()
+    reconnect.onState('failed')
+    advance(RECONNECT_GRACE_MS)
+    reconnect.attempted()
+    advance(RECONNECT_GRACE_MS * 2 - 1)
+    expect(reconnect.shouldReconnect()).toBe(false)
+    advance(1)
+    expect(reconnect.shouldReconnect()).toBe(true)
+    for (let i = 0; i < 10; i++) reconnect.attempted()
+    advance(RECONNECT_MAX_DELAY_MS)
+    expect(reconnect.shouldReconnect()).toBe(true)
+  })
+
+  it('never reconnects during a call or while offline', () => {
+    const { reconnect, advance } = policy()
+    reconnect.onState('unregistered')
+    advance(RECONNECT_GRACE_MS)
+    expect(reconnect.shouldReconnect({ inCall: true })).toBe(false)
+    expect(reconnect.shouldReconnect({ online: false })).toBe(false)
+  })
+
+  it('reconnects straight away when the network comes back', () => {
+    const { reconnect } = policy()
+    reconnect.onState('unregistered')
+    reconnect.reconnectSoon()
+    expect(reconnect.shouldReconnect()).toBe(true)
+  })
+
+  it('resets once registered again', () => {
+    const { reconnect, advance } = policy()
+    reconnect.onState('unregistered')
+    advance(RECONNECT_GRACE_MS)
+    reconnect.onState('registered')
+    expect(reconnect.shouldReconnect()).toBe(false)
+    reconnect.reconnectSoon()
+    expect(reconnect.shouldReconnect()).toBe(false)
   })
 })

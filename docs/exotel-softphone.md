@@ -64,7 +64,8 @@ The browser never receives the app token and never calls Integration Core. The o
 2. Scheduler enabled and a worker running.
 3. **CRM Exotel Settings**: integration enabled, account SID, API key/token, a strong random `webhook_verify_token`, "Enable Browser Softphone" on, App ID and App Secret.
 4. **CRM Telephony Agent** per agent: Mobile No, Exotel Number, "Use Exotel Browser Softphone" on, then save. Saving finds or creates the agent's Integration Core user mapping (App User ID = email) and fills the read-only **Exotel SIP ID**; it refuses to save if the Exotel user has no SIP device.
-5. Agents use Chrome (or Edge) and allow microphone access. Safari connects calls without audio and is not supported.
+5. Agents use Chrome (or Edge) and allow microphone access. Safari connects calls without audio: softphone agents on Safari are blocked from calling with "Browser calling needs Chrome or Edge".
+6. **Fallback:** an agent with "Use Exotel Browser Softphone" on never falls back to click-to-call (mobile). To move an agent back to click-to-call, switch that toggle off.
 
 ## Page load
 
@@ -72,9 +73,33 @@ The browser never receives the app token and never calls Integration Core. The o
 2. The browser builds the SDK's `User` and SIP settings from that, and calls `new ExotelWebPhoneSDK(null, user).Initialize(...)`.
 3. The SDK registers over the SIP WebSocket; the agent sees "Exotel browser softphone is ready". From then on, any ring for this agent's SIP device arrives in the tab.
 
+**Header badge** (softphone agents only): green "Phone ready", orange "Phone connecting", red "Phone offline" or "Use Chrome for calls". Clicking a red "Phone offline" badge reconnects.
+
+**Staying registered:**
+- The SDK itself retries a dropped WebSocket every 5 s.
+- If the browser is still not registered after 15 s, a watchdog (checked every 5 s) rebuilds the registration from scratch: unregister, fetch the config again, register. Retries back off (30 s, 60 s, … up to 5 min) and reset once registered.
+- It never runs during a call or while the browser reports being offline, and it runs straight away when the browser comes back online.
+- Background attempts show no error toasts; the badge shows the state.
+- Each reconnect gets a new SDK instance, and events from the previous instance are ignored.
+
+**One tab per agent:** only one CRM tab per agent (per browser) registers the phone, using the browser's Web Locks API (`frontend/src/utils/exotelSoftphoneTab.js`).
+- Other tabs wait with a grey "Phone in another tab" badge. Calling from them shows "Calls are running in another CRM tab" with a **Use this tab** button.
+- "Use this tab" or clicking the badge moves the phone: the old tab unregisters and waits in turn.
+- When the active tab closes or crashes, the browser releases the lock, and the next waiting tab registers automatically.
+- Browsers without Web Locks register every tab, as before.
+
 ## Outbound call
 
-1. **Agent clicks Call** on a Lead/Deal. The popup opens, and the dial state machine goes to *pending*.
+1. **Agent clicks Call** on a Lead/Deal. `chooseOutboundRoute` decides:
+
+   | Agent | Browser state | Result |
+   |---|---|---|
+   | Softphone off | — | Click-to-call (Exotel rings the agent's mobile) |
+   | Softphone on | Registered | Browser call (the steps below) |
+   | Softphone on | Not registered, or setup failed | Call blocked: "Browser softphone is not connected… The call was not placed", with a **Reconnect** button |
+   | Softphone on | Safari | Call blocked: "Browser calling needs Chrome or Edge" |
+
+   Reconnect unregisters the SDK instance, fetches the config again and registers from scratch. For a browser call, the popup opens and the dial state machine goes to *pending*.
 2. **Server dial** — `make_softphone_call(phone_number, reference_doctype, reference_docname)`:
    - checks the agent, the number (≥ 10 digits), read access to the Lead/Deal, and a limit of 10 dials per agent per minute
    - `POST /call/outbound_call` with `{app_id, to, user_id}` and the app token
@@ -182,15 +207,17 @@ Pinning can't protect against Exotel changing its servers (API fields, the SIP-s
 | Symptom | Likely cause |
 |---|---|
 | "Save your Telephony Agent again…" on load | The agent has no stored SIP ID, or the Exotel mapping's SIP ID changed |
-| Registers, but calls connect with no audio | Safari, or UDP media blocked by the network |
+| "Browser softphone is not connected" when calling | Registration dropped or setup failed; click Reconnect. If it keeps failing, check the Error Log and the agent's Exotel SIP device |
+| Registers, but calls connect with no audio | UDP media blocked by the network |
 | Inbound calls ring a mobile instead of the browser | The flow's Connect dials a number, not the Exotel user; or the user's active device isn't the SIP device |
 | Call logs stuck in Ringing / In Progress | Webhooks not reaching the CRM (URL, `key`, firewall); the reconcile job completes them if the scheduler runs |
 | Inbound call never ends | A Passthru without a Hangup after it |
-| Both tabs ring | The same agent has the CRM open in two tabs; each tab registers the SIP device |
+| "Phone in another tab" badge | The agent has the CRM open in another tab of the same browser, which holds the phone. Click the badge (or "Use this tab" on the call toast) to move it here |
+| Two devices ring | The same agent is logged in on another browser or machine; only tabs within one browser are coordinated |
 
 ## Known limitations
 
 - Outbound rejected and unanswered calls can't be told apart (both Call Not Answered).
 - A second INVITE during a call moves the SDK's active session; after that, mute / hold / hang-up from the CRM may not reach the live call.
-- Two tabs for the same agent both register and both ring.
+- Only tabs within one browser are coordinated. The same agent logged in on two browsers or machines registers twice, and both ring.
 - Safari is not supported.
