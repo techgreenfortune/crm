@@ -477,33 +477,29 @@ class TestExotelSoftphoneProvisioning(FrappeTestCase):
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_existing_mapping_returns_sip_id_without_creating(self, request, _settings, _token):
+	def test_existing_mapping_returns_sip_id(self, request, _settings, _token):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
 		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}})
 
 		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
 		self.assertEqual(request.call_count, 1)
+		self.assertEqual(request.call_args.args[0], "GET")
 		self.assertEqual(request.call_args.kwargs["headers"], {"Authorization": "app-token"})
 
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_missing_mapping_is_created_then_read(self, request, _settings, _token):
+	def test_missing_mapping_is_rejected_without_creating_a_billable_user(self, request, _settings, _token):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
-		request.side_effect = [
-			# Integration Core reports "not found" as HTTP 200 with Code 404 in the body.
-			fake_response(200, {"Code": 404, "Data": None}),
-			fake_response(200, {"Code": 200, "Data": [{"AppUserId": "agent@example.com"}]}),
-			fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}}),
-		]
+		# Integration Core reports "not found" as HTTP 200 with Code 404 in the body.
+		request.return_value = fake_response(200, {"Code": 404, "Data": None})
 
-		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
-		body = request.call_args_list[1].kwargs["json"][0]
-		self.assertEqual(body["AppUserId"], "agent@example.com")
-		self.assertEqual(body["AgentNumber"], "9000000001")
-		self.assertEqual(body["VirtualNumber"], "04000000001")
+		with self.assertRaisesRegex(frappe.ValidationError, "will not create Exotel users"):
+			ensure_softphone_user_mapping(AGENT)
+		self.assertEqual(request.call_count, 1)
+		self.assertEqual(request.call_args.args[0], "GET")
 
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
