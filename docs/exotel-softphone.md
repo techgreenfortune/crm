@@ -54,7 +54,7 @@ Keep every value below (secrets, keys, App ID) out of Git, chat and tickets. Hol
 |---|---|
 | Exotel account SID, API key, API token | Exotel dashboard → API settings (the same ones classic click-to-call uses) |
 | Integration Core **customer ID and secret** | Issued by Exotel for the account; required to create an app |
-| Each agent as an Exotel dashboard user with a **SIP device**, same email as their CRM user | Exotel dashboard → Users |
+| Each agent as an Exotel dashboard user with a **SIP device** and an existing mapping in this Integration Core app, same email as their CRM user | Exotel administrator |
 | The CRM deployed at `https://<site>` | Deployment |
 
 Integration Core base URL (India): `https://integrationscore.mum1.exotel.com/v2/integrations`. The examples use:
@@ -119,6 +119,23 @@ curl -s -X POST "$IC/app_setting" -H 'Content-Type: application/json' -H "Author
 
 Posting a key again replaces its value. At least one setting must exist or the SDK can't initialise. Check with `GET $IC/app_setting`, and mask the `key=` part before pasting the output anywhere.
 
+d. **Agent mappings** — one per agent, created by an Exotel administrator, never by the CRM.
+
+   **Warning:** if no Exotel coworker exists with that email, `POST /usermapping` does not fail: it **creates a new coworker** (a possibly billable seat) with a phone device from `AgentNumber` and a new SIP device. So:
+
+   1. Confirm in the Exotel dashboard that the coworker exists with the agent's CRM email and has a SIP device.
+   2. Create the mapping (customer token):
+
+      ```bash
+      curl -s -X POST "$IC/usermapping" -H 'Content-Type: application/json' -H "Authorization: <customer token>" \
+        -d '[{"AppUserId":"<email>","AppUsername":"<email>","Email":"<email>","ExotelAccountSid":"<account sid>",
+              "ExotelUserName":"<name>","AgentNumber":"<10-digit mobile>","VirtualNumber":"<Exophone>"}]'
+      ```
+
+   3. Check it with `GET $IC/usermapping?user_id=<email>`: `SipId` must be the coworker's existing SIP device, not a new one.
+
+   Only map test users on UAT/test apps whose SIP devices no live flow rings: while a browser is registered on a UAT app as that device, live calls to it ring in UAT.
+
 ### 3. CRM Exotel Settings
 
 As System Manager: **Settings → Telephony → Exotel**.
@@ -138,9 +155,9 @@ The browser SDK connects to Exotel's India VoIP domain from inside the package, 
 
 ### 4. CRM Telephony Agents
 
-A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.)
+A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) first asks an Exotel administrator to provision the dashboard user, SIP device and mapping in this Integration Core app (step 2d). Creating a mapping can create a billable Exotel co-user, so CRM deliberately never calls `POST /usermapping`.
 
-Saving finds or creates the agent's user mapping in the app (App User ID = email) and fills the read-only **Exotel SIP ID**. It refuses to save if the agent's Exotel user has no SIP device. Agents see only their own record and can change only their default calling medium.
+After that, the manager creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.) Saving only reads the existing mapping (App User ID = email), fills the read-only **Exotel SIP ID**, and refuses to save if the mapping or SIP device is missing. Agents see only their own record and can change only their default calling medium.
 
 ### 5. Call flow (Exotel dashboard, inbound)
 
@@ -239,9 +256,10 @@ Anyone with dashboard access can edit or delete flows, so give dashboard access 
    | `answered` / `active` | — | In Progress |
    | `terminal` / `terminal` | `completed` | Completed, with duration and recording |
    | `terminal` / `terminal` | `to_leg_unanswered` | Call Not Answered |
+   | `terminal` / `terminal` | `from_leg_cancelled` (agent hung up while the customer rang) | Canceled |
 
    Exotel reports a customer rejection as `to_leg_unanswered` as well, so outbound rejected and unanswered calls are both Call Not Answered.
-6. **Hang-up** — SIP BYE from the SDK. The SDK's `callEnded` event only resets the popup; it saves nothing. The popup's final label comes from the terminal webhook when it arrives first ("No answer" for Call Not Answered/Busy/Failed/Canceled, "Call ended" for Completed), because the SDK sees the agent leg connect whether or not the customer answered.
+6. **Hang-up** — SIP BYE from the SDK. The SDK's `callEnded` event only resets the popup; it saves nothing. The popup's final label comes from the terminal webhook when it arrives first ("No answer" for Call Not Answered/Busy/Failed, "Call canceled" for Canceled, "Call ended" for Completed), because the SDK sees the agent leg connect whether or not the customer answered.
 
 ## Inbound call
 
