@@ -231,6 +231,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 						queue="short",
 						lead_name=lead_name,
 						permanent=False,
+						enqueue_after_commit=True,
 					)
 
 	def _trigger_no_answer_retry(self):
@@ -253,6 +254,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 				"crm.api.call_log.register_no_answer",
 				queue="short",
 				lead_name=lead_name,
+				enqueue_after_commit=True,
 			)
 
 	@staticmethod
