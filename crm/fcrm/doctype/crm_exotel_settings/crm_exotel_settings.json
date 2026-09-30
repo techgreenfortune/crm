@@ -13,6 +13,7 @@
   "column_break_softphone",
   "softphone_app_id",
   "softphone_app_secret",
+  "softphone_api_host",
   "section_break_kfez",
   "account_sid",
   "subdomain",
@@ -112,6 +113,14 @@
    "mandatory_depends_on": "eval:doc.enabled && doc.softphone_enabled"
   },
   {
+   "default": "integrationscore.mum1.exotel.com",
+   "depends_on": "eval:doc.enabled && doc.softphone_enabled",
+   "description": "Integration Core host for your Exotel account's region, without https://",
+   "fieldname": "softphone_api_host",
+   "fieldtype": "Data",
+   "label": "Softphone API Host"
+  },
+  {
    "fieldname": "column_break_qwfn",
    "fieldtype": "Column Break"
   },
@@ -133,7 +142,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-09-25 16:26:12.034517",
+ "modified": "2026-09-30 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Exotel Settings",

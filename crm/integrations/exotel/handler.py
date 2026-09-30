@@ -9,7 +9,7 @@ from frappe.utils.data import cstr
 
 from crm.integrations.api import get_contact_by_phone_number
 
-SOFTPHONE_API_BASE = "https://integrationscore.mum1.exotel.com/v2/integrations"
+DEFAULT_SOFTPHONE_API_HOST = "integrationscore.mum1.exotel.com"
 SOFTPHONE_TOKEN_CACHE_SECONDS = 60 * 60
 # The only usermapping fields the browser needs to register its own SIP device.
 SOFTPHONE_BROWSER_MAPPING_FIELDS = (
@@ -371,7 +371,7 @@ def _place_softphone_call(settings, agent, phone_number):
 	)
 	try:
 		response = requests.post(
-			f"{SOFTPHONE_API_BASE}/call/outbound_call",
+			f"{_softphone_api_base()}/call/outbound_call",
 			headers={"Authorization": _get_configured_softphone_token(settings)},
 			# Same fields the SDK's own MakeCall sends; it never sends a usable customer_id.
 			json={
@@ -484,6 +484,12 @@ def _get_softphone_user_mapping(token, email):
 	return payload["Data"]
 
 
+def _softphone_api_base():
+	host = cstr(frappe.db.get_single_value("CRM Exotel Settings", "softphone_api_host")).strip()
+	host = host.removeprefix("https://").removeprefix("http://").strip("/") or DEFAULT_SOFTPHONE_API_HOST
+	return f"https://{host}/v2/integrations"
+
+
 def _get_agent_email(agent):
 	return frappe.db.get_value("User", agent.user, "email") or agent.user
 
@@ -523,7 +529,7 @@ def _softphone_request(method, path, token, **kwargs):
 	try:
 		response = requests.request(
 			method,
-			f"{SOFTPHONE_API_BASE}{path}",
+			f"{_softphone_api_base()}{path}",
 			headers={"Authorization": token},
 			timeout=10,
 			**kwargs,
@@ -549,7 +555,7 @@ def _get_softphone_app_token(app_id: str, app_secret: str):
 
 	try:
 		response = requests.post(
-			f"{SOFTPHONE_API_BASE}/token",
+			f"{_softphone_api_base()}/token",
 			json={"Id": app_id, "Secret": app_secret, "Entity": "app"},
 			timeout=10,
 		)

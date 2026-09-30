@@ -22,6 +22,7 @@ class CRMExotelSettings(Document):
 		enabled: DF.Check
 		record_call: DF.Check
 		softphone_app_id: DF.Data | None
+		softphone_api_host: DF.Data | None
 		softphone_app_secret: DF.Password | None
 		softphone_enabled: DF.Check
 		subdomain: DF.Data | None

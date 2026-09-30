@@ -128,6 +128,13 @@
               placeholder="************"
               required
             />
+            <FormControl
+              v-model="exotel.doc.softphone_api_host"
+              :label="__('Softphone API Host')"
+              type="text"
+              placeholder="integrationscore.mum1.exotel.com"
+              autocomplete="off"
+            />
           </div>
         </div>
         <!--  Disabled state -->

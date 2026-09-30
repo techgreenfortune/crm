@@ -8,6 +8,7 @@ from frappe.tests.utils import FrappeTestCase
 from crm.integrations.exotel.handler import (
 	ExotelDialOutcomeUnknown,
 	_get_softphone_app_token,
+	_softphone_api_base,
 	get_call_log_status,
 	get_calls_api_call_log_status,
 	get_softphone_agent_user,
@@ -105,6 +106,19 @@ class TestExotelSoftphone(FrappeTestCase):
 			"app-token",
 			expires_in_sec=3600,
 		)
+
+	def test_api_host_comes_from_settings(self):
+		with patch(
+			"crm.integrations.exotel.handler.frappe.db.get_single_value",
+			return_value=" https://integrationscore.sg1.example.com/ ",
+		):
+			self.assertEqual(
+				_softphone_api_base(), "https://integrationscore.sg1.example.com/v2/integrations"
+			)
+		with patch("crm.integrations.exotel.handler.frappe.db.get_single_value", return_value=None):
+			self.assertEqual(
+				_softphone_api_base(), "https://integrationscore.mum1.exotel.com/v2/integrations"
+			)
 
 	@patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=None)
 	@patch("crm.integrations.exotel.handler.get_exotel_settings")

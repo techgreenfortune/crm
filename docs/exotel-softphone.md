@@ -54,7 +54,7 @@ The browser never receives the app token and never calls Integration Core. The o
 3. **Exotel users**: each agent needs a dashboard user with a SIP device and the same email as their CRM user.
 4. **Call flow** attached to the Exophone:
    - Connect → Exotel **users or groups**, not phone numbers. Check that an empty "numbers" option is not the selected one; it still dials a default number.
-   - Connect → "Create popup" = `https://integrationscore.mum1.exotel.com/v2/integrations/call/inbound_call/<app id>?type=popup`, and Record on.
+   - Connect → "Create popup" = `https://<softphone api host>/v2/integrations/call/inbound_call/<app id>?type=popup`, and Record on.
    - "After the call conversation ends" and "If nobody answers" → Passthru to the `handle_request` URL above, each followed by a **Hangup** applet. A Passthru with nothing after it leaves the call hanging.
 5. **Network**: allow outbound TCP 443 to Exotel and UDP 10000–40000 for media. Signalling can work while media is blocked, which gives connected calls with no audio.
 
@@ -62,7 +62,7 @@ The browser never receives the app token and never calls Integration Core. The o
 
 1. `bench --site <site> migrate` (adds `CRM Telephony Agent.exotel_sip_id` and `CRM Call Log.is_softphone_call`).
 2. Scheduler enabled and a worker running.
-3. **CRM Exotel Settings**: integration enabled, account SID, API key/token, a strong random `webhook_verify_token`, "Enable Browser Softphone" on, App ID and App Secret.
+3. **CRM Exotel Settings**: integration enabled, account SID, API key/token, a strong random `webhook_verify_token`, "Enable Browser Softphone" on, App ID and App Secret. "Softphone API Host" defaults to `integrationscore.mum1.exotel.com` (India); change it only for an account in another Exotel region. The browser SDK connects to Exotel's India VoIP domain from inside the package, so another region also needs an SDK-side change.
 4. **CRM Telephony Agent** per agent, set up by a manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only): Mobile No, Exotel Number, "Use Exotel Browser Softphone" on, then save. Agents see only their own record and can change only their default calling medium. Saving finds or creates the agent's Integration Core user mapping (App User ID = email) and fills the read-only **Exotel SIP ID**; it refuses to save if the Exotel user has no SIP device.
 5. Agents use Chrome (or Edge) and allow microphone access. Safari connects calls without audio: softphone agents on Safari are blocked from calling with "Browser calling needs Chrome or Edge".
 6. **Fallback:** an agent with "Use Exotel Browser Softphone" on never falls back to click-to-call (mobile). To move an agent back to click-to-call, switch that toggle off.
