@@ -862,7 +862,7 @@ class TestExotelInboundCallerNumber(FrappeTestCase):
 		return_value={"Direction": "inbound", "From": "09000000002", "To": "sip:agentsip"},
 	)
 	def test_registration_uses_exotels_caller_not_the_browsers(self, fetch, create_log, *_):
-		register_softphone_call("call-sid", "cxuseri-junk", "Incoming")
+		register_softphone_call("call-sid", "sipuser-junk", "Incoming")
 
 		self.assertEqual(fetch.call_args.kwargs["timeout"], 3)
 		self.assertEqual(create_log.call_args.args[2], "09000000002")
