@@ -1,5 +1,18 @@
 <template>
-  <div>
+  <div class="flex items-center">
+    <button
+      v-if="softphoneRequired && !showSmallCallPopup"
+      type="button"
+      class="ml-2"
+      :title="statusBadgeTitle"
+      @click="onStatusBadgeClick"
+    >
+      <Badge
+        variant="subtle"
+        :theme="statusBadge.theme"
+        :label="__(statusBadge.label)"
+      />
+    </button>
     <div
       v-show="showSmallCallPopup"
       class="ml-2 flex cursor-pointer select-none items-center justify-between gap-1 rounded-full bg-surface-gray-7 px-2 py-[7px] text-base text-ink-gray-2"
@@ -263,6 +276,51 @@
           </div>
         </div>
       </div>
+      <div
+        v-if="softphoneSessionActive"
+        class="flex items-center justify-center gap-2"
+      >
+        <template v-if="softphoneIncoming">
+          <Button
+            variant="solid"
+            theme="green"
+            :label="__('Accept')"
+            icon="phone"
+            :disabled="!softphoneIncomingReady"
+            @click="acceptSoftphoneIncomingCall"
+          />
+          <Button
+            variant="solid"
+            theme="red"
+            :label="__('Reject')"
+            icon="phone-off"
+            @click="rejectSoftphoneCall"
+          />
+        </template>
+        <template v-else>
+          <Button
+            class="bg-surface-gray-6 text-ink-white hover:bg-surface-gray-5"
+            :tooltip="softphoneMuted ? __('Unmute') : __('Mute')"
+            :icon="softphoneMuted ? 'mic-off' : 'mic'"
+            :disabled="!softphoneCallAvailable"
+            @click="toggleSoftphoneMute"
+          />
+          <Button
+            class="bg-surface-gray-6 text-ink-white hover:bg-surface-gray-5"
+            :tooltip="softphoneHeld ? __('Resume') : __('Hold')"
+            :icon="softphoneHeld ? 'play' : 'pause'"
+            :disabled="!softphoneCallAvailable"
+            @click="toggleSoftphoneHold"
+          />
+          <Button
+            variant="solid"
+            theme="red"
+            :tooltip="__('Hang Up')"
+            icon="phone-off"
+            @click="hangupSoftphoneCall"
+          />
+        </template>
+      </div>
       <div class="footer flex justify-between gap-2">
         <div class="flex gap-2">
           <Button
@@ -329,17 +387,37 @@ import {
 } from '@/composables/useCallLogActions.js'
 import { globalStore } from '@/stores/global'
 import { sessionStore } from '@/stores/session'
+import {
+  acceptExotelSoftphoneCall,
+  hangupExotelSoftphoneCall,
+  initializeExotelSoftphone,
+  isExotelSoftphoneRegistered,
+  subscribeToExotelSoftphone,
+  toggleExotelSoftphoneHold,
+  toggleExotelSoftphoneMute,
+  unregisterExotelSoftphone,
+} from '@/utils/exotelSoftphone'
+import {
+  chooseOutboundRoute,
+  createOutboundDialTracker,
+  createReconnectPolicy,
+  extractExotelCallSid,
+  softphoneStatusBadge,
+  softphoneTerminalLabel,
+} from '@/utils/exotelSoftphoneCall'
+import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import {
   TextEditor,
   Avatar,
+  Badge,
   Button,
   Dropdown,
   call,
   createResource,
   toast,
 } from 'frappe-ui'
-import { computed, ref, onBeforeUnmount, watch, nextTick } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const { $socket } = globalStore()
@@ -364,6 +442,21 @@ const callStatus = ref('')
 const phoneNumber = ref('')
 const callData = ref(null)
 const counterUp = ref(null)
+// True for agents opted in to the browser softphone: their calls never fall back to the mobile.
+// null until get_softphone_config answers, so an early click can't fall back to the mobile.
+const softphoneRequired = ref(null)
+const softphoneRegistrationState = ref('not configured')
+const softphoneSessionActive = ref(false)
+const softphoneIncoming = ref(false)
+const softphoneIncomingReady = ref(false)
+const softphoneCallAvailable = ref(false)
+const softphoneMuted = ref(false)
+const softphoneHeld = ref(false)
+let softphoneConnected = false
+let softphoneSetupPromise = null
+let softphoneUnsubscribe = null
+const outboundDial = createOutboundDialTracker()
+let softphoneWasReady = false
 
 const contact = ref({
   full_name: '',
@@ -764,7 +857,172 @@ function updateWindowHeight(condition) {
   callPopup.style.top = updatedTop + 'px'
 }
 
-function makeOutgoingCall(number, context) {
+async function makeOutgoingCall(number, context) {
+  const route = chooseOutboundRoute({
+    softphoneRequired: softphoneRequired.value,
+    registered: isExotelSoftphoneRegistered(),
+    registrationState: softphoneRegistrationState.value,
+  })
+  if (route === 'click-to-call') makeClassicOutgoingCall(number, context)
+  else if (route === 'softphone')
+    await makeSoftphoneOutgoingCall(number, context)
+  else showSoftphoneUnavailable(route)
+}
+
+function showSoftphoneUnavailable(route) {
+  if (route === 'blocked-loading') {
+    toast.info(
+      __('Your browser phone is still connecting. Try again in a moment.'),
+    )
+    return
+  }
+  if (route === 'blocked-other-tab') {
+    toast.info(__('Calls are running in another CRM tab.'), {
+      duration: 10,
+      action: { label: __('Use this tab'), onClick: takeOverSoftphoneTab },
+    })
+    return
+  }
+  if (route === 'blocked-browser') {
+    toast.error(
+      __(
+        'Browser calling needs Chrome or Edge. Open the CRM in Chrome to call.',
+      ),
+    )
+    return
+  }
+  toast.error(
+    __('Browser softphone is not connected ({0}). The call was not placed.', [
+      softphoneRegistrationState.value,
+    ]),
+    {
+      duration: 10,
+      action: { label: __('Reconnect'), onClick: reconnectSoftphone },
+    },
+  )
+}
+
+let reconnecting = false
+let isSoftphoneTab = false
+let releaseSoftphoneTab = null
+
+function softphoneUser() {
+  const { user } = sessionStore()
+  return typeof user === 'object' ? user.value : user
+}
+
+function claimTab({ steal = false } = {}) {
+  releaseSoftphoneTab?.()
+  releaseSoftphoneTab = claimSoftphoneTab({
+    user: softphoneUser(),
+    steal,
+    onAcquired: () => {
+      isSoftphoneTab = true
+      reconnectSoftphone({ silent: true })
+    },
+    onLost: () => {
+      isSoftphoneTab = false
+      unregisterExotelSoftphone()
+      softphoneSetupPromise = null
+      softphoneRegistrationState.value = 'other tab'
+      claimTab()
+    },
+  })
+}
+
+function takeOverSoftphoneTab() {
+  claimTab({ steal: true })
+}
+
+async function reconnectSoftphone({ silent = false } = {}) {
+  if (reconnecting) return
+  reconnecting = true
+  try {
+    unregisterExotelSoftphone()
+    softphoneSetupPromise = null
+    softphoneWasReady = false
+    await setupSoftphone({ silent })
+  } finally {
+    reconnecting = false
+  }
+}
+
+const statusBadge = computed(() =>
+  softphoneStatusBadge(softphoneRegistrationState.value),
+)
+const statusBadgeTitle = computed(() => {
+  const state = softphoneRegistrationState.value
+  if (state === 'other tab')
+    return __('Calls run in another CRM tab. Click to use this tab instead.')
+  if (['registered', 'unsupported browser'].includes(state))
+    return __('Browser softphone: {0}', [state])
+  return __('Browser softphone: {0}. Click to reconnect.', [state])
+})
+
+function onStatusBadgeClick() {
+  if (softphoneRegistrationState.value === 'other tab') {
+    takeOverSoftphoneTab()
+    return
+  }
+  if (
+    ['registered', 'unsupported browser'].includes(
+      softphoneRegistrationState.value,
+    )
+  )
+    return
+  reconnectSoftphone()
+}
+
+const reconnectPolicy = createReconnectPolicy()
+const RECONNECT_CHECK_INTERVAL_MS = 5 * 1000
+let reconnectTimer = null
+
+watch(softphoneRegistrationState, (state) => reconnectPolicy.onState(state))
+
+function checkSoftphoneReconnect() {
+  if (
+    !softphoneRequired.value ||
+    softphoneRegistrationState.value === 'unsupported browser' ||
+    !isSoftphoneTab ||
+    reconnecting
+  )
+    return
+  if (
+    !reconnectPolicy.shouldReconnect({
+      inCall: softphoneSessionActive.value,
+      online: navigator.onLine,
+    })
+  )
+    return
+  reconnectPolicy.attempted()
+  console.info(
+    '[exotel-softphone] auto-reconnect',
+    softphoneRegistrationState.value,
+  )
+  reconnectSoftphone({ silent: true })
+}
+
+function onBrowserOnline() {
+  reconnectPolicy.reconnectSoon()
+  checkSoftphoneReconnect()
+}
+
+function startReconnectWatchdog() {
+  if (reconnectTimer) return
+  reconnectTimer = setInterval(
+    checkSoftphoneReconnect,
+    RECONNECT_CHECK_INTERVAL_MS,
+  )
+  window.addEventListener('online', onBrowserOnline)
+}
+
+function stopReconnectWatchdog() {
+  clearInterval(reconnectTimer)
+  reconnectTimer = null
+  window.removeEventListener('online', onBrowserOnline)
+}
+
+function makeClassicOutgoingCall(number, context) {
   phoneNumber.value = number
 
   const params = { to_number: phoneNumber.value }
@@ -787,12 +1045,17 @@ function makeOutgoingCall(number, context) {
       lastSocketAt.value = Date.now()
     },
     onError(err) {
-      toast.error(err.messages[0])
+      toast.error(err.messages?.[0] || err.message || __('Exotel call failed'))
     },
   })
 }
 
+// Called both on mount and by CallUI once integrations load; must only run once.
+let setupDone = false
+
 function setup() {
+  if (setupDone) return
+  setupDone = true
   dispositionsResource.fetch()
   restorePopupState()
   $socket.off('exotel_call')
@@ -818,6 +1081,288 @@ function setup() {
     }
   })
   startStaleCheck()
+  setupSoftphone()
+  startReconnectWatchdog()
+}
+
+onMounted(setup)
+
+// Safari connects Exotel calls without audio in either direction.
+function isSafari() {
+  const ua = navigator.userAgent
+  return (
+    /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua)
+  )
+}
+
+function setupSoftphone({ silent = false } = {}) {
+  if (softphoneSetupPromise) return softphoneSetupPromise
+  if (!softphoneUnsubscribe) {
+    softphoneUnsubscribe = subscribeToExotelSoftphone({
+      onCallEvent: handleSoftphoneCallEvent,
+      onRegistration: handleSoftphoneRegistration,
+    })
+  }
+
+  softphoneSetupPromise = (async () => {
+    try {
+      const config = await call(
+        'crm.integrations.exotel.handler.get_softphone_config',
+      )
+      softphoneRequired.value = Boolean(config.enabled)
+      if (!softphoneRequired.value) return
+      if (isSafari()) {
+        softphoneRegistrationState.value = 'unsupported browser'
+        toast.error(
+          __(
+            'Browser calling needs Chrome or Edge. Open the CRM in Chrome to make and receive calls.',
+          ),
+        )
+        return
+      }
+      if (!isSoftphoneTab) {
+        softphoneRegistrationState.value = 'other tab'
+        if (!releaseSoftphoneTab) claimTab()
+        return
+      }
+      softphoneRegistrationState.value = 'initializing'
+      await initializeExotelSoftphone(config)
+    } catch (error) {
+      // get_softphone_config only throws for agents who are opted in but not set up correctly.
+      softphoneRequired.value = true
+      softphoneRegistrationState.value = 'failed'
+      console.error('[exotel-softphone] initialization failed', error)
+      // Auto-reconnect retries in the background; the header badge shows the state.
+      if (silent) return
+      toast.error(
+        error.messages?.[0] ||
+          error.message ||
+          __('Browser softphone could not start.'),
+        {
+          duration: 10,
+          action: { label: __('Reconnect'), onClick: reconnectSoftphone },
+        },
+      )
+    }
+  })()
+  return softphoneSetupPromise
+}
+
+function handleSoftphoneRegistration(state) {
+  softphoneRegistrationState.value = state || 'unknown'
+  console.info('[exotel-softphone] registration', state)
+  if (state === 'registered' && !softphoneWasReady) {
+    softphoneWasReady = true
+    toast.success(__('Exotel browser softphone is ready'))
+  } else if (state === 'unregistered' || state === 'failed') {
+    softphoneWasReady = false
+  }
+}
+
+async function makeSoftphoneOutgoingCall(number, context) {
+  phoneNumber.value = number
+  callStatus.value = 'Calling...'
+  showCallPopup.value = true
+  showSmallCallPopup.value = false
+  softphoneSessionActive.value = true
+  softphoneIncoming.value = false
+  softphoneIncomingReady.value = false
+  softphoneCallAvailable.value = false
+  softphoneConnected = false
+  softphoneMuted.value = false
+  softphoneHeld.value = false
+  lastSocketAt.value = Date.now()
+
+  outboundDial.start()
+  try {
+    const response = await call(
+      'crm.integrations.exotel.handler.make_softphone_call',
+      {
+        phone_number: number,
+        reference_doctype: context?.reference_doctype || null,
+        reference_docname: context?.reference_docname || null,
+      },
+    )
+    const callSid = extractExotelCallSid(response)
+    if (!callSid)
+      throw new Error(__('Exotel dial response did not include CallSid'))
+
+    callData.value = {
+      CallSid: callSid,
+      AgentEmail: sessionStore().user,
+      Direction: 'outbound-dial',
+      To: number,
+    }
+    const next = outboundDial.dialSucceeded(callSid)
+    if (next.action === 'accept') {
+      softphoneCallAvailable.value = true
+      acceptPendingOutboundCall()
+    } else if (next.action === 'reject') {
+      hangupExotelSoftphoneCall()
+    }
+  } catch (error) {
+    const next = outboundDial.dialFailed({
+      outcomeUnknown: error.exc_type === 'ExotelDialOutcomeUnknown',
+    })
+    if (next.action === 'reject') hangupExotelSoftphoneCall()
+    resetSoftphoneSession()
+    closeCallPopup()
+    toast.error(
+      error.messages?.[0] ||
+        error.message ||
+        __('Could not start browser call. No mobile fallback was placed.'),
+    )
+    if (next.action === 'inbound')
+      prepareSoftphoneIncomingCall(next.callSid, next.details)
+  }
+}
+
+function handleSoftphoneCallEvent(eventType, details = {}) {
+  const callSid = extractExotelCallSid(details)
+  lastSocketAt.value = Date.now()
+
+  if (eventType === 'incoming') {
+    if (!callSid) {
+      hangupExotelSoftphoneCall()
+      toast.error(__('Rejected softphone call without a verifiable CallSid.'))
+      return
+    }
+    const next = outboundDial.onIncoming(callSid, details)
+    if (next.action === 'accept') {
+      softphoneCallAvailable.value = true
+      acceptPendingOutboundCall()
+    } else if (next.action === 'reject') {
+      hangupExotelSoftphoneCall()
+    } else if (next.action === 'inbound') {
+      prepareSoftphoneIncomingCall(callSid, details)
+    }
+    return
+  }
+
+  if (eventType === 'connected') {
+    softphoneConnected = true
+    softphoneIncoming.value = false
+    softphoneIncomingReady.value = false
+    softphoneCallAvailable.value = true
+    softphoneSessionActive.value = true
+    callStatus.value = 'In progress'
+    counterUp.value?.start()
+    return
+  }
+
+  if (eventType === 'callEnded') {
+    if (outboundDial.pending) {
+      outboundDial.onCallEnded(callSid)
+      return
+    }
+    // A rejected INVITE ending must not tear down the call the agent is on.
+    if (
+      callSid &&
+      callData.value?.CallSid &&
+      callSid !== callData.value.CallSid
+    )
+      return
+    counterUp.value?.stop()
+    // A terminal webhook may already have set the real outcome; the agent leg connecting
+    // doesn't mean the customer answered.
+    if (!callTerminated.value)
+      callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
+    resetSoftphoneSession()
+  }
+}
+
+function acceptPendingOutboundCall() {
+  softphoneIncoming.value = false
+  callStatus.value = 'Ringing...'
+  acceptExotelSoftphoneCall()
+}
+
+async function prepareSoftphoneIncomingCall(callSid, details) {
+  const number = details.callFromNumber || details.remoteId
+  if (!number) {
+    hangupExotelSoftphoneCall()
+    toast.error(__('Rejected softphone call without a caller number.'))
+    return
+  }
+
+  phoneNumber.value = number
+  callData.value = {
+    ...details,
+    CallSid: callSid,
+    AgentEmail: sessionStore().user,
+    Direction: 'incoming',
+    CallFrom: number,
+  }
+  callStatus.value = 'Incoming call'
+  softphoneSessionActive.value = true
+  softphoneIncoming.value = true
+  softphoneIncomingReady.value = false
+  softphoneCallAvailable.value = true
+  softphoneConnected = false
+  showCallPopup.value = true
+  showSmallCallPopup.value = false
+
+  try {
+    const registered = await call(
+      'crm.integrations.exotel.handler.register_softphone_call',
+      {
+        call_sid: callSid,
+        phone_number: number,
+        call_type: 'Incoming',
+      },
+    )
+    // The server's caller number is verified against Exotel; the SIP caller ID may not be.
+    if (registered?.CallFrom && registered.CallFrom !== number) {
+      phoneNumber.value = registered.CallFrom
+      callData.value = { ...callData.value, CallFrom: registered.CallFrom }
+    }
+    softphoneIncomingReady.value = true
+  } catch (error) {
+    hangupExotelSoftphoneCall()
+    resetSoftphoneSession()
+    closeCallPopup()
+    toast.error(
+      error.messages?.[0] ||
+        error.message ||
+        __('Could not register incoming browser call.'),
+    )
+  }
+}
+
+function acceptSoftphoneIncomingCall() {
+  softphoneIncoming.value = false
+  callStatus.value = 'Ringing...'
+  acceptExotelSoftphoneCall()
+}
+
+function rejectSoftphoneCall() {
+  hangupExotelSoftphoneCall()
+  softphoneIncoming.value = false
+}
+
+function hangupSoftphoneCall() {
+  hangupExotelSoftphoneCall()
+}
+
+function toggleSoftphoneMute() {
+  toggleExotelSoftphoneMute()
+  softphoneMuted.value = !softphoneMuted.value
+}
+
+function toggleSoftphoneHold() {
+  toggleExotelSoftphoneHold()
+  softphoneHeld.value = !softphoneHeld.value
+}
+
+function resetSoftphoneSession() {
+  softphoneSessionActive.value = false
+  softphoneIncoming.value = false
+  softphoneIncomingReady.value = false
+  softphoneCallAvailable.value = false
+  softphoneMuted.value = false
+  softphoneHeld.value = false
+  softphoneConnected = false
+  outboundDial.reset()
 }
 
 function startStaleCheck() {
@@ -838,6 +1383,8 @@ function checkStale() {
   // Once call is terminated, no more socket events are expected — stale
   // detection has no purpose and must not race against disposition save.
   if (callTerminated.value) return
+  // The browser owns a connected softphone call; quiet webhooks must never hang it up.
+  if (softphoneSessionActive.value && softphoneConnected) return
   // No intermediate socket events expected while call is live, so use a long
   // safety-net timeout rather than the short ACTIVE_STALE_MS — prevents
   // stale-close on normal calls while still closing the popup if the socket
@@ -854,13 +1401,26 @@ function checkStale() {
       'Call popup closed — no telephony update received. Add disposition via call log activity if needed.',
     ),
   )
+  if (softphoneSessionActive.value) {
+    hangupExotelSoftphoneCall()
+    resetSoftphoneSession()
+  }
   closeCallPopup()
 }
 
 onBeforeUnmount(() => {
   $socket.off('exotel_call')
   stopStaleCheck()
+  stopReconnectWatchdog()
+  releaseSoftphoneTab?.()
+  releaseSoftphoneTab = null
+  softphoneUnsubscribe?.()
+  softphoneUnsubscribe = null
+  unregisterExotelSoftphone()
+  window.removeEventListener('beforeunload', unregisterExotelSoftphone)
 })
+
+window.addEventListener('beforeunload', unregisterExotelSoftphone)
 
 const router = useRouter()
 
@@ -980,7 +1540,7 @@ function updateStatus(data) {
   // outgoing call
   if (
     data.EventType == 'answered' &&
-    data.Direction == 'outbound-api' &&
+    ['outbound-api', 'outbound-dial'].includes(data.Direction) &&
     data.Status == 'in-progress' &&
     data['Legs[0][Status]'] == 'in-progress' &&
     data['Legs[1][Status]'] == ''
@@ -988,7 +1548,7 @@ function updateStatus(data) {
     return 'Ringing...'
   } else if (
     data.EventType == 'answered' &&
-    data.Direction == 'outbound-api' &&
+    ['outbound-api', 'outbound-dial'].includes(data.Direction) &&
     data.Status == 'in-progress' &&
     data['Legs[1][Status]'] == 'in-progress'
   ) {
@@ -996,7 +1556,7 @@ function updateStatus(data) {
     return 'In progress'
   } else if (
     data.EventType == 'terminal' &&
-    data.Direction == 'outbound-api' &&
+    ['outbound-api', 'outbound-dial'].includes(data.Direction) &&
     (data.Status == 'no-answer' || data.Status == 'busy') &&
     (data['Legs[1][Status]'] == 'no-answer' ||
       data['Legs[0][Status]'] == 'no-answer' ||
@@ -1007,7 +1567,7 @@ function updateStatus(data) {
     return 'No answer'
   } else if (
     data.EventType == 'terminal' &&
-    data.Direction == 'outbound-api' &&
+    ['outbound-api', 'outbound-dial'].includes(data.Direction) &&
     data.Status == 'completed'
   ) {
     counterUp.value.stop()
@@ -1043,6 +1603,9 @@ function updateStatus(data) {
     )
     return 'Call ended'
   }
+
+  const softphoneOutcome = softphoneTerminalLabel(data)
+  if (softphoneOutcome) return softphoneOutcome
 
   // No branch matched — keep current status rather than returning undefined,
   // which would corrupt every computed that checks callStatus.value.

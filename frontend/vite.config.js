@@ -85,6 +85,11 @@ export default defineConfig(async ({ mode }) => {
         allow: [path.resolve(__dirname, '..')],
       },
     },
+    build: {
+      commonjsOptions: {
+        transformMixedEsModules: true,
+      },
+    },
   }
 
   const frappeui = await importFrappeUIPlugin(isDev, config)

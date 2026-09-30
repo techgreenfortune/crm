@@ -20,6 +20,8 @@ class CRMTelephonyAgent(Document):
 		call_receiving_device: DF.Literal["Computer", "Phone"]
 		default_medium: DF.Literal["", "Twilio", "Exotel"]
 		exotel_number: DF.Data | None
+		exotel_sip_id: DF.Data | None
+		exotel_softphone_enabled: DF.Check
 		mobile_no: DF.Data | None
 		phone_nos: DF.Table[CRMTelephonyPhone]
 		twilio_number: DF.Data | None
@@ -28,8 +30,30 @@ class CRMTelephonyAgent(Document):
 	# end: auto-generated types
 
 	def validate(self):
+		from crm.permissions.telephony_agent import validate_self_edit
+
+		validate_self_edit(self)
 		self.update_phone_nos_based_on_mobile_no()
 		self.set_primary()
+		self.sync_exotel_softphone_mapping()
+
+	def sync_exotel_softphone_mapping(self):
+		if not self.exotel_softphone_enabled:
+			return
+		before = self.get_doc_before_save()
+		unchanged = (
+			before
+			and before.exotel_softphone_enabled
+			and before.user == self.user
+			and before.mobile_no == self.mobile_no
+			and before.exotel_number == self.exotel_number
+		)
+		if unchanged and self.exotel_sip_id:
+			return
+
+		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
+
+		self.exotel_sip_id = ensure_softphone_user_mapping(self)
 
 	def update_phone_nos_based_on_mobile_no(self):
 		doc_before_save = self.get_doc_before_save()
