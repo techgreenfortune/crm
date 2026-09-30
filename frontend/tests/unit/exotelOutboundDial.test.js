@@ -264,7 +264,10 @@ describe('softphoneTerminalLabel', () => {
     expect(
       softphoneTerminalLabel({ ...outbound, CallLogStatus: 'Completed' }),
     ).toBe('Call ended')
-    for (const status of ['Call Not Answered', 'Busy', 'Failed', 'Canceled'])
+    expect(
+      softphoneTerminalLabel({ ...outbound, CallLogStatus: 'Canceled' }),
+    ).toBe('Call canceled')
+    for (const status of ['Call Not Answered', 'Busy', 'Failed'])
       expect(
         softphoneTerminalLabel({ ...outbound, CallLogStatus: status }),
       ).toBe('No answer')

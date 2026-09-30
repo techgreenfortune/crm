@@ -43,11 +43,8 @@ export function softphoneStatusBadge(state) {
 export function softphoneTerminalLabel(data) {
   if (data?.Direction !== 'outbound-dial' || !data.CallLogStatus) return null
   if (data.CallLogStatus === 'Completed') return 'Call ended'
-  if (
-    ['Call Not Answered', 'Busy', 'Failed', 'Canceled'].includes(
-      data.CallLogStatus,
-    )
-  )
+  if (data.CallLogStatus === 'Canceled') return 'Call canceled'
+  if (['Call Not Answered', 'Busy', 'Failed'].includes(data.CallLogStatus))
     return 'No answer'
   return null
 }

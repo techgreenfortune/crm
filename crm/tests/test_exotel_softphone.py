@@ -147,6 +147,33 @@ class TestExotelSoftphone(FrappeTestCase):
 
 		self.assertEqual(payload.CallLogStatus, "Call Not Answered")
 
+	def test_agent_hanging_up_while_customer_rings_is_canceled(self):
+		# Captured 2026-09-30 on UAT: agent hung up in the CRM before the customer answered.
+		payload = normalize_call_payload(
+			{**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "from_leg_cancelled", "TotalDuration": 0}
+		)
+
+		self.assertEqual(payload.CallLogStatus, "Canceled")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_unmapped_terminal_status_is_logged(self, log_error):
+		payload = normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "some_new_value"})
+
+		self.assertIsNone(payload.CallLogStatus)
+		log_error.assert_called_once_with(title="Unmapped Exotel softphone status: some_new_value")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_non_terminal_unmapped_status_is_not_logged(self, log_error):
+		normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallState": "active", "CallStatus": "ringing"})
+
+		log_error.assert_not_called()
+		# Inbound outcomes come from the flow Passthru and reconcile, not this status.
+		normalize_call_payload(
+			{**CAPTURED_INBOUND_NOTIFICATION, "CallState": "terminal", "CallStatus": "free"}
+		)
+
+		log_error.assert_not_called()
+
 	def test_normalizes_inbound_direction_and_keeps_exophone_as_to(self):
 		for direction in ("inbound", "incoming"):
 			payload = normalize_call_payload(
@@ -320,6 +347,18 @@ class TestExotelSoftphone(FrappeTestCase):
 			get_calls_api_call_log_status({"Direction": "outbound-dial", "Status": "completed"}), "Completed"
 		)
 
+	def test_outbound_agent_cancel_matches_the_webhook(self):
+		# Calls API shape captured 2026-09-30 for an agent hanging up while the customer rang.
+		cancelled = {
+			"Direction": "outbound-dial",
+			"Status": "failed",
+			"Details": {"Leg1Status": "completed", "Leg2Status": "canceled", "ConversationDuration": 0},
+		}
+		self.assertEqual(get_calls_api_call_log_status(cancelled), "Canceled")
+		self.assertEqual(
+			get_calls_api_call_log_status({**cancelled, "Details": {"Leg2Status": "failed"}}), "Failed"
+		)
+
 	@patch("crm.integrations.exotel.handler.update_call_log")
 	@patch("crm.integrations.exotel.handler.fetch_exotel_call")
 	def test_reconcile_waits_until_exotel_finalises_call(self, fetch_call, update):
@@ -438,33 +477,29 @@ class TestExotelSoftphoneProvisioning(FrappeTestCase):
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_existing_mapping_returns_sip_id_without_creating(self, request, _settings, _token):
+	def test_existing_mapping_returns_sip_id(self, request, _settings, _token):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
 		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}})
 
 		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
 		self.assertEqual(request.call_count, 1)
+		self.assertEqual(request.call_args.args[0], "GET")
 		self.assertEqual(request.call_args.kwargs["headers"], {"Authorization": "app-token"})
 
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_missing_mapping_is_created_then_read(self, request, _settings, _token):
+	def test_missing_mapping_is_rejected_without_creating_a_billable_user(self, request, _settings, _token):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
-		request.side_effect = [
-			# Integration Core reports "not found" as HTTP 200 with Code 404 in the body.
-			fake_response(200, {"Code": 404, "Data": None}),
-			fake_response(200, {"Code": 200, "Data": [{"AppUserId": "agent@example.com"}]}),
-			fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}}),
-		]
+		# Integration Core reports "not found" as HTTP 200 with Code 404 in the body.
+		request.return_value = fake_response(200, {"Code": 404, "Data": None})
 
-		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
-		body = request.call_args_list[1].kwargs["json"][0]
-		self.assertEqual(body["AppUserId"], "agent@example.com")
-		self.assertEqual(body["AgentNumber"], "9000000001")
-		self.assertEqual(body["VirtualNumber"], "04000000001")
+		with self.assertRaisesRegex(frappe.ValidationError, "will not create Exotel users"):
+			ensure_softphone_user_mapping(AGENT)
+		self.assertEqual(request.call_count, 1)
+		self.assertEqual(request.call_args.args[0], "GET")
 
 	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
