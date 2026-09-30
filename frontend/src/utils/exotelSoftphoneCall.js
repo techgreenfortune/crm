@@ -16,6 +16,8 @@ export function chooseOutboundRoute({
   registered,
   registrationState,
 }) {
+  // null: config not loaded yet — don't guess, or a softphone agent could ring their mobile.
+  if (softphoneRequired == null) return 'blocked-loading'
   if (!softphoneRequired) return 'click-to-call'
   if (registered) return 'softphone'
   if (registrationState === 'unsupported browser') return 'blocked-browser'
@@ -34,6 +36,20 @@ export function softphoneStatusBadge(state) {
   if (state === 'other tab')
     return { label: 'Phone in another tab', theme: 'gray' }
   return { label: 'Phone offline', theme: 'red' }
+}
+
+// Popup label from an Integration Core terminal webhook for a browser outbound call. Only the
+// webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
+export function softphoneTerminalLabel(data) {
+  if (data?.Direction !== 'outbound-dial' || !data.CallLogStatus) return null
+  if (data.CallLogStatus === 'Completed') return 'Call ended'
+  if (
+    ['Call Not Answered', 'Busy', 'Failed', 'Canceled'].includes(
+      data.CallLogStatus,
+    )
+  )
+    return 'No answer'
+  return null
 }
 
 // The SDK retries a dropped WebSocket every 5 s by itself; give it this long before rebuilding.

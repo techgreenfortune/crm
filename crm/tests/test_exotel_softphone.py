@@ -862,10 +862,12 @@ class TestExotelInboundCallerNumber(FrappeTestCase):
 		return_value={"Direction": "inbound", "From": "09000000002", "To": "sip:agentsip"},
 	)
 	def test_registration_uses_exotels_caller_not_the_browsers(self, fetch, create_log, *_):
-		register_softphone_call("call-sid", "sipuser-junk", "Incoming")
+		result = register_softphone_call("call-sid", "sipuser-junk", "Incoming")
 
 		self.assertEqual(fetch.call_args.kwargs["timeout"], 3)
 		self.assertEqual(create_log.call_args.args[2], "09000000002")
+		# The popup shows this instead of the SIP caller ID.
+		self.assertEqual(result, {"CallSid": "call-sid", "CallFrom": "09000000002"})
 
 	@patch("crm.integrations.exotel.handler.fetch_exotel_call", side_effect=requests.ReadTimeout())
 	def test_registration_falls_back_to_the_browser_number(self, _fetch, create_log, *_):
@@ -911,3 +913,41 @@ class TestExotelInboundCallerCorrection(FrappeTestCase):
 			get_value.return_value = log
 			correct_inbound_caller("call-sid", {"From": "09000000002"})
 		get_doc.assert_not_called()
+
+
+class TestExotelRegistrationReturnsStoredCaller(FrappeTestCase):
+	@patch("crm.integrations.exotel.handler._claim_existing_softphone_call")
+	@patch("crm.integrations.exotel.handler.frappe.db.get_value", return_value="09000000002")
+	@patch("crm.integrations.exotel.handler.frappe.db.exists", return_value="call-sid")
+	@patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=SOFTPHONE_AGENT)
+	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
+	def test_webhook_created_log_supplies_the_caller(self, *_):
+		result = register_softphone_call("call-sid", "sipuser-junk", "Incoming")
+
+		self.assertEqual(result, {"CallSid": "call-sid", "CallFrom": "09000000002"})
+
+
+class TestTelephonyAgentMappingOnReassign(FrappeTestCase):
+	@patch("crm.integrations.exotel.handler.ensure_softphone_user_mapping", return_value="sip:newagent")
+	def test_reassigning_the_record_to_another_user_reprovisions(self, ensure):
+		doc = frappe.new_doc("CRM Telephony Agent")
+		doc.update(
+			{
+				"user": "new@example.com",
+				"mobile_no": "9000000001",
+				"exotel_number": "04000000001",
+				"exotel_softphone_enabled": 1,
+				"exotel_sip_id": "sip:oldagent",
+			}
+		)
+		before = frappe._dict(
+			user="old@example.com",
+			mobile_no="9000000001",
+			exotel_number="04000000001",
+			exotel_softphone_enabled=1,
+		)
+		with patch.object(doc, "get_doc_before_save", return_value=before):
+			doc.sync_exotel_softphone_mapping()
+
+		ensure.assert_called_once()
+		self.assertEqual(doc.exotel_sip_id, "sip:newagent")

@@ -27,7 +27,7 @@ class TestTelephonyAgentPermissions(FrappeTestCase):
 	def test_managers_come_from_role_config(self):
 		with patch(ROLES, return_value=["Sales Head"]):
 			self.assertTrue(is_telephony_manager("head@example.com"))
-		for roles in (["Sales User"], ["Sales User", "ASM"], ["RSM"]):
+		for roles in (["Sales User"], ["Sales User", "ASM"], ["RSM"], ["Management"]):
 			with patch(ROLES, return_value=roles):
 				self.assertFalse(is_telephony_manager("agent@example.com"), roles)
 		self.assertTrue(is_telephony_manager("Administrator"))

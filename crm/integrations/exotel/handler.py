@@ -294,14 +294,16 @@ def register_softphone_call(
 	if call_type != "Incoming":
 		frappe.throw(_("Invalid softphone call type."))
 
+	# CallFrom is the caller number the popup should show: the browser's comes from the SIP caller ID,
+	# which can be wrong, so the webhook-created log or Exotel's own record wins.
 	if existing := frappe.db.exists("CRM Call Log", call_sid):
 		_claim_existing_softphone_call(existing)
-		return {"CallSid": call_sid}
+		return {"CallSid": call_sid, "CallFrom": frappe.db.get_value("CRM Call Log", call_sid, "from") or phone_number}
 
 	_validate_softphone_reference(reference_doctype, reference_docname)
 	phone_number = _exotel_inbound_caller(call_sid) or phone_number
 	_create_softphone_call_log(agent, call_sid, phone_number, call_type, reference_doctype, reference_docname)
-	return {"CallSid": call_sid}
+	return {"CallSid": call_sid, "CallFrom": phone_number}
 
 
 def _require_softphone_agent_setup(agent):
@@ -406,6 +408,9 @@ def _place_softphone_call(settings, agent, phone_number):
 			)
 		)
 
+	# Checked when present (every real reply so far has it). A missing FromNumber isn't treated as
+	# unknown: that would reject the agent leg of a call Exotel really placed, and the reconcile job
+	# verifies the SIP leg from the Calls API anyway.
 	from_sip = cstr(data.get("FromNumber")).strip()
 	if from_sip and from_sip != agent.exotel_sip_id:
 		frappe.log_error(

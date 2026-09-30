@@ -134,9 +134,9 @@ MANAGERIAL_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
 
 # Roles that may set up and change any CRM Telephony Agent — the record that decides which phone
 # Exotel rings for a user. Everyone else sees only their own record and may change only their own
-# calling preferences (crm/permissions/telephony_agent.py). Management is in TIER1_FULL_RW but stays
-# read-only through its docperm, as it does for Leads.
-TELEPHONY_AGENT_MANAGER_ROLES: frozenset[str] = TIER1_FULL_RW
+# calling preferences (crm/permissions/telephony_agent.py). Management is read-only across the CRM, so
+# it is left out here too — otherwise the settings page would offer it fields it can't save.
+TELEPHONY_AGENT_MANAGER_ROLES: frozenset[str] = TIER1_FULL_RW - {"Management"}
 
 
 @frappe.whitelist()

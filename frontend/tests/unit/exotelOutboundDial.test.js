@@ -5,6 +5,7 @@ import {
   chooseOutboundRoute,
   createReconnectPolicy,
   softphoneStatusBadge,
+  softphoneTerminalLabel,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
 } from '@/utils/exotelSoftphoneCall'
@@ -123,6 +124,15 @@ describe('createOutboundDialTracker', () => {
 })
 
 describe('chooseOutboundRoute', () => {
+  it('waits for the softphone config instead of guessing', () => {
+    expect(
+      chooseOutboundRoute({ softphoneRequired: null, registered: false }),
+    ).toBe('blocked-loading')
+    expect(
+      chooseOutboundRoute({ softphoneRequired: undefined, registered: false }),
+    ).toBe('blocked-loading')
+  })
+
   it('keeps click-to-call for agents without the softphone', () => {
     expect(
       chooseOutboundRoute({ softphoneRequired: false, registered: false }),
@@ -245,5 +255,33 @@ describe('createReconnectPolicy', () => {
     expect(reconnect.shouldReconnect()).toBe(false)
     reconnect.reconnectSoon()
     expect(reconnect.shouldReconnect()).toBe(false)
+  })
+})
+
+describe('softphoneTerminalLabel', () => {
+  it('labels browser outbound calls from the terminal webhook', () => {
+    const outbound = { Direction: 'outbound-dial' }
+    expect(
+      softphoneTerminalLabel({ ...outbound, CallLogStatus: 'Completed' }),
+    ).toBe('Call ended')
+    for (const status of ['Call Not Answered', 'Busy', 'Failed', 'Canceled'])
+      expect(
+        softphoneTerminalLabel({ ...outbound, CallLogStatus: status }),
+      ).toBe('No answer')
+  })
+
+  it('ignores in-progress events, inbound calls and click-to-call payloads', () => {
+    expect(
+      softphoneTerminalLabel({
+        Direction: 'outbound-dial',
+        CallLogStatus: 'In Progress',
+      }),
+    ).toBeNull()
+    expect(
+      softphoneTerminalLabel({ Direction: 'incoming', CallLogStatus: 'Busy' }),
+    ).toBeNull()
+    expect(
+      softphoneTerminalLabel({ Direction: 'outbound-dial', Status: 'busy' }),
+    ).toBeNull()
   })
 })

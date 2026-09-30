@@ -44,6 +44,7 @@ class CRMTelephonyAgent(Document):
 		unchanged = (
 			before
 			and before.exotel_softphone_enabled
+			and before.user == self.user
 			and before.mobile_no == self.mobile_no
 			and before.exotel_number == self.exotel_number
 		)

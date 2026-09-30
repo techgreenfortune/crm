@@ -403,6 +403,7 @@ import {
   createReconnectPolicy,
   extractExotelCallSid,
   softphoneStatusBadge,
+  softphoneTerminalLabel,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { useDraggable, useWindowSize } from '@vueuse/core'
@@ -442,7 +443,8 @@ const phoneNumber = ref('')
 const callData = ref(null)
 const counterUp = ref(null)
 // True for agents opted in to the browser softphone: their calls never fall back to the mobile.
-const softphoneRequired = ref(false)
+// null until get_softphone_config answers, so an early click can't fall back to the mobile.
+const softphoneRequired = ref(null)
 const softphoneRegistrationState = ref('not configured')
 const softphoneSessionActive = ref(false)
 const softphoneIncoming = ref(false)
@@ -868,6 +870,12 @@ async function makeOutgoingCall(number, context) {
 }
 
 function showSoftphoneUnavailable(route) {
+  if (route === 'blocked-loading') {
+    toast.info(
+      __('Your browser phone is still connecting. Try again in a moment.'),
+    )
+    return
+  }
   if (route === 'blocked-other-tab') {
     toast.info(__('Calls are running in another CRM tab.'), {
       duration: 10,
@@ -1255,7 +1263,10 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
     )
       return
     counterUp.value?.stop()
-    callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
+    // A terminal webhook may already have set the real outcome; the agent leg connecting
+    // doesn't mean the customer answered.
+    if (!callTerminated.value)
+      callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
     resetSoftphoneSession()
   }
 }
@@ -1292,11 +1303,19 @@ async function prepareSoftphoneIncomingCall(callSid, details) {
   showSmallCallPopup.value = false
 
   try {
-    await call('crm.integrations.exotel.handler.register_softphone_call', {
-      call_sid: callSid,
-      phone_number: number,
-      call_type: 'Incoming',
-    })
+    const registered = await call(
+      'crm.integrations.exotel.handler.register_softphone_call',
+      {
+        call_sid: callSid,
+        phone_number: number,
+        call_type: 'Incoming',
+      },
+    )
+    // The server's caller number is verified against Exotel; the SIP caller ID may not be.
+    if (registered?.CallFrom && registered.CallFrom !== number) {
+      phoneNumber.value = registered.CallFrom
+      callData.value = { ...callData.value, CallFrom: registered.CallFrom }
+    }
     softphoneIncomingReady.value = true
   } catch (error) {
     hangupExotelSoftphoneCall()
@@ -1584,6 +1603,9 @@ function updateStatus(data) {
     )
     return 'Call ended'
   }
+
+  const softphoneOutcome = softphoneTerminalLabel(data)
+  if (softphoneOutcome) return softphoneOutcome
 
   // No branch matched — keep current status rather than returning undefined,
   // which would corrupt every computed that checks callStatus.value.
