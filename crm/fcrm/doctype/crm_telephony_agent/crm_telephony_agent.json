@@ -16,6 +16,8 @@
   "call_receiving_device",
   "column_break_aydj",
   "exotel_number",
+  "exotel_softphone_enabled",
+  "exotel_sip_id",
   "section_break_phlq",
   "phone_nos"
  ],
@@ -56,6 +58,21 @@
    "label": "Exotel Number"
   },
   {
+   "default": "0",
+   "description": "Use the browser instead of the agent mobile for Exotel calls when the global softphone switch is enabled.",
+   "fieldname": "exotel_softphone_enabled",
+   "fieldtype": "Check",
+   "label": "Use Exotel Browser Softphone"
+  },
+  {
+   "depends_on": "exotel_softphone_enabled",
+   "description": "Filled from Exotel's user mapping when browser softphone is enabled.",
+   "fieldname": "exotel_sip_id",
+   "fieldtype": "Data",
+   "label": "Exotel SIP ID",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_break_phlq",
    "fieldtype": "Section Break"
   },
@@ -94,7 +111,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-12 13:52:36.481382",
+ "modified": "2026-09-30 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Telephony Agent",
@@ -114,8 +131,8 @@
    "write": 1
   },
   {
-   "create": 1,
-   "delete": 1,
+   "create": 0,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -150,8 +167,8 @@
    "role": "Sales Coordinator"
   },
   {
-   "create": 1,
-   "delete": 1,
+   "create": 0,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -162,8 +179,8 @@
    "role": "RSM"
   },
   {
-   "create": 1,
-   "delete": 1,
+   "create": 0,
+   "delete": 0,
    "email": 1,
    "export": 1,
    "print": 1,

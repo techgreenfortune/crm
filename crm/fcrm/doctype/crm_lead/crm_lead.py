@@ -574,15 +574,24 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		)
 		if (status_changed or lead_status_changed) and was_retry_active and not is_retry_active:
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 		elif lead_status_changed and new_lead_status == "Archived":
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 		elif lead_status_changed and old_lead_status == "Cold-Unresponsive" and new_lead_status == "Active":
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 
 		if status_changed:

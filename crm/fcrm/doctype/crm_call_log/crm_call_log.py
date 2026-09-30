@@ -23,6 +23,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		duration: DF.Duration | None
 		end_time: DF.Datetime | None
 		id: DF.Data | None
+		is_softphone_call: DF.Check
 		links: DF.Table[DynamicLink]
 		medium: DF.Data | None
 		note: DF.Link | None
@@ -228,9 +229,9 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 					frappe.enqueue(
 						"crm.api.call_log.cancel_retry_log",
 						queue="short",
-						user="Administrator",
 						lead_name=lead_name,
 						permanent=False,
+						enqueue_after_commit=True,
 					)
 
 	def _trigger_no_answer_retry(self):
@@ -252,8 +253,8 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 			frappe.enqueue(
 				"crm.api.call_log.register_no_answer",
 				queue="short",
-				user="Administrator",
 				lead_name=lead_name,
+				enqueue_after_commit=True,
 			)
 
 	@staticmethod
