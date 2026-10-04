@@ -394,7 +394,7 @@ import {
   isExotelSoftphoneRegistered,
   subscribeToExotelSoftphone,
   toggleExotelSoftphoneHold,
-  toggleExotelSoftphoneMute,
+  setExotelSoftphoneMute,
   unregisterExotelSoftphone,
 } from '@/utils/exotelSoftphone'
 import {
@@ -1245,6 +1245,8 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
   }
 
   if (eventType === 'connected') {
+    // A call that ended muted leaves the SDK's flag muted while this call's microphone is on.
+    setExotelSoftphoneMute(false)
     softphoneConnected = true
     softphoneIncoming.value = false
     softphoneIncomingReady.value = false
@@ -1350,8 +1352,9 @@ function hangupSoftphoneCall() {
 }
 
 function toggleSoftphoneMute() {
-  toggleExotelSoftphoneMute()
-  softphoneMuted.value = !softphoneMuted.value
+  const muted = !softphoneMuted.value
+  setExotelSoftphoneMute(muted)
+  softphoneMuted.value = muted
 }
 
 function toggleSoftphoneHold() {
