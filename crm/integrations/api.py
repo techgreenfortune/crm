@@ -204,10 +204,10 @@ def get_recording_url(call_log_name: str):
 	auth = _get_recording_credentials(log.telephony_medium)
 	with requests.get(log.recording_url, auth=auth, stream=True, timeout=10) as r:
 		r.raise_for_status()
-		response = Response()
-		response.data = r.content
-		response.mimetype = "audio/mpeg"
-	return response
+		content = r.content
+	response = Response(content, mimetype="audio/mpeg", headers={"Accept-Ranges": "bytes"})
+	# Browsers can only seek audio when the server answers Range requests with 206 Partial Content.
+	return response.make_conditional(frappe.request, accept_ranges=True, complete_length=len(content))
 
 
 def get_contact(phone_number, country="IN", exact_match=False):
