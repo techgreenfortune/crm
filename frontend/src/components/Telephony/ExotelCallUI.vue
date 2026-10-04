@@ -406,6 +406,7 @@ import {
   softphoneTerminalLabel,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
+import { createRingtone } from '@/utils/ringtone'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import {
   TextEditor,
@@ -449,6 +450,10 @@ const softphoneRegistrationState = ref('not configured')
 const softphoneSessionActive = ref(false)
 const softphoneIncoming = ref(false)
 const softphoneIncomingReady = ref(false)
+const ringtone = createRingtone()
+watch(softphoneIncoming, (incoming) =>
+  incoming ? ringtone.start() : ringtone.stop(),
+)
 const softphoneCallAvailable = ref(false)
 const softphoneMuted = ref(false)
 const softphoneHeld = ref(false)
@@ -1409,6 +1414,7 @@ function checkStale() {
 }
 
 onBeforeUnmount(() => {
+  ringtone.stop()
   $socket.off('exotel_call')
   stopStaleCheck()
   stopReconnectWatchdog()
