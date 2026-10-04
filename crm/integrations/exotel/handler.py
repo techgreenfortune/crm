@@ -923,6 +923,14 @@ def reconcile_call_log(call_sid, created_at):
 	call = fetch_exotel_call(call_sid)
 	if call is None:
 		if created_at < add_to_date(now_datetime(), minutes=-RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES):
+			status = frappe.db.get_value("CRM Call Log", call_sid, "status")
+			# A webhook already finished this log, so the call exists; the lookup itself is failing.
+			if status in CALL_LOG_TERMINAL_STATUSES:
+				frappe.log_error(
+					title="Exotel call not found during reconcile",
+					message=f"CRM Call Log {call_sid} ({status}) has no matching Exotel call; status kept.",
+				)
+				return
 			frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
 			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 			frappe.log_error(

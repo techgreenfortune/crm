@@ -1003,3 +1003,29 @@ class TestTelephonyAgentMappingOnReassign(FrappeTestCase):
 
 		ensure.assert_called_once()
 		self.assertEqual(doc.exotel_sip_id, "sip:newagent")
+
+
+class TestExotelReconcileCallNotFound(FrappeTestCase):
+	def _reconcile(self, status):
+		from frappe.utils import add_to_date, now_datetime
+
+		with (
+			patch("crm.integrations.exotel.handler.fetch_exotel_call", return_value=None),
+			patch("crm.integrations.exotel.handler.frappe.db.get_value", return_value=status),
+			patch("crm.integrations.exotel.handler.frappe.db.set_value") as set_value,
+			patch("crm.integrations.exotel.handler.frappe.db.commit"),
+			patch("crm.integrations.exotel.handler.frappe.log_error") as log_error,
+		):
+			reconcile_call_log("call-sid", add_to_date(now_datetime(), hours=-2))
+		return set_value, log_error
+
+	def test_a_finished_log_keeps_its_status_when_the_lookup_fails(self):
+		set_value, log_error = self._reconcile("Completed")
+
+		set_value.assert_not_called()
+		log_error.assert_called_once()
+
+	def test_an_unfinished_log_is_marked_failed(self):
+		set_value, _log_error = self._reconcile("Ringing")
+
+		set_value.assert_called_once_with("CRM Call Log", "call-sid", "status", "Failed")
