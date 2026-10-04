@@ -939,12 +939,15 @@ class TestExotelInboundCallerCorrection(FrappeTestCase):
 		get_value.return_value = frappe._dict(type="Incoming", is_softphone_call=1, **{"from": "09999999999"})
 		call_log = MagicMock()
 		call_log.get.return_value = "09999999999"
+		note = frappe._dict(link_doctype="FCRM Note", link_name="note-1")
+		task = frappe._dict(link_doctype="CRM Task", link_name="task-1")
+		call_log.links = [frappe._dict(link_doctype="CRM Lead", link_name="wrong-lead"), note, task]
 		get_doc.return_value = call_log
 
 		correct_inbound_caller("call-sid", {"From": "09000000002"})
 
 		call_log.set.assert_any_call("from", "09000000002")
-		call_log.set.assert_any_call("links", [])
+		call_log.set.assert_any_call("links", [note, task])
 		link.assert_called_once_with("09000000002", call_log)
 		call_log.save.assert_called_once_with(ignore_permissions=True)
 		log_error.assert_called_once()

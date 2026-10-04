@@ -980,7 +980,8 @@ def correct_inbound_caller(call_sid, call):
 		message=f"CRM Call Log {call_sid}: browser reported {call_log.get('from')}, Exotel says {exotel_from}.",
 	)
 	call_log.set("from", exotel_from)
-	call_log.set("links", [])
+	# Drop only the caller's Lead/Deal/Contact links; the agent's notes and tasks stay on the call.
+	call_log.set("links", [row for row in call_log.links if row.link_doctype in ("FCRM Note", "CRM Task")])
 	call_log.reference_doctype = None
 	call_log.reference_docname = None
 	link(exotel_from, call_log)
