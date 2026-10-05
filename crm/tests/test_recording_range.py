@@ -57,3 +57,13 @@ class TestRecordingRange(FrappeTestCase):
 		self.assertEqual(response.get_data(), AUDIO)
 		self.assertEqual(response.headers["Accept-Ranges"], "bytes")
 		self.assertEqual(response.mimetype, "audio/mpeg")
+
+	def test_range_past_the_end_is_passed_through_as_416(self):
+		unsatisfiable = MagicMock(
+			content=b"", status_code=416, headers={"Content-Range": f"bytes */{len(AUDIO)}"}
+		)
+		response = self._fetch({"Range": f"bytes={len(AUDIO)}-"}, upstream=unsatisfiable)
+
+		unsatisfiable.raise_for_status.assert_not_called()
+		self.assertEqual(response.status_code, 416)
+		self.assertEqual(response.headers["Content-Range"], f"bytes */{len(AUDIO)}")
