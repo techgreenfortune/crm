@@ -11,8 +11,10 @@ AUDIO = bytes(range(256)) * 4
 
 
 class TestRecordingRange(FrappeTestCase):
-	def _fetch(self, headers=None):
-		upstream = MagicMock(content=AUDIO)
+	def _fetch(self, headers=None, upstream=None):
+		if upstream is None:
+			# A provider that ignores Range and always sends the whole file.
+			upstream = MagicMock(content=AUDIO, status_code=200, headers={})
 		upstream.__enter__.return_value = upstream
 		request = Request(EnvironBuilder(path="/", headers=headers or {}).get_environ())
 		with (
@@ -24,10 +26,22 @@ class TestRecordingRange(FrappeTestCase):
 				),
 			),
 			patch("crm.integrations.api._get_recording_credentials", return_value=None),
-			patch("crm.integrations.api.requests.get", return_value=upstream),
+			patch("crm.integrations.api.requests.get", return_value=upstream) as get,
 			patch.object(frappe.local, "request", request, create=True),
 		):
+			self.upstream_get = get
 			return get_recording_url("call-log")
+
+	def test_range_is_forwarded_to_a_provider_that_supports_it(self):
+		partial = MagicMock(
+			content=AUDIO[100:200], status_code=206, headers={"Content-Range": f"bytes 100-199/{len(AUDIO)}"}
+		)
+		response = self._fetch({"Range": "bytes=100-199"}, upstream=partial)
+
+		self.assertEqual(self.upstream_get.call_args.kwargs["headers"], {"Range": "bytes=100-199"})
+		self.assertEqual(response.status_code, 206)
+		self.assertEqual(response.get_data(), AUDIO[100:200])
+		self.assertEqual(response.headers["Content-Range"], f"bytes 100-199/{len(AUDIO)}")
 
 	def test_range_request_returns_partial_content(self):
 		response = self._fetch({"Range": "bytes=100-199"})
