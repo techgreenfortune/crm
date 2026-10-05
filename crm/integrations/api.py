@@ -207,10 +207,14 @@ def get_recording_url(call_log_name: str):
 	requested_range = frappe.request.headers.get("Range")
 	upstream_headers = {"Range": requested_range} if requested_range else {}
 	with requests.get(log.recording_url, auth=auth, headers=upstream_headers, timeout=10) as r:
-		r.raise_for_status()
+		# 416 is the valid answer to a range past the end of the file (e.g. seeking to the very end).
+		if r.status_code != 416:
+			r.raise_for_status()
 		content, status, content_range = r.content, r.status_code, r.headers.get("Content-Range")
 
 	headers = {"Accept-Ranges": "bytes"}
+	if status == 416:
+		return Response(status=416, headers={**headers, "Content-Range": content_range or "bytes */*"})
 	if status == 206 and content_range:
 		return Response(
 			content, status=206, mimetype="audio/mpeg", headers={**headers, "Content-Range": content_range}
