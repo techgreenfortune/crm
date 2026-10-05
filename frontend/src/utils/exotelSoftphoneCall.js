@@ -49,6 +49,18 @@ export function softphoneTerminalLabel(data) {
   return null
 }
 
+// The SDK only toggles mute, and keeps the mute flag in one module-level variable that outlives
+// each call while a new call's microphone starts on. Mirror the flag so callers can set a state.
+export function createMuteSync(toggle) {
+  let micEnabled = true
+  return {
+    set(muted) {
+      if (micEnabled === !muted || toggle() === false) return
+      micEnabled = !muted
+    },
+  }
+}
+
 // The SDK retries a dropped WebSocket every 5 s by itself; give it this long before rebuilding.
 export const RECONNECT_GRACE_MS = 15_000
 export const RECONNECT_MAX_DELAY_MS = 5 * 60_000

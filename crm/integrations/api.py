@@ -202,12 +202,21 @@ def get_recording_url(call_log_name: str):
 		frappe.throw(_("Recording URL not found"), frappe.DoesNotExistError)
 
 	auth = _get_recording_credentials(log.telephony_medium)
-	with requests.get(log.recording_url, auth=auth, stream=True, timeout=10) as r:
+	# Browsers can only seek audio when the server answers Range requests with 206 Partial Content.
+	# Forward the range so a seek fetches only that part; the provider's recording server honours it.
+	requested_range = frappe.request.headers.get("Range")
+	upstream_headers = {"Range": requested_range} if requested_range else {}
+	with requests.get(log.recording_url, auth=auth, headers=upstream_headers, timeout=10) as r:
 		r.raise_for_status()
-		response = Response()
-		response.data = r.content
-		response.mimetype = "audio/mpeg"
-	return response
+		content, status, content_range = r.content, r.status_code, r.headers.get("Content-Range")
+
+	headers = {"Accept-Ranges": "bytes"}
+	if status == 206 and content_range:
+		return Response(
+			content, status=206, mimetype="audio/mpeg", headers={**headers, "Content-Range": content_range}
+		)
+	response = Response(content, mimetype="audio/mpeg", headers=headers)
+	return response.make_conditional(frappe.request, accept_ranges=True, complete_length=len(content))
 
 
 def get_contact(phone_number, country="IN", exact_match=False):

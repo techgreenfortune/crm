@@ -821,6 +821,7 @@ def get_call_log_status(call_payload, direction="inbound"):
 RECONCILE_MIN_AGE_MINUTES = 5
 RECONCILE_MAX_AGE_DAYS = 7
 RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES = 60
+RECONCILE_LEG_SETTLE_MINUTES = 15
 RECONCILE_BATCH_SIZE = 50
 # Recording lookups get their own small budget so they never crowd out status repairs.
 RECONCILE_RECORDING_BATCH_SIZE = 10
@@ -923,12 +924,25 @@ def reconcile_call_log(call_sid, created_at):
 	call = fetch_exotel_call(call_sid)
 	if call is None:
 		if created_at < add_to_date(now_datetime(), minutes=-RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES):
+			status = frappe.db.get_value("CRM Call Log", call_sid, "status")
+			# A webhook already finished this log, so the call exists; the lookup itself is failing.
+			if status in CALL_LOG_TERMINAL_STATUSES:
+				frappe.log_error(
+					title="Exotel call not found during reconcile",
+					message=f"CRM Call Log {call_sid} ({status}) has no matching Exotel call; status kept.",
+				)
+				return
 			frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
 			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 			frappe.log_error(
 				title="Exotel call not found during reconcile",
 				message=f"CRM Call Log {call_sid} has no matching Exotel call; marked Failed.",
 			)
+		return
+
+	# Exotel fills in the agent's SIP leg shortly after the call; until then an inbound record still
+	# shows the Exophone, so judging ownership that early would fail every inbound call.
+	if agent_leg_pending(call):
 		return
 
 	if not softphone_call_matches_log(call_sid, call):
@@ -980,12 +994,24 @@ def correct_inbound_caller(call_sid, call):
 		message=f"CRM Call Log {call_sid}: browser reported {call_log.get('from')}, Exotel says {exotel_from}.",
 	)
 	call_log.set("from", exotel_from)
-	call_log.set("links", [])
+	# Drop only the caller's Lead/Deal/Contact links; the agent's notes and tasks stay on the call.
+	call_log.set("links", [row for row in call_log.links if row.link_doctype in ("FCRM Note", "CRM Task")])
 	call_log.reference_doctype = None
 	call_log.reference_docname = None
 	link(exotel_from, call_log)
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+
+def agent_leg_pending(call):
+	"""True while an inbound call's record may still gain its agent SIP leg: during the call and
+	for a settling window after Exotel's end time (the log's creation time says nothing about it)."""
+	if normalize_direction(call.get("Direction")) != "incoming":
+		return False
+	if cstr(call.get("To")).lower().startswith("sip:"):
+		return False
+	ended = normalize_exotel_datetime(call.get("EndTime"))
+	return not ended or ended > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
 
 
 def softphone_call_matches_log(call_sid, call):

@@ -4,6 +4,7 @@ import {
   voipDomain,
   voipDomainSIP,
 } from '@exotel-npm-dev/exotel-ip-calling-crm-websdk'
+import { createMuteSync } from '@/utils/exotelSoftphoneCall'
 
 let phone = null
 let initializePromise = null
@@ -96,8 +97,13 @@ export function hangupExotelSoftphoneCall() {
   phone?.HangupCall()
 }
 
-export function toggleExotelSoftphoneMute() {
-  phone?.ToggleMute()
+const muteSync = createMuteSync(() => {
+  if (!phone) return false
+  phone.ToggleMute()
+})
+
+export function setExotelSoftphoneMute(muted) {
+  muteSync.set(muted)
 }
 
 export function toggleExotelSoftphoneHold() {

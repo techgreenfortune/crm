@@ -394,7 +394,7 @@ import {
   isExotelSoftphoneRegistered,
   subscribeToExotelSoftphone,
   toggleExotelSoftphoneHold,
-  toggleExotelSoftphoneMute,
+  setExotelSoftphoneMute,
   unregisterExotelSoftphone,
 } from '@/utils/exotelSoftphone'
 import {
@@ -406,6 +406,7 @@ import {
   softphoneTerminalLabel,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
+import { createRingtone } from '@/utils/ringtone'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import {
   TextEditor,
@@ -449,6 +450,10 @@ const softphoneRegistrationState = ref('not configured')
 const softphoneSessionActive = ref(false)
 const softphoneIncoming = ref(false)
 const softphoneIncomingReady = ref(false)
+const ringtone = createRingtone()
+watch(softphoneIncoming, (incoming) =>
+  incoming ? ringtone.start() : ringtone.stop(),
+)
 const softphoneCallAvailable = ref(false)
 const softphoneMuted = ref(false)
 const softphoneHeld = ref(false)
@@ -1240,6 +1245,8 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
   }
 
   if (eventType === 'connected') {
+    // A call that ended muted leaves the SDK's flag muted while this call's microphone is on.
+    setExotelSoftphoneMute(false)
     softphoneConnected = true
     softphoneIncoming.value = false
     softphoneIncomingReady.value = false
@@ -1345,8 +1352,9 @@ function hangupSoftphoneCall() {
 }
 
 function toggleSoftphoneMute() {
-  toggleExotelSoftphoneMute()
-  softphoneMuted.value = !softphoneMuted.value
+  const muted = !softphoneMuted.value
+  setExotelSoftphoneMute(muted)
+  softphoneMuted.value = muted
 }
 
 function toggleSoftphoneHold() {
@@ -1409,6 +1417,7 @@ function checkStale() {
 }
 
 onBeforeUnmount(() => {
+  ringtone.stop()
   $socket.off('exotel_call')
   stopStaleCheck()
   stopReconnectWatchdog()
