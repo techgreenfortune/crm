@@ -1043,7 +1043,8 @@ EARLY_INBOUND = {
 
 
 class TestExotelReconcileWaitsForAgentLeg(FrappeTestCase):
-	def _reconcile(self, call, created_at):
+	def _reconcile(self, call, created_at=None):
+		now = frappe.utils.now_datetime()
 		with (
 			patch("crm.integrations.exotel.handler.fetch_exotel_call", return_value=call),
 			patch(
@@ -1053,24 +1054,35 @@ class TestExotelReconcileWaitsForAgentLeg(FrappeTestCase):
 			patch("crm.integrations.exotel.handler.frappe.db.commit"),
 			patch("crm.integrations.exotel.handler.frappe.log_error"),
 		):
-			reconcile_call_log("call-sid", created_at)
+			reconcile_call_log("call-sid", created_at or frappe.utils.add_to_date(now, hours=-1))
 		return matches, set_value
 
-	def test_inbound_without_the_agent_leg_yet_is_retried_later(self):
-		matches, set_value = self._reconcile(EARLY_INBOUND, frappe.utils.now_datetime())
+	def _ended(self, minutes_ago):
+		ended = frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-minutes_ago)
+		return {**EARLY_INBOUND, "EndTime": ended.strftime("%Y-%m-%d %H:%M:%S")}
+
+	def test_just_ended_inbound_without_the_agent_leg_is_retried_later(self):
+		matches, set_value = self._reconcile(self._ended(1))
 
 		matches.assert_not_called()
 		set_value.assert_not_called()
 
-	def test_inbound_still_without_a_sip_leg_after_settling_fails(self):
+	def test_long_inbound_call_still_in_progress_is_not_failed(self):
+		# The log was created when ringing started, well over the settling window ago.
+		active = {**EARLY_INBOUND, "Status": "in-progress", "EndTime": ""}
 		_matches, set_value = self._reconcile(
-			EARLY_INBOUND, frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-30)
+			active, frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-1)
 		)
+
+		set_value.assert_not_called()
+
+	def test_inbound_still_without_a_sip_leg_after_settling_fails(self):
+		_matches, set_value = self._reconcile(self._ended(30))
 
 		set_value.assert_called_once_with("CRM Call Log", "call-sid", "status", "Failed")
 
 	def test_outbound_is_judged_immediately(self):
 		outbound = {"Direction": "outbound-dial", "From": "sip:someoneelse", "To": "09000000002"}
-		_matches, set_value = self._reconcile(outbound, frappe.utils.now_datetime())
+		_matches, set_value = self._reconcile(outbound)
 
 		set_value.assert_called_once_with("CRM Call Log", "call-sid", "status", "Failed")

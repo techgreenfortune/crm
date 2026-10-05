@@ -942,8 +942,7 @@ def reconcile_call_log(call_sid, created_at):
 
 	# Exotel fills in the agent's SIP leg shortly after the call; until then an inbound record still
 	# shows the Exophone, so judging ownership that early would fail every inbound call.
-	settling = created_at > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
-	if settling and agent_leg_pending(call):
+	if agent_leg_pending(call):
 		return
 
 	if not softphone_call_matches_log(call_sid, call):
@@ -1005,9 +1004,14 @@ def correct_inbound_caller(call_sid, call):
 
 
 def agent_leg_pending(call):
-	return normalize_direction(call.get("Direction")) == "incoming" and not cstr(call.get("To")).lower().startswith(
-		"sip:"
-	)
+	"""True while an inbound call's record may still gain its agent SIP leg: during the call and
+	for a settling window after Exotel's end time (the log's creation time says nothing about it)."""
+	if normalize_direction(call.get("Direction")) != "incoming":
+		return False
+	if cstr(call.get("To")).lower().startswith("sip:"):
+		return False
+	ended = normalize_exotel_datetime(call.get("EndTime"))
+	return not ended or ended > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
 
 
 def softphone_call_matches_log(call_sid, call):
