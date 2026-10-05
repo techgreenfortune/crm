@@ -156,7 +156,7 @@
           <TextEditor
             ref="content"
             variant="ghost"
-            editor-class="prose-sm h-[290px] text-ink-white overflow-auto mt-1"
+            editor-class="prose-sm h-[290px] text-ink-white overflow-auto mt-1 [overflow-wrap:anywhere]"
             :bubbleMenu="true"
             :content="note.content"
             :placeholder="__('Take a note...')"
