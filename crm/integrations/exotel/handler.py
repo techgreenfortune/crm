@@ -821,6 +821,7 @@ def get_call_log_status(call_payload, direction="inbound"):
 RECONCILE_MIN_AGE_MINUTES = 5
 RECONCILE_MAX_AGE_DAYS = 7
 RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES = 60
+RECONCILE_LEG_SETTLE_MINUTES = 15
 RECONCILE_BATCH_SIZE = 50
 # Recording lookups get their own small budget so they never crowd out status repairs.
 RECONCILE_RECORDING_BATCH_SIZE = 10
@@ -939,6 +940,12 @@ def reconcile_call_log(call_sid, created_at):
 			)
 		return
 
+	# Exotel fills in the agent's SIP leg shortly after the call; until then an inbound record still
+	# shows the Exophone, so judging ownership that early would fail every inbound call.
+	settling = created_at > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
+	if settling and agent_leg_pending(call):
+		return
+
 	if not softphone_call_matches_log(call_sid, call):
 		frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
 		frappe.db.commit()  # nosemgrep: frappe-manual-commit
@@ -995,6 +1002,12 @@ def correct_inbound_caller(call_sid, call):
 	link(exotel_from, call_log)
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+
+def agent_leg_pending(call):
+	return normalize_direction(call.get("Direction")) == "incoming" and not cstr(call.get("To")).lower().startswith(
+		"sip:"
+	)
 
 
 def softphone_call_matches_log(call_sid, call):
