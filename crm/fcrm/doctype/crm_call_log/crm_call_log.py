@@ -329,7 +329,13 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		return {"columns": columns, "rows": rows}
 
 	def parse_list_data(calls):
-		return [parse_call_log(call) for call in calls] if calls else []
+		if not calls:
+			return []
+		with_notes = _call_logs_with_notes([call.get("name") for call in calls])
+		calls = [parse_call_log(call) for call in calls]
+		for call in calls:
+			call["_has_note"] = bool(call.get("note")) or call.get("name") in with_notes
+		return calls
 
 	def has_link(self, doctype, name):
 		for link in self.links:
@@ -349,6 +355,19 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 				f"/api/method/crm.integrations.api.get_recording_url?call_log_name={d.get('name')}"
 			)
 		return d
+
+
+def _call_logs_with_notes(names):
+	names = [name for name in names if name]
+	if not names:
+		return set()
+	return set(
+		frappe.get_all(
+			"Dynamic Link",
+			filters={"parenttype": "CRM Call Log", "parent": ("in", names), "link_doctype": "FCRM Note"},
+			pluck="parent",
+		)
+	)
 
 
 def parse_call_log(call):
