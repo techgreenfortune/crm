@@ -59,7 +59,7 @@
             <div class="grid size-7 place-content-center">
               <component :is="field.icon" />
             </div>
-            <div class="flex min-h-7 w-full items-center gap-2">
+            <div class="flex min-h-7 w-full min-w-0 items-center gap-2">
               <div
                 v-if="field.name == 'receiver'"
                 class="flex items-center gap-1"
@@ -100,10 +100,12 @@
               </div>
               <div
                 v-else-if="field.name == 'note'"
-                class="w-full cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
+                class="w-full min-w-0 cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
                 @click="() => showNote(field.value?.name)"
               >
-                <FadedScrollableDiv class="max-h-24 min-h-16 overflow-y-auto">
+                <FadedScrollableDiv
+                  class="max-h-24 min-h-16 overflow-y-auto [overflow-wrap:anywhere]"
+                >
                   <div
                     v-if="field.value?.title"
                     :class="[field.value?.content ? 'mb-1 font-bold' : '']"
@@ -117,10 +119,12 @@
               </div>
               <div
                 v-else-if="field.name == 'task'"
-                class="w-full cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
+                class="w-full min-w-0 cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
                 @click="() => showTask(field.value?.name)"
               >
-                <FadedScrollableDiv class="max-h-24 min-h-16 overflow-y-auto">
+                <FadedScrollableDiv
+                  class="max-h-24 min-h-16 overflow-y-auto [overflow-wrap:anywhere]"
+                >
                   <div
                     v-if="field.value?.title"
                     :class="[field.value?.description ? 'mb-1 font-bold' : '']"
