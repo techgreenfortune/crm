@@ -447,7 +447,7 @@ def _get_current_softphone_agent():
 
 
 def ensure_softphone_user_mapping(agent):
-	"""Return the agent's Exotel SIP ID, creating their Integration Core user mapping if missing."""
+	"""Return the agent's SIP ID from an existing Integration Core user mapping."""
 	settings = get_exotel_settings()
 	app_id = cstr(settings.softphone_app_id).strip()
 	app_secret = settings.get_password("softphone_app_secret", raise_exception=False)
@@ -458,10 +458,14 @@ def ensure_softphone_user_mapping(agent):
 	token = _get_softphone_app_token(app_id, app_secret)
 	mapping = _get_softphone_user_mapping(token, email)
 	if not mapping:
-		if not agent.mobile_no or not agent.exotel_number:
-			frappe.throw(_("Mobile No and Exotel Number are required to enable the browser softphone."))
-		_create_softphone_user_mapping(token, settings, agent, email)
-		mapping = _get_softphone_user_mapping(token, email)
+		frappe.throw(
+			_(
+				"No Exotel softphone mapping exists for {0}. Ask an Exotel administrator to provision "
+				"the user and app mapping before enabling browser calling. CRM will not create Exotel "
+				"users because they may incur charges."
+			).format(email),
+			title=_("Exotel User Not Provisioned"),
+		)
 
 	sip_id = cstr((mapping or {}).get("SipId")).strip()
 	if not sip_id:
@@ -500,29 +504,6 @@ def _get_configured_softphone_token(settings):
 	if not app_id or not app_secret:
 		frappe.throw(_("Exotel browser softphone is not configured."), title=_("Softphone Unavailable"))
 	return _get_softphone_app_token(app_id, app_secret)
-
-
-def _create_softphone_user_mapping(token, settings, agent, email):
-	response = _softphone_request(
-		"POST",
-		"/usermapping",
-		token,
-		json=[
-			{
-				"AppUserId": email,
-				"AppUsername": email,
-				"Email": email,
-				"ExotelAccountSid": settings.account_sid,
-				"ExotelUserName": frappe.db.get_value("User", agent.user, "full_name") or email,
-				"AgentNumber": last_ten_digits(agent.mobile_no),
-				"VirtualNumber": agent.exotel_number,
-			}
-		],
-	)
-	# 409 = mapping already exists for this AppUserId/email, which is the state we want.
-	if response.status_code not in (200, 409):
-		frappe.log_error(title="Exotel softphone user mapping failed", message=response.text)
-		frappe.throw(_("Could not create the Exotel softphone user for {0}.").format(email))
 
 
 def _softphone_request(method, path, token, **kwargs):
@@ -733,6 +714,9 @@ INTEGRATION_CORE_STATUS_MAP = {
 	"missed": "Call Not Answered",
 	# Outbound customer leg that never connected; Exotel sends it for rejected calls too.
 	"to_leg_unanswered": "Call Not Answered",
+	# Agent hung up in the CRM while the customer was still ringing.
+	"from_leg_cancelled": "Canceled",
+	"from_leg_canceled": "Canceled",
 	"busy": "Busy",
 	"failed": "Failed",
 	"canceled": "Canceled",
@@ -782,6 +766,9 @@ def normalize_call_payload(call_payload):
 		payload.CallLogStatus = "Ringing"
 	else:
 		payload.CallLogStatus = INTEGRATION_CORE_STATUS_MAP.get(status)
+	if outgoing and payload.CallLogStatus is None and payload.get("CallState") == "terminal":
+		# Otherwise the log stays In Progress until reconcile; surface new Exotel values instead.
+		frappe.log_error(title=f"Unmapped Exotel softphone status: {status or '(empty)'}")
 	return payload
 
 
@@ -834,6 +821,7 @@ def get_call_log_status(call_payload, direction="inbound"):
 RECONCILE_MIN_AGE_MINUTES = 5
 RECONCILE_MAX_AGE_DAYS = 7
 RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES = 60
+RECONCILE_LEG_SETTLE_MINUTES = 15
 RECONCILE_BATCH_SIZE = 50
 # Recording lookups get their own small budget so they never crowd out status repairs.
 RECONCILE_RECORDING_BATCH_SIZE = 10
@@ -936,12 +924,25 @@ def reconcile_call_log(call_sid, created_at):
 	call = fetch_exotel_call(call_sid)
 	if call is None:
 		if created_at < add_to_date(now_datetime(), minutes=-RECONCILE_NOT_FOUND_FAIL_AFTER_MINUTES):
+			status = frappe.db.get_value("CRM Call Log", call_sid, "status")
+			# A webhook already finished this log, so the call exists; the lookup itself is failing.
+			if status in CALL_LOG_TERMINAL_STATUSES:
+				frappe.log_error(
+					title="Exotel call not found during reconcile",
+					message=f"CRM Call Log {call_sid} ({status}) has no matching Exotel call; status kept.",
+				)
+				return
 			frappe.db.set_value("CRM Call Log", call_sid, "status", "Failed")
 			frappe.db.commit()  # nosemgrep: frappe-manual-commit
 			frappe.log_error(
 				title="Exotel call not found during reconcile",
 				message=f"CRM Call Log {call_sid} has no matching Exotel call; marked Failed.",
 			)
+		return
+
+	# Exotel fills in the agent's SIP leg shortly after the call; until then an inbound record still
+	# shows the Exophone, so judging ownership that early would fail every inbound call.
+	if agent_leg_pending(call):
 		return
 
 	if not softphone_call_matches_log(call_sid, call):
@@ -993,12 +994,24 @@ def correct_inbound_caller(call_sid, call):
 		message=f"CRM Call Log {call_sid}: browser reported {call_log.get('from')}, Exotel says {exotel_from}.",
 	)
 	call_log.set("from", exotel_from)
-	call_log.set("links", [])
+	# Drop only the caller's Lead/Deal/Contact links; the agent's notes and tasks stay on the call.
+	call_log.set("links", [row for row in call_log.links if row.link_doctype in ("FCRM Note", "CRM Task")])
 	call_log.reference_doctype = None
 	call_log.reference_docname = None
 	link(exotel_from, call_log)
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
+
+
+def agent_leg_pending(call):
+	"""True while an inbound call's record may still gain its agent SIP leg: during the call and
+	for a settling window after Exotel's end time (the log's creation time says nothing about it)."""
+	if normalize_direction(call.get("Direction")) != "incoming":
+		return False
+	if cstr(call.get("To")).lower().startswith("sip:"):
+		return False
+	ended = normalize_exotel_datetime(call.get("EndTime"))
+	return not ended or ended > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
 
 
 def softphone_call_matches_log(call_sid, call):
@@ -1024,12 +1037,17 @@ def softphone_call_matches_log(call_sid, call):
 
 def get_calls_api_call_log_status(call):
 	status = (call.get("Status") or "").lower()
-	if normalize_direction(call.get("Direction")) != "incoming" or status != "completed":
+	details = call.get("Details") or {}
+	if normalize_direction(call.get("Direction")) != "incoming":
+		# The Calls API reports an agent hanging up during ringing as "failed"; the customer leg says canceled.
+		if status == "failed" and (details.get("Leg2Status") or "").lower() == "canceled":
+			return "Canceled"
+		return CALLS_API_STATUS_MAP.get(status)
+	if status != "completed":
 		return CALLS_API_STATUS_MAP.get(status)
 
 	# An inbound call is "completed" from the caller's side even when no agent picked up;
 	# the agent leg (Leg2) and conversation time say whether it was actually answered.
-	details = call.get("Details") or {}
 	conversation = details.get("ConversationDuration") or 0
 	agent_leg = (details.get("Leg2Status") or "").lower()
 	if agent_leg == "completed" or float(conversation) > 0:

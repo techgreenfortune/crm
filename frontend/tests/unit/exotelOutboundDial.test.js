@@ -8,6 +8,7 @@ import {
   softphoneTerminalLabel,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
+  createMuteSync,
 } from '@/utils/exotelSoftphoneCall'
 
 function tracker() {
@@ -264,7 +265,10 @@ describe('softphoneTerminalLabel', () => {
     expect(
       softphoneTerminalLabel({ ...outbound, CallLogStatus: 'Completed' }),
     ).toBe('Call ended')
-    for (const status of ['Call Not Answered', 'Busy', 'Failed', 'Canceled'])
+    expect(
+      softphoneTerminalLabel({ ...outbound, CallLogStatus: 'Canceled' }),
+    ).toBe('Call canceled')
+    for (const status of ['Call Not Answered', 'Busy', 'Failed'])
       expect(
         softphoneTerminalLabel({ ...outbound, CallLogStatus: status }),
       ).toBe('No answer')
@@ -283,5 +287,35 @@ describe('softphoneTerminalLabel', () => {
     expect(
       softphoneTerminalLabel({ Direction: 'outbound-dial', Status: 'busy' }),
     ).toBeNull()
+  })
+})
+
+describe('createMuteSync', () => {
+  it('toggles only when the requested state differs', () => {
+    const toggle = vi.fn()
+    const mute = createMuteSync(toggle)
+    mute.set(false)
+    expect(toggle).not.toHaveBeenCalled()
+    mute.set(true)
+    mute.set(true)
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('realigns the SDK after a call that ended muted', () => {
+    const toggle = vi.fn()
+    const mute = createMuteSync(toggle)
+    mute.set(true) // muted when the call ended
+    mute.set(false) // next call connects
+    expect(toggle).toHaveBeenCalledTimes(2)
+    mute.set(true) // the agent's first mute really mutes
+    expect(toggle).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps its state when there is no SDK to toggle', () => {
+    const toggle = vi.fn().mockReturnValueOnce(false)
+    const mute = createMuteSync(toggle)
+    mute.set(true)
+    mute.set(true)
+    expect(toggle).toHaveBeenCalledTimes(2)
   })
 })
