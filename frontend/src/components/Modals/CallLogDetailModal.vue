@@ -26,6 +26,12 @@
                       icon: TaskIcon,
                       onClick: () => showTask(task),
                     },
+                    {
+                      label: __('Add Disposition'),
+                      icon: h(FeatherIcon, { name: 'tag' }),
+                      condition: () => canAddDisposition,
+                      onClick: () => (showDispositionModal = true),
+                    },
                   ],
                 },
               ]"
@@ -59,7 +65,7 @@
             <div class="grid size-7 place-content-center">
               <component :is="field.icon" />
             </div>
-            <div class="flex min-h-7 w-full items-center gap-2">
+            <div class="flex min-h-7 w-full min-w-0 items-center gap-2">
               <div
                 v-if="field.name == 'receiver'"
                 class="flex items-center gap-1"
@@ -100,10 +106,12 @@
               </div>
               <div
                 v-else-if="field.name == 'note'"
-                class="w-full cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
+                class="w-full min-w-0 cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
                 @click="() => showNote(field.value?.name)"
               >
-                <FadedScrollableDiv class="max-h-24 min-h-16 overflow-y-auto">
+                <FadedScrollableDiv
+                  class="max-h-24 min-h-16 overflow-y-auto [overflow-wrap:anywhere]"
+                >
                   <div
                     v-if="field.value?.title"
                     :class="[field.value?.content ? 'mb-1 font-bold' : '']"
@@ -117,10 +125,12 @@
               </div>
               <div
                 v-else-if="field.name == 'task'"
-                class="w-full cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
+                class="w-full min-w-0 cursor-pointer rounded border px-2 pt-1.5 text-base text-ink-gray-7"
                 @click="() => showTask(field.value?.name)"
               >
-                <FadedScrollableDiv class="max-h-24 min-h-16 overflow-y-auto">
+                <FadedScrollableDiv
+                  class="max-h-24 min-h-16 overflow-y-auto [overflow-wrap:anywhere]"
+                >
                   <div
                     v-if="field.value?.title"
                     :class="[field.value?.description ? 'mb-1 font-bold' : '']"
@@ -158,6 +168,12 @@
       </div>
     </template>
   </Dialog>
+  <AddDispositionModal
+    v-if="canAddDisposition"
+    v-model="showDispositionModal"
+    :call-log="callLog.data"
+    @saved="callLog.reload()"
+  />
 </template>
 
 <script setup>
@@ -172,12 +188,14 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import CheckCircleIcon from '@/components/Icons/CheckCircleIcon.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
+import AddDispositionModal from '@/components/Modals/AddDispositionModal.vue'
 import { getCallLogDetail } from '@/utils/callLog'
 import { sanitizeHTML, formatDate } from '@/utils'
 import { isMobileView } from '@/composables/settings'
 import { useCallLogModalActions } from '@/composables/useCallLogActions.js'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useDocument } from '@/data/document'
+import { sessionStore } from '@/stores/session'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { FeatherIcon, Dropdown, Avatar, Tooltip, call, toast } from 'frappe-ui'
 import { ref, computed, h, watch } from 'vue'
@@ -196,6 +214,25 @@ const { openNoteModal: showNote, openTaskModal: showTask } =
 
 const note = ref('')
 const task = ref('')
+
+const showDispositionModal = ref(false)
+const FINISHED_STATUSES = [
+  'Completed',
+  'Failed',
+  'Busy',
+  'Call Not Answered',
+  'Canceled',
+]
+
+// A disposition missed in the call popup (e.g. a new call took it over) can be added here later.
+const canAddDisposition = computed(() => {
+  const data = callLog.value?.data
+  if (!data || data.disposition || !FINISHED_STATUSES.includes(data.status))
+    return false
+  const { user } = sessionStore()
+  const sessionUser = typeof user === 'object' ? user.value : user
+  return [data.caller, data.receiver].includes(sessionUser)
+})
 
 const detailFields = computed(() => {
   if (!callLog.value?.data) return []

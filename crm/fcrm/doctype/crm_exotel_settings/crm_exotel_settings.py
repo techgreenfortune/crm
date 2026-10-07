@@ -21,12 +21,25 @@ class CRMExotelSettings(Document):
 		api_token: DF.Password | None
 		enabled: DF.Check
 		record_call: DF.Check
+		softphone_app_id: DF.Data | None
+		softphone_api_host: DF.Data | None
+		softphone_app_secret: DF.Password | None
+		softphone_enabled: DF.Check
 		subdomain: DF.Data | None
 		webhook_verify_token: DF.Data | None
 	# end: auto-generated types
 
 	def validate(self):
+		self.validate_softphone_settings()
 		self.verify_credentials()
+
+	def validate_softphone_settings(self):
+		if not self.softphone_enabled:
+			return
+		if not self.enabled:
+			frappe.throw(_("Enable Exotel before enabling the browser softphone."))
+		if not self.softphone_app_id or not self.get_password("softphone_app_secret"):
+			frappe.throw(_("Softphone App ID and App Secret are required."))
 
 	def verify_credentials(self):
 		if self.enabled:
@@ -35,6 +48,7 @@ class CRMExotelSettings(Document):
 					subdomain=self.subdomain, sid=self.account_sid
 				),
 				auth=(self.api_key, self.get_password("api_token")),
+				timeout=10,
 			)
 			if response.status_code != 200:
 				frappe.throw(

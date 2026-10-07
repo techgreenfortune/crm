@@ -54,6 +54,11 @@
             <FeatherIcon :name="item.icon" class="h-3 w-3" />
           </div>
         </template>
+        <template v-if="column.key === 'type' && item.hasNote" #suffix>
+          <Tooltip :text="__('Has notes')">
+            <NoteIcon class="size-3.5 shrink-0 text-ink-gray-5" />
+          </Tooltip>
+        </template>
         <template #default="{ label }">
           <div
             v-if="['modified', 'creation'].includes(column.key)"
@@ -178,6 +183,7 @@
 </template>
 <script setup>
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
+import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import RatingInput from '@/components/Controls/RatingInput.vue'
