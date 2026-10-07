@@ -54,7 +54,7 @@ Keep every value below (secrets, keys, App ID) out of Git, chat and tickets. Hol
 |---|---|
 | Exotel account SID, API key, API token | Exotel dashboard → API settings (the same ones classic click-to-call uses) |
 | Integration Core **customer ID and secret** | Issued by Exotel for the account; required to create an app |
-| Each agent as an Exotel dashboard user with a **SIP device** and an existing mapping in this Integration Core app, same email as their CRM user | Exotel administrator |
+| Each softphone agent as an Exotel dashboard user with a **SIP device**, same email as their CRM user | Exotel administrator |
 | The CRM deployed at `https://<site>` | Deployment |
 
 Integration Core base URL (India): `https://integrationscore.mum1.exotel.com/v2/integrations`. The examples use:
@@ -119,22 +119,13 @@ curl -s -X POST "$IC/app_setting" -H 'Content-Type: application/json' -H "Author
 
 Posting a key again replaces its value. At least one setting must exist or the SDK can't initialise. Check with `GET $IC/app_setting`, and mask the `key=` part before pasting the output anywhere.
 
-d. **Agent mappings** — one per agent, created by an Exotel administrator, never by the CRM.
+d. **Agent mappings** are created by the CRM when an agent is saved (step 4), and only for existing Exotel users.
 
-   **Warning:** if no Exotel coworker exists with that email, `POST /usermapping` does not fail: it **creates a new coworker** (a possibly billable seat) with a phone device from `AgentNumber` and a new SIP device. So:
+   **Why the guard:** if no Exotel coworker exists with that email, `POST /usermapping` does not fail: it **creates a new coworker** (a possibly billable seat). So before mapping, the CRM looks the email up in the account's users (`ccm-api.<region>/v2/accounts/<sid>/users`, read-only). With no such user, or a user without a SIP device, it refuses to save and creates nothing. On every save, for a new or an existing mapping, the mapping's `SipId` must be one of that user's own SIP devices; a rejected mapping stays in Exotel, so it is rejected again until fixed there.
 
-   1. Confirm in the Exotel dashboard that the coworker exists with the agent's CRM email and has a SIP device.
-   2. Create the mapping (customer token):
+   The mapping uses the user's phone device from Exotel (0-prefixed, 11 digits) as `AgentNumber` and the agent's Exotel Number as `VirtualNumber`. A user without a phone device is not mapped.
 
-      ```bash
-      curl -s -X POST "$IC/usermapping" -H 'Content-Type: application/json' -H "Authorization: <customer token>" \
-        -d '[{"AppUserId":"<email>","AppUsername":"<email>","Email":"<email>","ExotelAccountSid":"<account sid>",
-              "ExotelUserName":"<name>","AgentNumber":"<10-digit mobile>","VirtualNumber":"<Exophone>"}]'
-      ```
-
-   3. Check it with `GET $IC/usermapping?user_id=<email>`: `SipId` must be the coworker's existing SIP device, not a new one.
-
-   Only map test users on UAT/test apps whose SIP devices no live flow rings: while a browser is registered on a UAT app as that device, live calls to it ring in UAT.
+   Only enable test users on UAT/test apps whose SIP devices no live flow rings: while a browser is registered on a UAT app as that device, live calls to it ring in UAT.
 
 ### 3. CRM Exotel Settings
 
@@ -155,9 +146,11 @@ The browser SDK connects to Exotel's India VoIP domain from inside the package, 
 
 ### 4. CRM Telephony Agents
 
-A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) first asks an Exotel administrator to provision the dashboard user, SIP device and mapping in this Integration Core app (step 2d). Creating a mapping can create a billable Exotel co-user, so CRM deliberately never calls `POST /usermapping`.
+A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) first makes sure the agent exists as an Exotel dashboard user with a SIP device, under the same email as their CRM user. Adding users there is a deliberate, possibly billable, decision the CRM never makes.
 
-After that, the manager creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.) Saving only reads the existing mapping (App User ID = email), fills the read-only **Exotel SIP ID**, and refuses to save if the mapping or SIP device is missing. Agents see only their own record and can change only their default calling medium.
+Then the manager creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.) Every save of an agent with the softphone on reads the agent's mapping in the current app, creating it for an existing Exotel user if missing (step 2d), and fills the read-only **Exotel SIP ID**. A failed read stops the save; it is never treated as a missing mapping. It refuses to save when the Exotel user or their SIP device is missing. Agents see only their own record and can change only their default calling medium.
+
+Agents on click-to-call need none of this: it only rings their mobile.
 
 ### 5. Call flow (Exotel dashboard, inbound)
 
@@ -192,6 +185,7 @@ Anyone with dashboard access can edit or delete flows, so give dashboard access 
 |---|---|
 | Rotate the webhook key | Update CRM Exotel Settings, all four app settings (step 2c) and the flow Passthrus together; webhooks with the old key are refused |
 | Point an app at another CRM URL | Re-post the four app settings |
+| Replace the Integration Core app | Put the new App ID/Secret in CRM Exotel Settings, then save each softphone agent again; every save re-checks the agent's mapping in the current app and creates it if missing |
 | Move an agent back to click-to-call | Turn off their **Use Exotel Browser Softphone**; softphone agents never fall back to the mobile on their own |
 | Turn the softphone off for everyone | Turn off **Browser Softphone** in CRM Exotel Settings |
 
@@ -340,6 +334,8 @@ Pinning can't protect against Exotel changing its servers (API fields, the SIP-s
 | Symptom | Likely cause |
 |---|---|
 | "Save your Telephony Agent again…" on load | The agent has no stored SIP ID, or the Exotel mapping's SIP ID changed |
+| "No Exotel user exists for …" on agent save | No Exotel dashboard user has that email; create one with a SIP device first |
+| "Exotel mapped … to a SIP device that is not theirs" | Exotel created or picked another device; check the user in the dashboard (Error Log has both SIP IDs) |
 | "Browser softphone is not connected" when calling | Registration dropped or setup failed; click Reconnect. If it keeps failing, check the Error Log and the agent's Exotel SIP device |
 | Registers, but calls connect with no audio | UDP media blocked by the network |
 | Inbound calls ring a mobile instead of the browser | The flow's Connect dials a number, not the Exotel user; or the user's active device isn't the SIP device |

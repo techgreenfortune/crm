@@ -459,7 +459,7 @@ class TestExotelSoftphone(FrappeTestCase):
 
 
 def fake_response(status_code, body):
-	response = MagicMock(status_code=status_code, text=str(body))
+	response = MagicMock(status_code=status_code, text=str(body), ok=status_code < 400)
 	response.json.return_value = body
 	return response
 
@@ -469,49 +469,120 @@ SOFTPHONE_SETTINGS = SimpleNamespace(
 	softphone_enabled=1,
 	softphone_app_id="app-id",
 	account_sid="acct",
+	api_key="key",
+	subdomain="api.in.exotel.com",
 	get_password=lambda field, raise_exception=True: "app-secret",
 )
 AGENT = frappe._dict(user="agent@example.com", mobile_no="+91 90000 00001", exotel_number="04000000001")
 
 
-class TestExotelSoftphoneProvisioning(FrappeTestCase):
-	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
-	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
-	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_existing_mapping_returns_sip_id(self, request, _settings, _token):
+NOT_MAPPED = {"Code": 404, "Data": None}
+AGENT_DEVICES = [
+	{"type": "tel", "contact_uri": "+919000000009"},
+	{"type": "sip", "contact_uri": "sip:agentsip"},
+]
+
+
+def exotel_users(devices, email="agent@example.com"):
+	return fake_response(200, {"response": [{"data": {"email": email, "devices": devices}}]})
+
+
+@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
+@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
+class TestExotelSoftphoneMapsExistingUser(FrappeTestCase):
+	def _ensure(self, users_response, mapping_after=None, existing=NOT_MAPPED):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
-		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}})
+		mapping_after = mapping_after or {"Code": 200, "Data": {"SipId": "sip:agentsip"}}
+		responses = iter(
+			[fake_response(200, existing), fake_response(200, {}), fake_response(200, mapping_after)]
+		)
+		with (
+			patch("crm.integrations.exotel.handler.requests.get", return_value=users_response) as get,
+			patch(
+				"crm.integrations.exotel.handler.requests.request",
+				side_effect=lambda *a, **k: next(responses),
+			) as request,
+		):
+			try:
+				return ensure_softphone_user_mapping(AGENT)
+			finally:
+				self.lookup, self.request = get, request
 
-		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
-		self.assertEqual(request.call_count, 1)
-		self.assertEqual(request.call_args.args[0], "GET")
-		self.assertEqual(request.call_args.kwargs["headers"], {"Authorization": "app-token"})
+	def _posted(self):
+		return [c for c in self.request.call_args_list if c.args[0] == "POST"]
 
-	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
-	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
-	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_missing_mapping_is_rejected_without_creating_a_billable_user(self, request, _settings, _token):
-		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
+	def test_existing_mapping_on_the_users_own_device_is_used_as_is(self, _settings, _token):
+		existing = {"Code": 200, "Data": {"SipId": "sip:agentsip"}}
+		self.assertEqual(self._ensure(exotel_users(AGENT_DEVICES), existing=existing), "sip:agentsip")
 
-		# Integration Core reports "not found" as HTTP 200 with Code 404 in the body.
-		request.return_value = fake_response(200, {"Code": 404, "Data": None})
+		self.assertEqual(self._posted(), [])
+		self.assertEqual(self.request.call_args.kwargs["headers"], {"Authorization": "app-token"})
 
-		with self.assertRaisesRegex(frappe.ValidationError, "will not create Exotel users"):
-			ensure_softphone_user_mapping(AGENT)
-		self.assertEqual(request.call_count, 1)
-		self.assertEqual(request.call_args.args[0], "GET")
+	def test_existing_mapping_on_another_device_is_rejected(self, _settings, _token):
+		# A mapping rejected on an earlier save stays in Exotel; saving again must not accept it.
+		existing = {"Code": 200, "Data": {"SipId": "sip:brandnew"}}
+		with self.assertRaisesRegex(frappe.ValidationError, "not theirs"):
+			self._ensure(exotel_users(AGENT_DEVICES), existing=existing)
+		self.assertEqual(self._posted(), [])
 
-	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
-	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
-	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_mapping_without_sip_device_is_rejected(self, request, _settings, _token):
-		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
-
-		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": ""}})
-
+	def test_existing_mapping_without_a_sip_id_is_rejected(self, _settings, _token):
 		with self.assertRaises(frappe.ValidationError):
-			ensure_softphone_user_mapping(AGENT)
+			self._ensure(exotel_users(AGENT_DEVICES), existing={"Code": 200, "Data": {"SipId": ""}})
+
+	def test_a_failed_mapping_read_creates_nothing(self, _settings, _token):
+		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
+
+		for failed in (fake_response(403, {"Code": 403, "Data": None}), fake_response(200, {"Code": 500})):
+			with (
+				patch(
+					"crm.integrations.exotel.handler.requests.get", return_value=exotel_users(AGENT_DEVICES)
+				),
+				patch("crm.integrations.exotel.handler.requests.request", return_value=failed) as request,
+			):
+				with self.assertRaisesRegex(frappe.ValidationError, "Could not read"):
+					ensure_softphone_user_mapping(AGENT)
+			self.assertEqual([c.args[0] for c in request.call_args_list], ["GET"])
+
+	def test_exotel_user_without_a_phone_device_is_not_mapped(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "no phone device"):
+			self._ensure(exotel_users([AGENT_DEVICES[1]]))
+		self.assertEqual(self._posted(), [])
+
+	def test_existing_exotel_user_with_a_sip_device_is_mapped(self, _settings, _token):
+		self.assertEqual(self._ensure(exotel_users(AGENT_DEVICES)), "sip:agentsip")
+
+		self.assertEqual(self.lookup.call_args.kwargs["params"]["email"], "agent@example.com")
+		self.assertIn("ccm-api.in.exotel.com", self.lookup.call_args.args[0])
+		(post,) = self._posted()
+		self.assertEqual(post.kwargs["json"][0]["AgentNumber"], "09000000009")
+		self.assertEqual(post.kwargs["json"][0]["VirtualNumber"], AGENT.exotel_number)
+
+	def test_unknown_email_is_rejected_without_creating_a_billable_user(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "will not create Exotel users"):
+			self._ensure(fake_response(200, {"response": []}))
+		self.assertEqual(self._posted(), [])
+
+	def test_a_different_users_email_does_not_count(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "will not create Exotel users"):
+			self._ensure(exotel_users(AGENT_DEVICES, email="someone.else@example.com"))
+		self.assertEqual(self._posted(), [])
+
+	def test_exotel_user_without_a_sip_device_is_rejected(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "no SIP device"):
+			self._ensure(exotel_users([AGENT_DEVICES[0]]))
+		self.assertEqual(self._posted(), [])
+
+	def test_failed_lookup_creates_nothing(self, _settings, _token):
+		failed = fake_response(500, {})
+		failed.raise_for_status.side_effect = requests.HTTPError()
+		with self.assertRaisesRegex(frappe.ValidationError, "Could not look up"):
+			self._ensure(failed)
+		self.assertEqual(self._posted(), [])
+
+	def test_mapping_onto_another_sip_device_is_rejected(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "not theirs"):
+			self._ensure(exotel_users(AGENT_DEVICES), {"Code": 200, "Data": {"SipId": "sip:brandnew"}})
 
 
 class TestExotelSoftphoneCallVerification(FrappeTestCase):
@@ -1004,6 +1075,22 @@ class TestTelephonyAgentMappingOnReassign(FrappeTestCase):
 
 		ensure.assert_called_once()
 		self.assertEqual(doc.exotel_sip_id, "sip:newagent")
+
+	@patch("crm.integrations.exotel.handler.ensure_softphone_user_mapping", return_value="sip:agent")
+	def test_unchanged_agent_is_still_synced_after_an_app_change(self, ensure):
+		# Switching to a new softphone app leaves the stored SIP ID but no mapping in the new app.
+		fields = {
+			"user": "agent@example.com",
+			"mobile_no": "9000000001",
+			"exotel_number": "04000000001",
+			"exotel_softphone_enabled": 1,
+		}
+		doc = frappe.new_doc("CRM Telephony Agent")
+		doc.update({**fields, "exotel_sip_id": "sip:agent"})
+		with patch.object(doc, "get_doc_before_save", return_value=frappe._dict(fields)):
+			doc.sync_exotel_softphone_mapping()
+
+		ensure.assert_called_once()
 
 
 class TestExotelReconcileCallNotFound(FrappeTestCase):
