@@ -26,6 +26,12 @@
                       icon: TaskIcon,
                       onClick: () => showTask(task),
                     },
+                    {
+                      label: __('Add Disposition'),
+                      icon: h(FeatherIcon, { name: 'tag' }),
+                      condition: () => canAddDisposition,
+                      onClick: () => (showDispositionModal = true),
+                    },
                   ],
                 },
               ]"
@@ -162,6 +168,12 @@
       </div>
     </template>
   </Dialog>
+  <AddDispositionModal
+    v-if="canAddDisposition"
+    v-model="showDispositionModal"
+    :call-log="callLog.data"
+    @saved="callLog.reload()"
+  />
 </template>
 
 <script setup>
@@ -176,12 +188,14 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import CheckCircleIcon from '@/components/Icons/CheckCircleIcon.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
+import AddDispositionModal from '@/components/Modals/AddDispositionModal.vue'
 import { getCallLogDetail } from '@/utils/callLog'
 import { sanitizeHTML, formatDate } from '@/utils'
 import { isMobileView } from '@/composables/settings'
 import { useCallLogModalActions } from '@/composables/useCallLogActions.js'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { useDocument } from '@/data/document'
+import { sessionStore } from '@/stores/session'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { FeatherIcon, Dropdown, Avatar, Tooltip, call, toast } from 'frappe-ui'
 import { ref, computed, h, watch } from 'vue'
@@ -200,6 +214,25 @@ const { openNoteModal: showNote, openTaskModal: showTask } =
 
 const note = ref('')
 const task = ref('')
+
+const showDispositionModal = ref(false)
+const FINISHED_STATUSES = [
+  'Completed',
+  'Failed',
+  'Busy',
+  'Call Not Answered',
+  'Canceled',
+]
+
+// A disposition missed in the call popup (e.g. a new call took it over) can be added here later.
+const canAddDisposition = computed(() => {
+  const data = callLog.value?.data
+  if (!data || data.disposition || !FINISHED_STATUSES.includes(data.status))
+    return false
+  const { user } = sessionStore()
+  const sessionUser = typeof user === 'object' ? user.value : user
+  return [data.caller, data.receiver].includes(sessionUser)
+})
 
 const detailFields = computed(() => {
   if (!callLog.value?.data) return []
