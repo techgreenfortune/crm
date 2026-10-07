@@ -459,7 +459,7 @@ class TestExotelSoftphone(FrappeTestCase):
 
 
 def fake_response(status_code, body):
-	response = MagicMock(status_code=status_code, text=str(body))
+	response = MagicMock(status_code=status_code, text=str(body), ok=status_code < 400)
 	response.json.return_value = body
 	return response
 
@@ -529,6 +529,20 @@ class TestExotelSoftphoneMapsExistingUser(FrappeTestCase):
 	def test_existing_mapping_without_a_sip_id_is_rejected(self, _settings, _token):
 		with self.assertRaises(frappe.ValidationError):
 			self._ensure(exotel_users(AGENT_DEVICES), existing={"Code": 200, "Data": {"SipId": ""}})
+
+	def test_a_failed_mapping_read_creates_nothing(self, _settings, _token):
+		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
+
+		for failed in (fake_response(403, {"Code": 403, "Data": None}), fake_response(200, {"Code": 500})):
+			with (
+				patch(
+					"crm.integrations.exotel.handler.requests.get", return_value=exotel_users(AGENT_DEVICES)
+				),
+				patch("crm.integrations.exotel.handler.requests.request", return_value=failed) as request,
+			):
+				with self.assertRaisesRegex(frappe.ValidationError, "Could not read"):
+					ensure_softphone_user_mapping(AGENT)
+			self.assertEqual([c.args[0] for c in request.call_args_list], ["GET"])
 
 	def test_exotel_user_without_a_phone_device_is_not_mapped(self, _settings, _token):
 		with self.assertRaisesRegex(frappe.ValidationError, "no phone device"):
@@ -1061,6 +1075,22 @@ class TestTelephonyAgentMappingOnReassign(FrappeTestCase):
 
 		ensure.assert_called_once()
 		self.assertEqual(doc.exotel_sip_id, "sip:newagent")
+
+	@patch("crm.integrations.exotel.handler.ensure_softphone_user_mapping", return_value="sip:agent")
+	def test_unchanged_agent_is_still_synced_after_an_app_change(self, ensure):
+		# Switching to a new softphone app leaves the stored SIP ID but no mapping in the new app.
+		fields = {
+			"user": "agent@example.com",
+			"mobile_no": "9000000001",
+			"exotel_number": "04000000001",
+			"exotel_softphone_enabled": 1,
+		}
+		doc = frappe.new_doc("CRM Telephony Agent")
+		doc.update({**fields, "exotel_sip_id": "sip:agent"})
+		with patch.object(doc, "get_doc_before_save", return_value=frappe._dict(fields)):
+			doc.sync_exotel_softphone_mapping()
+
+		ensure.assert_called_once()
 
 
 class TestExotelReconcileCallNotFound(FrappeTestCase):

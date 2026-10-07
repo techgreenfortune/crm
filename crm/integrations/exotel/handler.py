@@ -554,14 +554,23 @@ def _create_softphone_user_mapping(token, settings, agent, email, devices):
 
 
 def _get_softphone_user_mapping(token, email):
+	"""Return the user's mapping, or None only when Exotel says there is none.
+
+	Any other failure raises: treating it as "no mapping" would create one.
+	"""
 	response = _softphone_request("GET", "/usermapping", token, params={"user_id": email})
-	if response.status_code == 404:
+	try:
+		payload = response.json()
+	except ValueError:
+		payload = None
+	# Integration Core reports "not found" as HTTP 404, or as HTTP 200 with Code 404 in the body.
+	if response.status_code == 404 or (isinstance(payload, dict) and payload.get("Code") == 404):
 		return None
-	payload = response.json()
-	# Integration Core also reports "not found" as HTTP 200 with Code 404 in the body.
-	if payload.get("Code") == 404 or not isinstance(payload.get("Data"), dict):
-		return None
-	return payload["Data"]
+	data = payload.get("Data") if isinstance(payload, dict) else None
+	if not response.ok or not isinstance(data, dict) or not data:
+		frappe.log_error(title="Exotel softphone mapping lookup failed", message=response.text)
+		frappe.throw(_("Could not read the Exotel softphone mapping. Try again later."))
+	return data
 
 
 def _softphone_api_base():

@@ -148,7 +148,7 @@ The browser SDK connects to Exotel's India VoIP domain from inside the package, 
 
 A manager (roles in `role_config.TELEPHONY_AGENT_MANAGER_ROLES`: System Manager, Sales Head, Sales Coordinator — not Management, which is read-only) first makes sure the agent exists as an Exotel dashboard user with a SIP device, under the same email as their CRM user. Adding users there is a deliberate, possibly billable, decision the CRM never makes.
 
-Then the manager creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.) Saving reads the agent's mapping in this app, creating it for an existing Exotel user if missing (step 2d), and fills the read-only **Exotel SIP ID**. It refuses to save when the Exotel user or their SIP device is missing. Agents see only their own record and can change only their default calling medium.
+Then the manager creates a record per agent in Desk at `/app/crm-telephony-agent/new`: User, Mobile No, Exotel Number, **Use Exotel Browser Softphone** on, then save. (The CRM's **Settings → Telephony** page edits only the signed-in user's own record.) Every save of an agent with the softphone on reads the agent's mapping in the current app, creating it for an existing Exotel user if missing (step 2d), and fills the read-only **Exotel SIP ID**. A failed read stops the save; it is never treated as a missing mapping. It refuses to save when the Exotel user or their SIP device is missing. Agents see only their own record and can change only their default calling medium.
 
 Agents on click-to-call need none of this: it only rings their mobile.
 
@@ -185,6 +185,7 @@ Anyone with dashboard access can edit or delete flows, so give dashboard access 
 |---|---|
 | Rotate the webhook key | Update CRM Exotel Settings, all four app settings (step 2c) and the flow Passthrus together; webhooks with the old key are refused |
 | Point an app at another CRM URL | Re-post the four app settings |
+| Replace the Integration Core app | Put the new App ID/Secret in CRM Exotel Settings, then save each softphone agent again; every save re-checks the agent's mapping in the current app and creates it if missing |
 | Move an agent back to click-to-call | Turn off their **Use Exotel Browser Softphone**; softphone agents never fall back to the mobile on their own |
 | Turn the softphone off for everyone | Turn off **Browser Softphone** in CRM Exotel Settings |
 
