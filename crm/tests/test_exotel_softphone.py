@@ -520,11 +520,14 @@ class TestExotelSoftphoneMapsExistingUser(FrappeTestCase):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
 		mapping_after = mapping_after or {"Code": 200, "Data": {"SipId": "sip:agentsip"}}
-		responses = iter([fake_response(200, NOT_MAPPED), fake_response(200, {}), fake_response(200, mapping_after)])
+		responses = iter(
+			[fake_response(200, NOT_MAPPED), fake_response(200, {}), fake_response(200, mapping_after)]
+		)
 		with (
 			patch("crm.integrations.exotel.handler.requests.get", return_value=users_response) as get,
 			patch(
-				"crm.integrations.exotel.handler.requests.request", side_effect=lambda *a, **k: next(responses)
+				"crm.integrations.exotel.handler.requests.request",
+				side_effect=lambda *a, **k: next(responses),
 			) as request,
 		):
 			try:
