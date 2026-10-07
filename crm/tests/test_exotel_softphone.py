@@ -798,6 +798,44 @@ DIAL_SUCCESS = {
 }
 
 
+# A flow Passthru after a voicemail that rang nobody.
+VOICEMAIL_PASSTHRU = {
+	"CallSid": "voicemail-sid",
+	"CallFrom": "09000000002",
+	"To": "04000000001",
+	"Direction": "incoming",
+}
+
+
+@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SimpleNamespace(enabled=1))
+@patch("crm.integrations.exotel.handler.create_request_log")
+@patch("crm.integrations.exotel.handler.is_integration_enabled", return_value=True)
+@patch("crm.integrations.exotel.handler.validate_request")
+@patch("crm.integrations.exotel.handler.frappe.request", new=MagicMock())
+@patch("crm.integrations.exotel.handler.get_call_log", return_value=None)
+class TestExotelRealtimeTarget(FrappeTestCase):
+	def _handle(self, call_log):
+		from crm.integrations.exotel.handler import handle_request
+
+		with (
+			patch("crm.integrations.exotel.handler.create_call_log", return_value=call_log),
+			patch("crm.integrations.exotel.handler.frappe.publish_realtime") as publish,
+		):
+			handle_request(**VOICEMAIL_PASSTHRU)
+		return publish
+
+	def test_a_call_with_no_agent_is_not_broadcast(self, *_mocks):
+		publish = self._handle(frappe._dict(caller=None, receiver=None))
+
+		publish.assert_not_called()
+
+	def test_a_call_with_an_agent_goes_only_to_them(self, *_mocks):
+		publish = self._handle(frappe._dict(caller=None, receiver="agent@example.com"))
+
+		publish.assert_called_once()
+		self.assertEqual(publish.call_args.kwargs["user"], "agent@example.com")
+
+
 @patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 @patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 @patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=SOFTPHONE_AGENT)
