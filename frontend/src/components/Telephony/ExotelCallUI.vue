@@ -189,6 +189,13 @@
             {{ contact.mobile_no }}
           </div>
         </div>
+        <div v-if="pendingWrapUps.length" class="mt-3 text-sm text-ink-gray-5">
+          {{
+            __('{0} earlier call(s) waiting for a disposition', [
+              pendingWrapUps.length,
+            ])
+          }}
+        </div>
         <div
           v-if="
             dispositionRequired && (dispositionEligible || dispositionLocked)
@@ -407,6 +414,7 @@ import {
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
+import { isParkedCall, parkWrapUp, shouldParkWrapUp } from '@/utils/callWrapUp'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import {
   TextEditor,
@@ -553,6 +561,7 @@ const fabricatorRoutingReason = ref(null)
 const partnerFabricatorName = ref('')
 const fabricatorRoutingNotes = ref('')
 const isSavingDisposition = ref(false)
+const pendingWrapUps = ref([])
 
 const lastSocketAt = ref(Date.now())
 let staleCheckTimer = null
@@ -705,6 +714,7 @@ function persistPopupState() {
         partnerFabricatorName: partnerFabricatorName.value,
         fabricatorRoutingNotes: fabricatorRoutingNotes.value,
         lastSocketAt: lastSocketAt.value,
+        pendingWrapUps: pendingWrapUps.value,
       }),
     )
   } catch {
@@ -734,6 +744,7 @@ function restorePopupState() {
     partnerFabricatorName.value = s.partnerFabricatorName || ''
     fabricatorRoutingNotes.value = s.fabricatorRoutingNotes || ''
     if (typeof s.lastSocketAt === 'number') lastSocketAt.value = s.lastSocketAt
+    if (Array.isArray(s.pendingWrapUps)) pendingWrapUps.value = s.pendingWrapUps
   } catch {
     /* parse error — ignore */
   }
@@ -760,6 +771,7 @@ watch(
     partnerFabricatorName,
     fabricatorRoutingNotes,
     lastSocketAt,
+    pendingWrapUps,
   ],
   persistPopupState,
   { deep: true },
@@ -1028,6 +1040,7 @@ function stopReconnectWatchdog() {
 }
 
 function makeClassicOutgoingCall(number, context) {
+  parkCurrentWrapUp(null)
   phoneNumber.value = number
 
   const params = { to_number: phoneNumber.value }
@@ -1065,6 +1078,9 @@ function setup() {
   restorePopupState()
   $socket.off('exotel_call')
   $socket.on('exotel_call', (data) => {
+    // A late event for a parked call must not take the popup from the current one.
+    if (isParkedCall(pendingWrapUps.value, data.CallSid)) return
+    const parked = parkCurrentWrapUp(data.CallSid)
     lastSocketAt.value = Date.now()
     callData.value = data
     console.log('[exotel] socket event received', data)
@@ -1073,7 +1089,7 @@ function setup() {
     const { user } = sessionStore()
     const sessionUser = typeof user === 'object' ? user.value : user
 
-    if (!showCallPopup.value && !showSmallCallPopup.value) {
+    if (parked || (!showCallPopup.value && !showSmallCallPopup.value)) {
       if (callTerminated.value) return
       if (data.AgentEmail && data.AgentEmail === sessionUser) {
         // Incoming call
@@ -1165,6 +1181,7 @@ function handleSoftphoneRegistration(state) {
 }
 
 async function makeSoftphoneOutgoingCall(number, context) {
+  parkCurrentWrapUp(null)
   phoneNumber.value = number
   callStatus.value = 'Calling...'
   showCallPopup.value = true
@@ -1292,6 +1309,7 @@ async function prepareSoftphoneIncomingCall(callSid, details) {
     return
   }
 
+  parkCurrentWrapUp(callSid)
   phoneNumber.value = number
   callData.value = {
     ...details,
@@ -1447,9 +1465,7 @@ function openDealOrLead() {
   }
 }
 
-function closeCallPopup() {
-  showCallPopup.value = false
-  showSmallCallPopup.value = false
+function resetWrapUpFields() {
   note.value = {
     name: '',
     content: '',
@@ -1468,10 +1484,69 @@ function closeCallPopup() {
   fabricatorRoutingReason.value = null
   partnerFabricatorName.value = ''
   fabricatorRoutingNotes.value = ''
+}
+
+function parkCurrentWrapUp(nextSid) {
+  if (
+    !shouldParkWrapUp({
+      terminated:
+        callTerminated.value &&
+        dispositionEligible.value &&
+        isCallHandler.value,
+      currentSid: callData.value?.CallSid,
+      nextSid,
+    })
+  )
+    return false
+  pendingWrapUps.value = parkWrapUp(pendingWrapUps.value, {
+    callData: callData.value,
+    callStatus: callStatus.value,
+    phoneNumber: phoneNumber.value,
+    callDuration: callDuration.value,
+    note: note.value,
+    task: task.value,
+    disposition: disposition.value,
+    scheduledCallbackAt: scheduledCallbackAt.value,
+    fabricatorRoutingReason: fabricatorRoutingReason.value,
+    partnerFabricatorName: partnerFabricatorName.value,
+    fabricatorRoutingNotes: fabricatorRoutingNotes.value,
+  })
+  resetWrapUpFields()
+  toast.info(
+    __(
+      'The last call still needs a disposition. It will reopen when this call is closed.',
+    ),
+  )
+  return true
+}
+
+function resumeParkedWrapUp() {
+  const [wrapUp, ...rest] = pendingWrapUps.value
+  pendingWrapUps.value = rest
+  callData.value = wrapUp.callData
+  callStatus.value = wrapUp.callStatus
+  phoneNumber.value = wrapUp.phoneNumber
+  callDuration.value = wrapUp.callDuration
+  note.value = wrapUp.note
+  task.value = wrapUp.task
+  disposition.value = wrapUp.disposition
+  scheduledCallbackAt.value = wrapUp.scheduledCallbackAt
+  fabricatorRoutingReason.value = wrapUp.fabricatorRoutingReason
+  partnerFabricatorName.value = wrapUp.partnerFabricatorName
+  fabricatorRoutingNotes.value = wrapUp.fabricatorRoutingNotes
+  showCallPopup.value = true
+  showSmallCallPopup.value = false
+}
+
+function closeCallPopup() {
+  showCallPopup.value = false
+  showSmallCallPopup.value = false
+  resetWrapUpFields()
   callData.value = null
   callStatus.value = ''
   lastSocketAt.value = Date.now()
   clearPopupState()
+  if (pendingWrapUps.value.length) resumeParkedWrapUp()
 }
 
 async function attemptCloseCallPopup() {
