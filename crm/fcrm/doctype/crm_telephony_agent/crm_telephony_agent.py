@@ -40,17 +40,8 @@ class CRMTelephonyAgent(Document):
 	def sync_exotel_softphone_mapping(self):
 		if not self.exotel_softphone_enabled:
 			return
-		before = self.get_doc_before_save()
-		unchanged = (
-			before
-			and before.exotel_softphone_enabled
-			and before.user == self.user
-			and before.mobile_no == self.mobile_no
-			and before.exotel_number == self.exotel_number
-		)
-		if unchanged and self.exotel_sip_id:
-			return
-
+		# Re-checked on every save, not only when agent fields change: a stored SIP ID says nothing
+		# about the current softphone app (it may have been replaced) or the mapping still being valid.
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
 		self.exotel_sip_id = ensure_softphone_user_mapping(self)
