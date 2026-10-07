@@ -447,7 +447,11 @@ def _get_current_softphone_agent():
 
 
 def ensure_softphone_user_mapping(agent):
-	"""Return the agent's SIP ID from an existing Integration Core user mapping."""
+	"""Return the agent's SIP ID from their Integration Core user mapping.
+
+	A missing mapping is created only for an existing Exotel user with a SIP device: for an
+	unknown email, POST /usermapping silently creates a new, possibly billable, Exotel user.
+	"""
 	settings = get_exotel_settings()
 	app_id = cstr(settings.softphone_app_id).strip()
 	app_secret = settings.get_password("softphone_app_secret", raise_exception=False)
@@ -458,14 +462,7 @@ def ensure_softphone_user_mapping(agent):
 	token = _get_softphone_app_token(app_id, app_secret)
 	mapping = _get_softphone_user_mapping(token, email)
 	if not mapping:
-		frappe.throw(
-			_(
-				"No Exotel softphone mapping exists for {0}. Ask an Exotel administrator to provision "
-				"the user and app mapping before enabling browser calling. CRM will not create Exotel "
-				"users because they may incur charges."
-			).format(email),
-			title=_("Exotel User Not Provisioned"),
-		)
+		mapping = _map_existing_exotel_user(token, settings, agent, email)
 
 	sip_id = cstr((mapping or {}).get("SipId")).strip()
 	if not sip_id:
@@ -475,6 +472,91 @@ def ensure_softphone_user_mapping(agent):
 			)
 		)
 	return sip_id
+
+
+def _map_existing_exotel_user(token, settings, agent, email):
+	if not agent.exotel_number:
+		frappe.throw(_("Exotel Number is required to enable the browser softphone."))
+	devices = _get_exotel_user_devices(settings, email)
+	if devices is None:
+		frappe.throw(
+			_(
+				"No Exotel user exists for {0}. Create them in the Exotel dashboard with a SIP device first; "
+				"CRM will not create Exotel users because they may incur charges."
+			).format(email),
+			title=_("Exotel User Not Provisioned"),
+		)
+	sip_ids = {cstr(d.get("contact_uri")).strip().lower() for d in devices if d.get("type") == "sip"}
+	sip_ids.discard("")
+	if not sip_ids:
+		frappe.throw(
+			_("Exotel user {0} has no SIP device. Add a SIP extension for this user in the Exotel dashboard.").format(
+				email
+			)
+		)
+	phones = [d.get("contact_uri") for d in devices if d.get("type") == "tel" and d.get("contact_uri")]
+	_create_softphone_user_mapping(token, settings, agent, email, phones[0] if phones else agent.mobile_no)
+
+	mapping = _get_softphone_user_mapping(token, email)
+	mapped_sip = cstr((mapping or {}).get("SipId")).strip().lower()
+	if mapped_sip not in sip_ids:
+		frappe.log_error(
+			title="Exotel softphone mapping used an unexpected SIP device",
+			message=f"{email}: mapped to {mapped_sip or 'nothing'}, user's SIP devices are {sorted(sip_ids)}",
+		)
+		frappe.throw(
+			_(
+				"Exotel mapped {0} to a SIP device that is not theirs. Check this user in the Exotel "
+				"dashboard before enabling browser calling."
+			).format(email)
+		)
+	return mapping
+
+
+def _get_exotel_user_devices(settings, email):
+	"""Return the devices of the account's Exotel user with this email, or None if there is none."""
+	host = cstr(settings.subdomain).strip().removeprefix("api.")
+	try:
+		response = requests.get(
+			f"https://ccm-api.{host}/v2/accounts/{settings.account_sid}/users",
+			params={"fields": "devices", "email": email},
+			auth=(settings.api_key, settings.get_password("api_token")),
+			timeout=10,
+		)
+		response.raise_for_status()
+		users = response.json().get("response")
+	except (requests.RequestException, ValueError, AttributeError):
+		frappe.log_error(title="Exotel user lookup failed")
+		frappe.throw(_("Could not look up the Exotel user. Try again later."))
+	for item in users if isinstance(users, list) else []:
+		user = (item or {}).get("data") or {}
+		if cstr(user.get("email")).strip().lower() == email.lower():
+			return user.get("devices") or []
+	return None
+
+
+def _create_softphone_user_mapping(token, settings, agent, email, agent_number):
+	response = _softphone_request(
+		"POST",
+		"/usermapping",
+		token,
+		json=[
+			{
+				"AppUserId": email,
+				"AppUsername": email,
+				"Email": email,
+				"ExotelAccountSid": settings.account_sid,
+				"ExotelUserName": frappe.db.get_value("User", agent.user, "full_name") or email,
+				# Exotel refused 10-digit numbers here in UAT; the 0-prefixed 11-digit form is accepted.
+				"AgentNumber": "0" + last_ten_digits(agent_number),
+				"VirtualNumber": agent.exotel_number,
+			}
+		],
+	)
+	# 409 = mapping already exists for this AppUserId/email, which is the state we want.
+	if response.status_code not in (200, 409):
+		frappe.log_error(title="Exotel softphone user mapping failed", message=response.text)
+		frappe.throw(_("Could not map {0} to the Exotel softphone app.").format(email))
 
 
 def _get_softphone_user_mapping(token, email):
