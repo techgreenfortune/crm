@@ -117,10 +117,12 @@ def handle_request(**kwargs):
 		# Publish realtime AFTER DB commit so the call log exists when the
 		# frontend acts on the event. Terminal events from Exotel don't reliably
 		# include AgentEmail, so fall back to the call log's caller/receiver
-		# (set when the call started) before falling back to a full broadcast —
-		# a stray broadcast is better than a silently dropped terminal update,
-		# which left the call popup stuck on "Calling...".
+		# (set when the call started).
 		target_user = agent_email or (call_log and (call_log.caller or call_log.receiver))
+		# No agent (e.g. a voicemail when nobody was dialled) means no popup shows this call;
+		# user=None would broadcast it into every open popup.
+		if not target_user:
+			return
 		frappe.publish_realtime("exotel_call", call_payload, user=target_user)
 		frappe.logger("exotel").info(
 			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} "
