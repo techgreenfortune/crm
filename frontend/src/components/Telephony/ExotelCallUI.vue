@@ -1040,10 +1040,7 @@ function stopReconnectWatchdog() {
 }
 
 function makeClassicOutgoingCall(number, context) {
-  parkCurrentWrapUp(null)
-  phoneNumber.value = number
-
-  const params = { to_number: phoneNumber.value }
+  const params = { to_number: number }
   if (context?.reference_doctype && context?.reference_docname) {
     params.reference_doctype = context.reference_doctype
     params.reference_docname = context.reference_docname
@@ -1054,6 +1051,9 @@ function makeClassicOutgoingCall(number, context) {
     params,
     auto: true,
     onSuccess(callDetails) {
+      // Taken over only once the call exists, so a failed dial leaves the wrap-up untouched.
+      parkCurrentWrapUp(null)
+      phoneNumber.value = number
       callData.value = callDetails
       console.log(callDetails)
 
@@ -1502,6 +1502,7 @@ function parkCurrentWrapUp(nextSid) {
     callData: callData.value,
     callStatus: callStatus.value,
     phoneNumber: phoneNumber.value,
+    contact: contact.value,
     callDuration: callDuration.value,
     note: note.value,
     task: task.value,
@@ -1526,6 +1527,8 @@ function resumeParkedWrapUp() {
   callData.value = wrapUp.callData
   callStatus.value = wrapUp.callStatus
   phoneNumber.value = wrapUp.phoneNumber
+  // The refetch phoneNumber triggers is async; until it lands, eligibility must use this call's lead.
+  contact.value = wrapUp.contact
   callDuration.value = wrapUp.callDuration
   note.value = wrapUp.note
   task.value = wrapUp.task
