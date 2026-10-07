@@ -1076,6 +1076,14 @@ class TestExotelReconcileWaitsForAgentLeg(FrappeTestCase):
 
 		set_value.assert_not_called()
 
+	def test_ringing_inbound_with_exotels_epoch_end_time_is_not_failed(self):
+		# Captured on UAT: the agent's "free" event reconciled a call Exotel still showed as ringing.
+		ringing = {**EARLY_INBOUND, "Status": "ringing", "EndTime": "1970-01-01 05:30:00"}
+		matches, set_value = self._reconcile(ringing)
+
+		matches.assert_not_called()
+		set_value.assert_not_called()
+
 	def test_inbound_still_without_a_sip_leg_after_settling_fails(self):
 		_matches, set_value = self._reconcile(self._ended(30))
 

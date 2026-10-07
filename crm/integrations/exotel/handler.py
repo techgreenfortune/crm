@@ -958,7 +958,9 @@ def reconcile_call_log(call_sid, created_at):
 
 	# Exotel fills Duration/EndTime/leg details asynchronously (~2 min after the call ends). Deciding
 	# before then could lock an answered call as missed, so wait for a later run.
-	if (call.get("Status") or "").lower() in CALL_API_FINAL_STATUSES and not call.get("EndTime"):
+	if (call.get("Status") or "").lower() in CALL_API_FINAL_STATUSES and not valid_exotel_end_time(
+		call.get("EndTime")
+	):
 		return
 
 	details = call.get("Details") or {}
@@ -969,7 +971,7 @@ def reconcile_call_log(call_sid, created_at):
 		CallLogStatus=get_calls_api_call_log_status(call),
 		ConversationDuration=duration if duration is not None else call.get("Duration"),
 		StartTime=call.get("StartTime") or None,
-		EndTime=call.get("EndTime") or None,
+		EndTime=valid_exotel_end_time(call.get("EndTime")),
 		RecordingUrl=call.get("RecordingUrl"),
 	)
 	update_call_log(payload)
@@ -1010,7 +1012,7 @@ def agent_leg_pending(call):
 		return False
 	if cstr(call.get("To")).lower().startswith("sip:"):
 		return False
-	ended = normalize_exotel_datetime(call.get("EndTime"))
+	ended = normalize_exotel_datetime(valid_exotel_end_time(call.get("EndTime")))
 	return not ended or ended > add_to_date(now_datetime(), minutes=-RECONCILE_LEG_SETTLE_MINUTES)
 
 
