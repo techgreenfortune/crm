@@ -121,9 +121,9 @@ Posting a key again replaces its value. At least one setting must exist or the S
 
 d. **Agent mappings** are created by the CRM when an agent is saved (step 4), and only for existing Exotel users.
 
-   **Why the guard:** if no Exotel coworker exists with that email, `POST /usermapping` does not fail: it **creates a new coworker** (a possibly billable seat). So before mapping, the CRM looks the email up in the account's users (`ccm-api.<region>/v2/accounts/<sid>/users`, read-only). With no such user, or a user without a SIP device, it refuses to save and creates nothing. After mapping, it checks that the mapping's `SipId` is one of that user's own SIP devices.
+   **Why the guard:** if no Exotel coworker exists with that email, `POST /usermapping` does not fail: it **creates a new coworker** (a possibly billable seat). So before mapping, the CRM looks the email up in the account's users (`ccm-api.<region>/v2/accounts/<sid>/users`, read-only). With no such user, or a user without a SIP device, it refuses to save and creates nothing. On every save, for a new or an existing mapping, the mapping's `SipId` must be one of that user's own SIP devices; a rejected mapping stays in Exotel, so it is rejected again until fixed there.
 
-   The mapping uses the user's phone device from Exotel (0-prefixed, 11 digits) as `AgentNumber` and the agent's Exotel Number as `VirtualNumber`.
+   The mapping uses the user's phone device from Exotel (0-prefixed, 11 digits) as `AgentNumber` and the agent's Exotel Number as `VirtualNumber`. A user without a phone device is not mapped.
 
    Only enable test users on UAT/test apps whose SIP devices no live flow rings: while a browser is registered on a UAT app as that device, live calls to it ring in UAT.
 

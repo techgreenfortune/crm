@@ -476,32 +476,6 @@ SOFTPHONE_SETTINGS = SimpleNamespace(
 AGENT = frappe._dict(user="agent@example.com", mobile_no="+91 90000 00001", exotel_number="04000000001")
 
 
-class TestExotelSoftphoneProvisioning(FrappeTestCase):
-	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
-	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
-	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_existing_mapping_returns_sip_id(self, request, _settings, _token):
-		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
-
-		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": "sip:agentsip"}})
-
-		self.assertEqual(ensure_softphone_user_mapping(AGENT), "sip:agentsip")
-		self.assertEqual(request.call_count, 1)
-		self.assertEqual(request.call_args.args[0], "GET")
-		self.assertEqual(request.call_args.kwargs["headers"], {"Authorization": "app-token"})
-
-	@patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
-	@patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
-	@patch("crm.integrations.exotel.handler.requests.request")
-	def test_mapping_without_sip_device_is_rejected(self, request, _settings, _token):
-		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
-
-		request.return_value = fake_response(200, {"Code": 200, "Data": {"SipId": ""}})
-
-		with self.assertRaises(frappe.ValidationError):
-			ensure_softphone_user_mapping(AGENT)
-
-
 NOT_MAPPED = {"Code": 404, "Data": None}
 AGENT_DEVICES = [
 	{"type": "tel", "contact_uri": "+919000000009"},
@@ -516,12 +490,12 @@ def exotel_users(devices, email="agent@example.com"):
 @patch("crm.integrations.exotel.handler._get_softphone_app_token", return_value="app-token")
 @patch("crm.integrations.exotel.handler.get_exotel_settings", return_value=SOFTPHONE_SETTINGS)
 class TestExotelSoftphoneMapsExistingUser(FrappeTestCase):
-	def _ensure(self, users_response, mapping_after=None):
+	def _ensure(self, users_response, mapping_after=None, existing=NOT_MAPPED):
 		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
 
 		mapping_after = mapping_after or {"Code": 200, "Data": {"SipId": "sip:agentsip"}}
 		responses = iter(
-			[fake_response(200, NOT_MAPPED), fake_response(200, {}), fake_response(200, mapping_after)]
+			[fake_response(200, existing), fake_response(200, {}), fake_response(200, mapping_after)]
 		)
 		with (
 			patch("crm.integrations.exotel.handler.requests.get", return_value=users_response) as get,
@@ -537,6 +511,29 @@ class TestExotelSoftphoneMapsExistingUser(FrappeTestCase):
 
 	def _posted(self):
 		return [c for c in self.request.call_args_list if c.args[0] == "POST"]
+
+	def test_existing_mapping_on_the_users_own_device_is_used_as_is(self, _settings, _token):
+		existing = {"Code": 200, "Data": {"SipId": "sip:agentsip"}}
+		self.assertEqual(self._ensure(exotel_users(AGENT_DEVICES), existing=existing), "sip:agentsip")
+
+		self.assertEqual(self._posted(), [])
+		self.assertEqual(self.request.call_args.kwargs["headers"], {"Authorization": "app-token"})
+
+	def test_existing_mapping_on_another_device_is_rejected(self, _settings, _token):
+		# A mapping rejected on an earlier save stays in Exotel; saving again must not accept it.
+		existing = {"Code": 200, "Data": {"SipId": "sip:brandnew"}}
+		with self.assertRaisesRegex(frappe.ValidationError, "not theirs"):
+			self._ensure(exotel_users(AGENT_DEVICES), existing=existing)
+		self.assertEqual(self._posted(), [])
+
+	def test_existing_mapping_without_a_sip_id_is_rejected(self, _settings, _token):
+		with self.assertRaises(frappe.ValidationError):
+			self._ensure(exotel_users(AGENT_DEVICES), existing={"Code": 200, "Data": {"SipId": ""}})
+
+	def test_exotel_user_without_a_phone_device_is_not_mapped(self, _settings, _token):
+		with self.assertRaisesRegex(frappe.ValidationError, "no phone device"):
+			self._ensure(exotel_users([AGENT_DEVICES[1]]))
+		self.assertEqual(self._posted(), [])
 
 	def test_existing_exotel_user_with_a_sip_device_is_mapped(self, _settings, _token):
 		self.assertEqual(self._ensure(exotel_users(AGENT_DEVICES)), "sip:agentsip")
