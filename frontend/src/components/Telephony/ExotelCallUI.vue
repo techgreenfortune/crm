@@ -413,6 +413,8 @@ import {
   softphoneTerminalLabel,
   CHECKING_CALL_RESULT,
   settleCallOutcome,
+  AGENT_LEG_RING_TIMEOUT_MS,
+  readSoftphoneSdkLog,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -1231,7 +1233,11 @@ async function makeSoftphoneOutgoingCall(number, context) {
       softphoneCallAvailable.value = true
       acceptPendingOutboundCall()
     } else if (next.action === 'reject') {
+      // A stray INVITE took the buffer slot; our own leg can still go missing.
       hangupExotelSoftphoneCall()
+      watchForAgentLeg(callSid)
+    } else if (next.action === 'wait') {
+      watchForAgentLeg(callSid)
     }
   } catch (error) {
     const next = outboundDial.dialFailed({
@@ -1332,6 +1338,38 @@ async function settleOutboundOutcome(callSid, fallback) {
 function showLateOutcome(label) {
   callStatus.value = label
   if (label === 'No answer') disposition.value = NO_ANSWER_DISPOSITION
+}
+
+let agentLegTimer = null
+
+function watchForAgentLeg(callSid) {
+  clearTimeout(agentLegTimer)
+  agentLegTimer = setTimeout(() => {
+    if (!outboundDial.awaitingAgentLeg(callSid)) return
+    console.warn(
+      '[exotel] agent leg never rang; reinitialising the SDK',
+      callSid,
+    )
+    recoverFromMissedAgentLeg(callSid)
+  }, AGENT_LEG_RING_TIMEOUT_MS)
+}
+
+// Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
+function recoverFromMissedAgentLeg(callSid) {
+  // Read before reconnecting so the log still ends with the stuck SDK's lines.
+  call('crm.integrations.exotel.handler.report_softphone_issue', {
+    call_sid: callSid,
+    logs: readSoftphoneSdkLog(),
+  }).catch(() => {})
+  resetSoftphoneSession()
+  closeCallPopup()
+  toast.error(
+    __(
+      "Your browser phone didn't receive this call, so it has been reconnected. Please call again.",
+    ),
+    { duration: 10 },
+  )
+  reconnectSoftphone({ silent: true })
 }
 
 function acceptPendingOutboundCall() {
@@ -1476,6 +1514,7 @@ function checkStale() {
 }
 
 onBeforeUnmount(() => {
+  clearTimeout(agentLegTimer)
   ringtone.stop()
   $socket.off('exotel_call')
   stopStaleCheck()

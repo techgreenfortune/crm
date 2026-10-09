@@ -9,6 +9,7 @@ import {
   waitForCallOutcome,
   settleCallOutcome,
   CHECKING_CALL_RESULT,
+  readSoftphoneSdkLog,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
   createMuteSync,
@@ -488,5 +489,64 @@ describe('settleCallOutcome', () => {
     })
 
     expect(p.state.shown).toEqual(['Call ended'])
+  })
+})
+
+describe('awaitingAgentLeg', () => {
+  it('waits for our agent leg after the dial reply', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(true)
+    dial.onIncoming('ours', {})
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+
+  it('is not waiting when the ring came before the reply', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.onIncoming('ours', {})
+    dial.dialSucceeded('ours')
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+
+  it('is not waiting for an older dial', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+})
+
+describe('readSoftphoneSdkLog', () => {
+  const storage = (value) => ({ getItem: () => value })
+
+  it('returns the last lines the SDK stored', () => {
+    const lines = Array.from({ length: 5 }, (_, i) => `line ${i}`)
+
+    expect(
+      readSoftphoneSdkLog({
+        storage: storage(JSON.stringify(lines)),
+        lines: 2,
+      }),
+    ).toBe('line 3\nline 4')
+  })
+
+  it('returns nothing when the SDK stored no log', () => {
+    expect(readSoftphoneSdkLog({ storage: storage(null) })).toBe('')
+    expect(readSoftphoneSdkLog({ storage: storage('not json') })).toBe('')
+  })
+
+  it('returns nothing when storage is blocked', () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+    }
+    expect(readSoftphoneSdkLog({ storage: blocked })).toBe('')
   })
 })

@@ -341,6 +341,7 @@ Pinning can't protect against Exotel changing its servers (API fields, the SIP-s
 | Inbound calls ring a mobile instead of the browser | The flow's Connect dials a number, not the Exotel user; or the user's active device isn't the SIP device |
 | Call logs stuck in Ringing / In Progress | Webhooks not reaching the CRM (URL, `key`, firewall); the reconcile job completes them if the scheduler runs |
 | Inbound call never ends | A Passthru without a Hangup after it |
+| "Your browser phone didn't receive this call" toast; calls fail about a second after dialling (`from_leg_unanswered`, call log Failed) | The SDK still counted an earlier call as active and rejected its own leg with SIP 480. The CRM reconnects the phone automatically and saves the SDK's recent log as an Error Log "Exotel softphone stopped taking calls" |
 | "Phone in another tab" badge | The agent has the CRM open in another tab of the same browser, which holds the phone. Click the badge (or "Use this tab" on the call toast) to move it here |
 | Two devices ring | The same agent is logged in on another browser or machine; only tabs within one browser are coordinated |
 
