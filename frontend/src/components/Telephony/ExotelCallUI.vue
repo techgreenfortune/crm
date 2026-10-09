@@ -411,6 +411,7 @@ import {
   extractExotelCallSid,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  isAgentLegFailure,
   CHECKING_CALL_RESULT,
   settleCallOutcome,
   AGENT_LEG_RING_TIMEOUT_MS,
@@ -1094,6 +1095,13 @@ function setup() {
   $socket.on('exotel_call', (data) => {
     // A late event for a parked call must not take the popup from the current one.
     if (isParkedCall(pendingWrapUps.value, data.CallSid)) return
+    // Exotel says within a second that the browser refused its own leg: recover now rather
+    // than show "No answer" and ask for a disposition on a call the customer never got.
+    if (isAgentLegFailure(data)) {
+      if (outboundDial.isCurrentDial(data.CallSid))
+        recoverFromMissedAgentLeg(data.CallSid)
+      return
+    }
     const parked = parkCurrentWrapUp(data.CallSid)
     lastSocketAt.value = Date.now()
     callData.value = data
@@ -1348,16 +1356,17 @@ function watchForAgentLeg(callSid) {
   agentLegTimer = setTimeout(() => {
     if (!outboundDial.awaitingAgentLeg(callSid)) return
     console.warn(
-      '[exotel] agent leg never rang; reinitialising the SDK',
+      '[exotel] agent leg never rang; asking the agent to retry once stale registrations expire',
       callSid,
     )
     recoverFromMissedAgentLeg(callSid)
   }, AGENT_LEG_RING_TIMEOUT_MS)
 }
 
-// Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
+// Exotel has already failed the call by now (from_leg_unanswered).
+// No reconnect here: every registration adds one more binding until the old ones expire, and
+// duplicate bindings are what made the SDK refuse the leg (see AGENT_LEG_RING_TIMEOUT_MS).
 function recoverFromMissedAgentLeg(callSid) {
-  // Read before reconnecting so the log still ends with the stuck SDK's lines.
   call('crm.integrations.exotel.handler.report_softphone_issue', {
     call_sid: callSid,
     logs: readSoftphoneSdkLog(),
@@ -1366,11 +1375,10 @@ function recoverFromMissedAgentLeg(callSid) {
   closeCallPopup()
   toast.error(
     __(
-      "Your browser phone didn't receive this call, so it has been reconnected. Please call again.",
+      "Your browser phone didn't receive this call. Please wait a minute, then call again.",
     ),
     { duration: 10 },
   )
-  reconnectSoftphone({ silent: true })
 }
 
 function acceptPendingOutboundCall() {
