@@ -202,6 +202,10 @@ export function readSoftphoneSdkLog({ storage, lines = 200 } = {}) {
   }
 }
 
+// Exotel can deliver another copy of an agent leg after the dial was settled (one per stale
+// registration, or late). It must never be offered to the agent as an incoming call.
+export const RECENT_DIAL_MS = 60_000
+
 export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let state = 'idle'
   let callSid = ''
@@ -209,6 +213,13 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let accepted = false
   let buffered = null
   let rejectUntil = 0
+  const recentDials = new Map()
+
+  function isRecentDial(sid) {
+    for (const [dialled, at] of recentDials)
+      if (now() - at > RECENT_DIAL_MS) recentDials.delete(dialled)
+    return recentDials.has(sid)
+  }
 
   function takeBuffered() {
     const invite = buffered
@@ -235,6 +246,10 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
     },
 
     onIncoming(inviteSid, details) {
+      // While the dial is current its own copies are handled below (an accepted call's repeat
+      // is ignored: rejecting it would hang up the live call).
+      const current = state === 'dialled' && inviteSid === callSid
+      if (!current && isRecentDial(inviteSid)) return { action: 'reject' }
       if (
         state === 'dialled' &&
         !accepted &&
@@ -274,6 +289,7 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       state = 'dialled'
       callSid = dialledSid
       dialledAt = now()
+      recentDials.set(dialledSid, dialledAt)
       const invite = takeBuffered()
       if (!invite) return { action: 'wait' }
       if (invite.callSid === dialledSid) {

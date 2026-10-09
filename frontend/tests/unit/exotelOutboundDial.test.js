@@ -12,6 +12,7 @@ import {
   CHECKING_CALL_RESULT,
   readSoftphoneSdkLog,
   UNKNOWN_DIAL_GUARD_MS,
+  RECENT_DIAL_MS,
   createOutboundDialTracker,
   createMuteSync,
 } from '@/utils/exotelSoftphoneCall'
@@ -125,7 +126,9 @@ describe('createOutboundDialTracker', () => {
     dial.dialSucceeded('sid-1')
     dial.reset()
     expect(dial.pending).toBe(false)
-    expect(dial.onIncoming('sid-1')).toEqual({ action: 'inbound' })
+    expect(dial.onIncoming('real-inbound')).toEqual({ action: 'inbound' })
+    // A copy of the reset dial's own leg is still ours, not an inbound call.
+    expect(dial.onIncoming('sid-1')).toEqual({ action: 'reject' })
   })
 })
 
@@ -591,5 +594,37 @@ describe('isAgentLegFailure', () => {
     }
     expect(isAgentLegFailure(unanswered)).toBe(false)
     expect(softphoneTerminalLabel(unanswered)).toBe('No answer')
+  })
+})
+
+describe('copies of an agent leg after the dial settled', () => {
+  // Seen on prod: our own outbound leg logged as an Incoming call after the tracker reset.
+  it('rejects a late copy instead of offering it as an incoming call', () => {
+    const { dial, advance } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset() // the recovery, or the call ending
+    advance(20_000)
+
+    expect(dial.onIncoming('ours', {})).toEqual({ action: 'reject' })
+  })
+
+  it('still offers a genuine inbound call', () => {
+    const { dial } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+
+    expect(dial.onIncoming('someone-else', {}).action).toBe('inbound')
+  })
+
+  it('forgets a dial after a minute', () => {
+    const { dial, advance } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+    advance(RECENT_DIAL_MS + 1)
+
+    expect(dial.onIncoming('ours', {}).action).toBe('inbound')
   })
 })
