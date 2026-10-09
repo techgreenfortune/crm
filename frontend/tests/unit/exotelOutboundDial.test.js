@@ -7,6 +7,8 @@ import {
   softphoneStatusBadge,
   softphoneTerminalLabel,
   waitForCallOutcome,
+  settleCallOutcome,
+  CHECKING_CALL_RESULT,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
   createMuteSync,
@@ -370,5 +372,121 @@ describe('waitForCallOutcome', () => {
       waitForCallOutcome(fetchStatus, { isSettled: () => true }),
     ).resolves.toBeNull()
     expect(fetchStatus).not.toHaveBeenCalled()
+  })
+})
+
+describe('settleCallOutcome', () => {
+  // A popup holding one call: what settleCallOutcome may read and change.
+  function popup(sid = 'ours') {
+    const state = { sid, status: CHECKING_CALL_RESULT, shown: [] }
+    return {
+      state,
+      owns: (label) => state.sid === 'ours' && state.status === label,
+      show: (label, { late }) => {
+        state.status = label
+        state.shown.push(late ? `late:${label}` : label)
+      },
+    }
+  }
+  const noSleep = () => Promise.resolve()
+  const statuses = (...values) => {
+    const queue = [...values]
+    return vi.fn(() =>
+      Promise.resolve(queue.length > 1 ? queue.shift() : queue[0]),
+    )
+  }
+
+  it("shows Exotel's verdict once it lands", async () => {
+    const p = popup()
+    await settleCallOutcome({
+      fetchStatus: statuses('In Progress', 'Call Not Answered'),
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual(['No answer'])
+  })
+
+  it('leaves the popup alone once a new call has taken it', async () => {
+    const p = popup()
+    const fetchStatus = vi.fn(async () => {
+      p.state.sid = 'new-call'
+      p.state.status = 'Calling...'
+      return 'Call Not Answered'
+    })
+    await settleCallOutcome({
+      fetchStatus,
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual([])
+    expect(p.state.status).toBe('Calling...')
+  })
+
+  it('stops when a terminal webhook settled it first', async () => {
+    const p = popup()
+    const fetchStatus = vi.fn(async () => {
+      p.state.status = 'Call ended'
+      return 'In Progress'
+    })
+    await settleCallOutcome({
+      fetchStatus,
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual([])
+    expect(fetchStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('corrects a guess when a slow verdict disagrees', async () => {
+    const p = popup()
+    const fetchStatus = statuses(
+      ...Array(10).fill('In Progress'),
+      'Call Not Answered',
+    )
+    await settleCallOutcome({
+      fetchStatus,
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual(['Call ended', 'late:No answer'])
+  })
+
+  it('keeps a guess that the slow verdict confirms', async () => {
+    const p = popup()
+    const fetchStatus = statuses(...Array(10).fill('In Progress'), 'Completed')
+    await settleCallOutcome({
+      fetchStatus,
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual(['Call ended'])
+  })
+
+  it('drops a slow verdict once the agent moved to another call', async () => {
+    const p = popup()
+    let reads = 0
+    const fetchStatus = vi.fn(async () => {
+      reads += 1
+      if (reads === 11) p.state.sid = 'new-call'
+      return reads > 11 ? 'Call Not Answered' : 'In Progress'
+    })
+    await settleCallOutcome({
+      fetchStatus,
+      ...p,
+      fallback: 'Call ended',
+      sleep: noSleep,
+    })
+
+    expect(p.state.shown).toEqual(['Call ended'])
   })
 })

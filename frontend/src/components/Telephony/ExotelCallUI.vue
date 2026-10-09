@@ -412,7 +412,7 @@ import {
   softphoneStatusBadge,
   softphoneTerminalLabel,
   CHECKING_CALL_RESULT,
-  waitForCallOutcome,
+  settleCallOutcome,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -1311,39 +1311,21 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
 
 async function settleOutboundOutcome(callSid, fallback) {
   callStatus.value = CHECKING_CALL_RESULT
-  // A terminal webhook, or a new call taking the popup, settles it first.
-  const settled = () =>
-    callData.value?.CallSid !== callSid ||
-    callStatus.value !== CHECKING_CALL_RESULT
-  const fetchStatus = async () =>
-    (
-      await call('frappe.client.get_value', {
-        doctype: 'CRM Call Log',
-        filters: callSid,
-        fieldname: 'status',
-      })
-    )?.status
-  const outcome = await waitForCallOutcome(fetchStatus, { isSettled: settled })
-  if (settled()) return
-  if (outcome) {
-    callStatus.value = outcome
-    return
-  }
-  callStatus.value = fallback
-  // Exotel was slow: keep asking for a minute and correct the guess if it was wrong.
-  const late = await waitForCallOutcome(fetchStatus, {
-    attempts: 12,
-    intervalMs: 5000,
-    isSettled: () =>
-      callData.value?.CallSid !== callSid || callStatus.value !== fallback,
+  await settleCallOutcome({
+    fetchStatus: async () =>
+      (
+        await call('frappe.client.get_value', {
+          doctype: 'CRM Call Log',
+          filters: callSid,
+          fieldname: 'status',
+        })
+      )?.status,
+    owns: (label) =>
+      callData.value?.CallSid === callSid && callStatus.value === label,
+    show: (label, { late }) =>
+      late ? showLateOutcome(label) : (callStatus.value = label),
+    fallback,
   })
-  if (
-    late &&
-    late !== fallback &&
-    callData.value?.CallSid === callSid &&
-    callStatus.value === fallback
-  )
-    showLateOutcome(late)
 }
 
 // The agent may already have picked a disposition for the guessed outcome.

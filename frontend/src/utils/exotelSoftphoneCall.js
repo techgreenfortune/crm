@@ -87,6 +87,35 @@ export async function waitForCallOutcome(
   return null
 }
 
+// Settles the popup's outcome for one outbound call. `owns(label)` says whether the popup
+// still shows this call with that label: a terminal webhook or a new call taking the popup
+// ends the check. A guess shown after the quick check is corrected if Exotel disagrees later.
+export async function settleCallOutcome({
+  fetchStatus,
+  owns,
+  show,
+  fallback,
+  sleep,
+}) {
+  const outcome = await waitForCallOutcome(fetchStatus, {
+    isSettled: () => !owns(CHECKING_CALL_RESULT),
+    sleep,
+  })
+  if (!owns(CHECKING_CALL_RESULT)) return
+  if (outcome) {
+    show(outcome, { late: false })
+    return
+  }
+  show(fallback, { late: false })
+  const late = await waitForCallOutcome(fetchStatus, {
+    attempts: 12,
+    intervalMs: 5000,
+    isSettled: () => !owns(fallback),
+    sleep,
+  })
+  if (late && late !== fallback && owns(fallback)) show(late, { late: true })
+}
+
 // The SDK only toggles mute, and keeps the mute flag in one module-level variable that outlives
 // each call while a new call's microphone starts on. Mirror the flag so callers can set a state.
 export function createMuteSync(toggle) {
