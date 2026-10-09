@@ -319,3 +319,33 @@ describe('createMuteSync', () => {
     expect(toggle).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('awaitingAgentLeg', () => {
+  it('waits for our agent leg after the dial reply', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(true)
+    dial.onIncoming('ours', {})
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+
+  it('is not waiting when the ring came before the reply', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.onIncoming('ours', {})
+    dial.dialSucceeded('ours')
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+
+  it('is not waiting for an older dial', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+
+    expect(dial.awaitingAgentLeg('ours')).toBe(false)
+  })
+})

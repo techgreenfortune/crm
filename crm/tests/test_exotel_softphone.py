@@ -156,6 +156,30 @@ class TestExotelSoftphone(FrappeTestCase):
 		self.assertEqual(payload.CallLogStatus, "Canceled")
 
 	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_agent_leg_never_taken_is_failed(self, log_error):
+		# Seen on prod 2026-10-09: the SDK rejected its own leg, about a second after the dial.
+		payload = normalize_call_payload(
+			{**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "from_leg_unanswered", "TotalDuration": 0}
+		)
+
+		self.assertEqual(payload.CallLogStatus, "Failed")
+		log_error.assert_not_called()
+
+	def test_calls_api_agent_leg_never_taken_is_failed(self):
+		call = {"Direction": "outbound-dial", "Status": "no-answer", "Details": {"Leg1Status": "no-answer"}}
+
+		self.assertEqual(get_calls_api_call_log_status(call), "Failed")
+
+	def test_calls_api_customer_not_answering_is_still_not_answered(self):
+		call = {
+			"Direction": "outbound-dial",
+			"Status": "no-answer",
+			"Details": {"Leg1Status": "completed", "Leg2Status": "no-answer"},
+		}
+
+		self.assertEqual(get_calls_api_call_log_status(call), "Call Not Answered")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
 	def test_unmapped_terminal_status_is_logged(self, log_error):
 		payload = normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "some_new_value"})
 

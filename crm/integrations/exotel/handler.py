@@ -801,6 +801,8 @@ INTEGRATION_CORE_STATUS_MAP = {
 	"missed": "Call Not Answered",
 	# Outbound customer leg that never connected; Exotel sends it for rejected calls too.
 	"to_leg_unanswered": "Call Not Answered",
+	# The agent's browser never took its own leg, so the customer was never dialled.
+	"from_leg_unanswered": "Failed",
 	# Agent hung up in the CRM while the customer was still ringing.
 	"from_leg_cancelled": "Canceled",
 	"from_leg_canceled": "Canceled",
@@ -1131,6 +1133,9 @@ def get_calls_api_call_log_status(call):
 		# The Calls API reports an agent hanging up during ringing as "failed"; the customer leg says canceled.
 		if status == "failed" and (details.get("Leg2Status") or "").lower() == "canceled":
 			return "Canceled"
+		# The agent leg failed before the customer was dialled (Webhook: from_leg_unanswered).
+		if not details.get("Leg2Status") and (details.get("Leg1Status") or "").lower() in ("no-answer", "failed"):
+			return "Failed"
 		return CALLS_API_STATUS_MAP.get(status)
 	if status != "completed":
 		return CALLS_API_STATUS_MAP.get(status)

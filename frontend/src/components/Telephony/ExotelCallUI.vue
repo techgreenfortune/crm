@@ -411,6 +411,7 @@ import {
   extractExotelCallSid,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  AGENT_LEG_RING_TIMEOUT_MS,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -1221,6 +1222,8 @@ async function makeSoftphoneOutgoingCall(number, context) {
       acceptPendingOutboundCall()
     } else if (next.action === 'reject') {
       hangupExotelSoftphoneCall()
+    } else if (next.action === 'wait') {
+      watchForAgentLeg(callSid)
     }
   } catch (error) {
     const next = outboundDial.dialFailed({
@@ -1293,6 +1296,30 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
       callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
     resetSoftphoneSession()
   }
+}
+
+function watchForAgentLeg(callSid) {
+  setTimeout(() => {
+    if (!outboundDial.awaitingAgentLeg(callSid)) return
+    console.warn(
+      '[exotel] agent leg never rang; reinitialising the SDK',
+      callSid,
+    )
+    recoverFromMissedAgentLeg()
+  }, AGENT_LEG_RING_TIMEOUT_MS)
+}
+
+// Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
+function recoverFromMissedAgentLeg() {
+  resetSoftphoneSession()
+  closeCallPopup()
+  toast.error(
+    __(
+      "Your browser phone didn't receive this call, so it has been reconnected. Please call again.",
+    ),
+    { duration: 10 },
+  )
+  reconnectSoftphone({ silent: true })
 }
 
 function acceptPendingOutboundCall() {
