@@ -1098,7 +1098,7 @@ function setup() {
     // Exotel says within a second that the browser refused its own leg: recover now rather
     // than show "No answer" and ask for a disposition on a call the customer never got.
     if (isAgentLegFailure(data)) {
-      if (outboundDial.isCurrentDial(data.CallSid))
+      if (outboundDial.awaitingAgentLeg(data.CallSid))
         recoverFromMissedAgentLeg(data.CallSid)
       return
     }
@@ -1356,14 +1356,14 @@ function watchForAgentLeg(callSid) {
   agentLegTimer = setTimeout(() => {
     if (!outboundDial.awaitingAgentLeg(callSid)) return
     console.warn(
-      '[exotel] agent leg never rang; asking the agent to retry once stale registrations expire',
+      '[exotel] agent leg never rang; reinitialising the SDK',
       callSid,
     )
     recoverFromMissedAgentLeg(callSid)
   }, AGENT_LEG_RING_TIMEOUT_MS)
 }
 
-// Exotel has already failed the call by now (from_leg_unanswered).
+// Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
 // No reconnect here: every registration adds one more binding until the old ones expire, and
 // duplicate bindings are what made the SDK refuse the leg (see AGENT_LEG_RING_TIMEOUT_MS).
 function recoverFromMissedAgentLeg(callSid) {

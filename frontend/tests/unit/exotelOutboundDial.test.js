@@ -526,27 +526,6 @@ describe('awaitingAgentLeg', () => {
   })
 })
 
-describe('isCurrentDial', () => {
-  it('stays true after our agent leg was accepted', () => {
-    const dial = createOutboundDialTracker()
-    dial.start()
-    dial.dialSucceeded('ours')
-    dial.onIncoming('ours', {})
-
-    expect(dial.isCurrentDial('ours')).toBe(true)
-    expect(dial.isCurrentDial('other')).toBe(false)
-  })
-
-  it('is false once the tracker is reset', () => {
-    const dial = createOutboundDialTracker()
-    dial.start()
-    dial.dialSucceeded('ours')
-    dial.reset()
-
-    expect(dial.isCurrentDial('ours')).toBe(false)
-  })
-})
-
 describe('readSoftphoneSdkLog', () => {
   const storage = (value) => ({ getItem: () => value })
 
