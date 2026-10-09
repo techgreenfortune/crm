@@ -6,6 +6,7 @@ import {
   createReconnectPolicy,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  isAgentLegFailure,
   waitForCallOutcome,
   settleCallOutcome,
   CHECKING_CALL_RESULT,
@@ -563,5 +564,32 @@ describe('readSoftphoneSdkLog', () => {
       },
     }
     expect(readSoftphoneSdkLog({ storage: blocked })).toBe('')
+  })
+})
+
+describe('isAgentLegFailure', () => {
+  // Normalized Integration Core terminal event, as the popup receives it.
+  const agentLegFailed = {
+    Direction: 'outbound-dial',
+    Status: 'from_leg_unanswered',
+    CallLogStatus: 'Failed',
+  }
+
+  it('recognises the browser refusing its own leg', () => {
+    expect(isAgentLegFailure(agentLegFailed)).toBe(true)
+  })
+
+  it('is not a customer outcome, so the popup shows no "No answer"', () => {
+    expect(softphoneTerminalLabel(agentLegFailed)).toBeNull()
+  })
+
+  it('leaves real customer outcomes alone', () => {
+    const unanswered = {
+      Direction: 'outbound-dial',
+      Status: 'to_leg_unanswered',
+      CallLogStatus: 'Call Not Answered',
+    }
+    expect(isAgentLegFailure(unanswered)).toBe(false)
+    expect(softphoneTerminalLabel(unanswered)).toBe('No answer')
   })
 })
