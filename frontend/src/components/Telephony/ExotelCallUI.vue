@@ -1315,18 +1315,41 @@ async function settleOutboundOutcome(callSid, fallback) {
   const settled = () =>
     callData.value?.CallSid !== callSid ||
     callStatus.value !== CHECKING_CALL_RESULT
-  const outcome = await waitForCallOutcome(
-    async () =>
-      (
-        await call('frappe.client.get_value', {
-          doctype: 'CRM Call Log',
-          filters: callSid,
-          fieldname: 'status',
-        })
-      )?.status,
-    { isSettled: settled },
+  const fetchStatus = async () =>
+    (
+      await call('frappe.client.get_value', {
+        doctype: 'CRM Call Log',
+        filters: callSid,
+        fieldname: 'status',
+      })
+    )?.status
+  const outcome = await waitForCallOutcome(fetchStatus, { isSettled: settled })
+  if (settled()) return
+  if (outcome) {
+    callStatus.value = outcome
+    return
+  }
+  callStatus.value = fallback
+  // Exotel was slow: keep asking for a minute and correct the guess if it was wrong.
+  const late = await waitForCallOutcome(fetchStatus, {
+    attempts: 12,
+    intervalMs: 5000,
+    isSettled: () =>
+      callData.value?.CallSid !== callSid || callStatus.value !== fallback,
+  })
+  if (
+    late &&
+    late !== fallback &&
+    callData.value?.CallSid === callSid &&
+    callStatus.value === fallback
   )
-  if (!settled()) callStatus.value = outcome || fallback
+    showLateOutcome(late)
+}
+
+// The agent may already have picked a disposition for the guessed outcome.
+function showLateOutcome(label) {
+  callStatus.value = label
+  if (label === 'No answer') disposition.value = NO_ANSWER_DISPOSITION
 }
 
 function acceptPendingOutboundCall() {
@@ -1526,7 +1549,7 @@ function parkCurrentWrapUp(nextSid) {
   if (
     !shouldParkWrapUp({
       terminated:
-        callTerminated.value &&
+        (callTerminated.value || callStatus.value === CHECKING_CALL_RESULT) &&
         dispositionEligible.value &&
         isCallHandler.value,
       currentSid: callData.value?.CallSid,
@@ -1580,6 +1603,9 @@ function resumeParkedWrapUp() {
   fabricatorRoutingNotes.value = wrapUp.fabricatorRoutingNotes
   showCallPopup.value = true
   showSmallCallPopup.value = false
+  // Set aside mid-check; its check stopped when the other call took the popup.
+  if (wrapUp.callStatus === CHECKING_CALL_RESULT)
+    settleOutboundOutcome(wrapUp.callData.CallSid, 'Call ended')
 }
 
 function closeCallPopup() {
@@ -1610,9 +1636,10 @@ async function customerDidNotAnswer(callSid) {
   } catch {
     return false
   }
+  // Another call took the popup while this read was in flight; don't save or touch it.
+  if (callData.value?.CallSid !== callSid) return true
   if (status !== 'Call Not Answered') return false
-  callStatus.value = 'No answer'
-  disposition.value = NO_ANSWER_DISPOSITION
+  showLateOutcome('No answer')
   toast.warning(
     __(
       'Exotel reports the customer didn\'t answer this call, so it can only be saved as "{0}". Close again to save.',
@@ -1634,17 +1661,17 @@ async function attemptCloseCallPopup() {
     closeCallPopup()
     return
   }
-  if (!disposition.value) return
-  if (callbackRequired.value && !scheduledCallbackAt.value) return
   if (!callData.value?.CallSid) {
     closeCallPopup()
     return
   }
   isSavingDisposition.value = true
-  if (await customerDidNotAnswer(callData.value.CallSid)) {
-    isSavingDisposition.value = false
-    return
-  }
+  const outcomeChanged = await customerDidNotAnswer(callData.value.CallSid)
+  isSavingDisposition.value = false
+  if (outcomeChanged) return
+  if (!disposition.value) return
+  if (callbackRequired.value && !scheduledCallbackAt.value) return
+  isSavingDisposition.value = true
   const payload = {
     call_sid: callData.value.CallSid,
     disposition: disposition.value,
