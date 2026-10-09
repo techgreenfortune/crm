@@ -411,6 +411,8 @@ import {
   extractExotelCallSid,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  CHECKING_CALL_RESULT,
+  waitForCallOutcome,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -677,9 +679,13 @@ watch(callTerminated, (val) => {
 })
 
 const callActive = computed(() =>
-  ['Calling...', 'Ringing...', 'In progress', 'Incoming call'].includes(
-    callStatus.value,
-  ),
+  [
+    'Calling...',
+    'Ringing...',
+    'In progress',
+    'Incoming call',
+    CHECKING_CALL_RESULT,
+  ].includes(callStatus.value),
 )
 
 const POPUP_STATE_KEY = 'exotel_call_popup_state'
@@ -744,6 +750,9 @@ function restorePopupState() {
     partnerFabricatorName.value = s.partnerFabricatorName || ''
     fabricatorRoutingNotes.value = s.fabricatorRoutingNotes || ''
     if (typeof s.lastSocketAt === 'number') lastSocketAt.value = s.lastSocketAt
+    // A reload interrupted the check; without restarting it the popup could never close.
+    if (s.callStatus === CHECKING_CALL_RESULT && s.callData?.CallSid)
+      settleOutboundOutcome(s.callData.CallSid, 'Call ended')
     if (Array.isArray(s.pendingWrapUps)) pendingWrapUps.value = s.pendingWrapUps
   } catch {
     /* parse error — ignore */
@@ -816,6 +825,8 @@ const canClose = computed(() => {
 
 const closeTooltip = computed(() => {
   if (isSavingDisposition.value) return __('Saving disposition...')
+  if (callStatus.value === CHECKING_CALL_RESULT)
+    return __('Checking with Exotel how the call ended')
   if (callActive.value) return __('Wait for the call to end')
   if (callTerminated.value && !isCallHandler.value)
     return __('Only the agent who handled this call can save the disposition')
@@ -1052,7 +1063,7 @@ function makeClassicOutgoingCall(number, context) {
     auto: true,
     onSuccess(callDetails) {
       // Taken over only once the call exists, so a failed dial leaves the wrap-up untouched.
-      parkCurrentWrapUp(null)
+      startNewCall(null)
       phoneNumber.value = number
       callData.value = callDetails
       console.log(callDetails)
@@ -1181,7 +1192,7 @@ function handleSoftphoneRegistration(state) {
 }
 
 async function makeSoftphoneOutgoingCall(number, context) {
-  parkCurrentWrapUp(null)
+  startNewCall(null)
   phoneNumber.value = number
   callStatus.value = 'Calling...'
   showCallPopup.value = true
@@ -1287,12 +1298,35 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
     )
       return
     counterUp.value?.stop()
-    // A terminal webhook may already have set the real outcome; the agent leg connecting
-    // doesn't mean the customer answered.
-    if (!callTerminated.value)
-      callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
+    // A terminal webhook may already have set the real outcome. The agent leg connecting
+    // doesn't mean the customer answered, so an outbound call asks the server.
+    if (!callTerminated.value) {
+      if (softphoneConnected && callData.value?.Direction === 'outbound-dial')
+        settleOutboundOutcome(callData.value.CallSid, 'Call ended')
+      else callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
+    }
     resetSoftphoneSession()
   }
+}
+
+async function settleOutboundOutcome(callSid, fallback) {
+  callStatus.value = CHECKING_CALL_RESULT
+  // A terminal webhook, or a new call taking the popup, settles it first.
+  const settled = () =>
+    callData.value?.CallSid !== callSid ||
+    callStatus.value !== CHECKING_CALL_RESULT
+  const outcome = await waitForCallOutcome(
+    async () =>
+      (
+        await call('frappe.client.get_value', {
+          doctype: 'CRM Call Log',
+          filters: callSid,
+          fieldname: 'status',
+        })
+      )?.status,
+    { isSettled: settled },
+  )
+  if (!settled()) callStatus.value = outcome || fallback
 }
 
 function acceptPendingOutboundCall() {
@@ -1309,7 +1343,7 @@ async function prepareSoftphoneIncomingCall(callSid, details) {
     return
   }
 
-  parkCurrentWrapUp(callSid)
+  startNewCall(callSid)
   phoneNumber.value = number
   callData.value = {
     ...details,
@@ -1409,6 +1443,8 @@ function checkStale() {
   // Once call is terminated, no more socket events are expected — stale
   // detection has no purpose and must not race against disposition save.
   if (callTerminated.value) return
+  // The call has ended and the outcome check settles it within seconds.
+  if (callStatus.value === CHECKING_CALL_RESULT) return
   // The browser owns a connected softphone call; quiet webhooks must never hang it up.
   if (softphoneSessionActive.value && softphoneConnected) return
   // No intermediate socket events expected while call is live, so use a long
@@ -1519,6 +1555,11 @@ function parkCurrentWrapUp(nextSid) {
     ),
   )
   return true
+}
+
+// A call that needs no disposition isn't parked, but its fields must not carry into the new call.
+function startNewCall(nextSid) {
+  if (!parkCurrentWrapUp(nextSid)) resetWrapUpFields()
 }
 
 function resumeParkedWrapUp() {

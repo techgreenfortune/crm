@@ -6,6 +6,7 @@ import {
   createReconnectPolicy,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  waitForCallOutcome,
   UNKNOWN_DIAL_GUARD_MS,
   createOutboundDialTracker,
   createMuteSync,
@@ -317,5 +318,57 @@ describe('createMuteSync', () => {
     mute.set(true)
     mute.set(true)
     expect(toggle).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('waitForCallOutcome', () => {
+  const noSleep = () => Promise.resolve()
+
+  it("waits for Exotel's verdict instead of trusting the agent leg", async () => {
+    // Seen on prod: the agent leg connected, then the customer never answered.
+    const statuses = ['In Progress', 'In Progress', 'Call Not Answered']
+    const fetchStatus = vi.fn(() => Promise.resolve(statuses.shift()))
+
+    await expect(
+      waitForCallOutcome(fetchStatus, { sleep: noSleep }),
+    ).resolves.toBe('No answer')
+    expect(fetchStatus).toHaveBeenCalledTimes(3)
+  })
+
+  it('reports an answered call as ended', async () => {
+    await expect(
+      waitForCallOutcome(() => Promise.resolve('Completed'), {
+        sleep: noSleep,
+      }),
+    ).resolves.toBe('Call ended')
+  })
+
+  it('gives up after the last attempt', async () => {
+    const fetchStatus = vi.fn(() => Promise.resolve('In Progress'))
+
+    await expect(
+      waitForCallOutcome(fetchStatus, { attempts: 3, sleep: noSleep }),
+    ).resolves.toBeNull()
+    expect(fetchStatus).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps polling through a failed read', async () => {
+    const fetchStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce('Completed')
+
+    await expect(
+      waitForCallOutcome(fetchStatus, { sleep: noSleep }),
+    ).resolves.toBe('Call ended')
+  })
+
+  it('stops once something else settled the outcome', async () => {
+    const fetchStatus = vi.fn()
+
+    await expect(
+      waitForCallOutcome(fetchStatus, { isSettled: () => true }),
+    ).resolves.toBeNull()
+    expect(fetchStatus).not.toHaveBeenCalled()
   })
 })
