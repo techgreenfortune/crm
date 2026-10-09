@@ -358,19 +358,6 @@ def _create_softphone_call_log(agent, call_sid, phone_number, call_type, referen
 		_claim_existing_softphone_call(call_sid)
 
 
-@frappe.whitelist()
-def get_softphone_call_status(call_sid: str):
-	"""Status of one of the session user's own calls, for the call popup's outcome check.
-
-	Deliberately independent of CRM Call Log read permission: the agent always needs their own
-	call's outcome, and nothing else about the log is returned.
-	"""
-	log = frappe.db.get_value("CRM Call Log", call_sid, ["status", "caller", "receiver"], as_dict=True)
-	if not log or frappe.session.user not in (log.caller, log.receiver):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-	return log.status
-
-
 SOFTPHONE_ISSUE_REPORTS_PER_HOUR = 10
 SOFTPHONE_ISSUE_LOG_CHARS = 60_000
 _SDK_LOG_SECRETS = re.compile(

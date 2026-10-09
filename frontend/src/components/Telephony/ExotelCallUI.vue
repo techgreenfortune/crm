@@ -1318,10 +1318,14 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
 async function settleOutboundOutcome(callSid, fallback) {
   callStatus.value = CHECKING_CALL_RESULT
   await settleCallOutcome({
-    fetchStatus: () =>
-      call('crm.integrations.exotel.handler.get_softphone_call_status', {
-        call_sid: callSid,
-      }),
+    fetchStatus: async () =>
+      (
+        await call('frappe.client.get_value', {
+          doctype: 'CRM Call Log',
+          filters: callSid,
+          fieldname: 'status',
+        })
+      )?.status,
     owns: (label) =>
       callData.value?.CallSid === callSid && callStatus.value === label,
     show: (label, { late }) =>
@@ -1645,10 +1649,11 @@ async function customerDidNotAnswer(callSid) {
   if (callStatus.value !== 'Call ended') return false
   let status
   try {
-    status = await call(
-      'crm.integrations.exotel.handler.get_softphone_call_status',
-      { call_sid: callSid },
-    )
+    ;({ status } = await call('frappe.client.get_value', {
+      doctype: 'CRM Call Log',
+      filters: callSid,
+      fieldname: 'status',
+    }))
   } catch {
     return false
   }
