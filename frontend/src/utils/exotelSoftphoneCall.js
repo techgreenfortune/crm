@@ -180,12 +180,12 @@ export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
 // The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
 const SDK_LOG_STORAGE_KEY = 'webrtc_sdk_logs'
 
-export function readSoftphoneSdkLog({
-  storage = localStorage,
-  lines = 200,
-} = {}) {
+export function readSoftphoneSdkLog({ storage, lines = 200 } = {}) {
   try {
-    const log = JSON.parse(storage.getItem(SDK_LOG_STORAGE_KEY))
+    // Touching localStorage itself can throw (blocked storage), so resolve it in here.
+    const log = JSON.parse(
+      (storage ?? localStorage).getItem(SDK_LOG_STORAGE_KEY),
+    )
     return Array.isArray(log) ? log.slice(-lines).join('\n') : ''
   } catch {
     return ''

@@ -1275,6 +1275,17 @@ class TestExotelSoftphoneIssueReport(FrappeTestCase):
 			self.assertNotIn(secret, message)
 		self.assertIn("09***10", message)
 
+	def test_a_secret_split_by_the_size_cap_is_still_masked(self, _agent):
+		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_LOG_CHARS, report_softphone_issue
+
+		secret = 'response="' + "s" * 20 + '"'
+		# Put the cap's cut inside the secret's value.
+		logs = secret + "x" * (SOFTPHONE_ISSUE_LOG_CHARS - 10)
+		with patch("crm.integrations.exotel.handler.frappe.log_error") as log_error:
+			report_softphone_issue("call-sid", logs)
+
+		self.assertNotIn("s" * 10, log_error.call_args.kwargs["message"])
+
 	def test_reports_are_capped_per_agent(self, _agent):
 		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_REPORTS_PER_HOUR
 

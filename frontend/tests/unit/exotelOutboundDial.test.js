@@ -541,6 +541,21 @@ describe('readSoftphoneSdkLog', () => {
     expect(readSoftphoneSdkLog({ storage: storage('not json') })).toBe('')
   })
 
+  it('returns nothing when the browser blocks storage access', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError')
+      },
+    })
+    try {
+      expect(readSoftphoneSdkLog()).toBe('')
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', original)
+    }
+  })
+
   it('returns nothing when storage is blocked', () => {
     const blocked = {
       getItem: () => {
