@@ -411,6 +411,7 @@ import {
   extractExotelCallSid,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  isAgentLegFailure,
   CHECKING_CALL_RESULT,
   settleCallOutcome,
   AGENT_LEG_RING_TIMEOUT_MS,
@@ -1094,6 +1095,13 @@ function setup() {
   $socket.on('exotel_call', (data) => {
     // A late event for a parked call must not take the popup from the current one.
     if (isParkedCall(pendingWrapUps.value, data.CallSid)) return
+    // Exotel says within a second that the browser refused its own leg: recover now rather
+    // than show "No answer" and ask for a disposition on a call the customer never got.
+    if (isAgentLegFailure(data)) {
+      if (outboundDial.awaitingAgentLeg(data.CallSid))
+        recoverFromMissedAgentLeg(data.CallSid)
+      return
+    }
     const parked = parkCurrentWrapUp(data.CallSid)
     lastSocketAt.value = Date.now()
     callData.value = data

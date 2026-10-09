@@ -55,7 +55,16 @@ export function callLogStatusLabel(status) {
 // webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
 export function softphoneTerminalLabel(data) {
   if (data?.Direction !== 'outbound-dial') return null
+  // The customer was never dialled; this is the browser phone failing, not a call outcome.
+  if (isAgentLegFailure(data)) return null
   return callLogStatusLabel(data.CallLogStatus)
+}
+
+// Exotel's verdict when the agent's own browser leg was never taken (the SDK refused the ring).
+export function isAgentLegFailure(data) {
+  return (
+    data?.Direction === 'outbound-dial' && data.Status === 'from_leg_unanswered'
+  )
 }
 
 export const CHECKING_CALL_RESULT = 'Checking result...'
