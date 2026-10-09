@@ -1288,3 +1288,29 @@ class TestExotelSoftphoneIssueReport(FrappeTestCase):
 		agent.return_value = None
 		with self.assertRaises(frappe.PermissionError):
 			report_softphone_issue("call-sid", SDK_LOG_LINES)
+
+
+class TestExotelSoftphoneCallStatus(FrappeTestCase):
+	def _status(self, user, log):
+		from crm.integrations.exotel.handler import get_softphone_call_status
+
+		with (
+			patch("crm.integrations.exotel.handler.frappe.db.get_value", return_value=log),
+			patch("crm.integrations.exotel.handler.frappe.session", frappe._dict(user=user)),
+		):
+			return get_softphone_call_status("call-sid")
+
+	def test_agent_reads_their_own_calls_status(self):
+		log = frappe._dict(status="Call Not Answered", caller="agent@example.com", receiver=None)
+
+		self.assertEqual(self._status("agent@example.com", log), "Call Not Answered")
+
+	def test_other_users_calls_are_refused(self):
+		log = frappe._dict(status="Completed", caller="agent@example.com", receiver=None)
+
+		with self.assertRaises(frappe.PermissionError):
+			self._status("someone@example.com", log)
+
+	def test_missing_call_is_refused(self):
+		with self.assertRaises(frappe.PermissionError):
+			self._status("agent@example.com", None)

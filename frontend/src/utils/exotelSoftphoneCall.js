@@ -38,8 +38,6 @@ export function softphoneStatusBadge(state) {
   return { label: 'Phone offline', theme: 'red' }
 }
 
-// Popup label from an Integration Core terminal webhook for a browser outbound call. Only the
-// webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
 const CALL_LOG_STATUS_LABELS = {
   Completed: 'Call ended',
   Canceled: 'Call canceled',
@@ -53,6 +51,8 @@ export function callLogStatusLabel(status) {
   return CALL_LOG_STATUS_LABELS[status] || null
 }
 
+// Popup label from an Integration Core terminal webhook for a browser outbound call. Only the
+// webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
 export function softphoneTerminalLabel(data) {
   if (data?.Direction !== 'outbound-dial') return null
   return callLogStatusLabel(data.CallLogStatus)
