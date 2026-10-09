@@ -1222,7 +1222,9 @@ async function makeSoftphoneOutgoingCall(number, context) {
       softphoneCallAvailable.value = true
       acceptPendingOutboundCall()
     } else if (next.action === 'reject') {
+      // A stray INVITE took the buffer slot; our own leg can still go missing.
       hangupExotelSoftphoneCall()
+      watchForAgentLeg(callSid)
     } else if (next.action === 'wait') {
       watchForAgentLeg(callSid)
     }
@@ -1299,8 +1301,11 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
   }
 }
 
+let agentLegTimer = null
+
 function watchForAgentLeg(callSid) {
-  setTimeout(() => {
+  clearTimeout(agentLegTimer)
+  agentLegTimer = setTimeout(() => {
     if (!outboundDial.awaitingAgentLeg(callSid)) return
     console.warn(
       '[exotel] agent leg never rang; reinitialising the SDK',
@@ -1468,6 +1473,7 @@ function checkStale() {
 }
 
 onBeforeUnmount(() => {
+  clearTimeout(agentLegTimer)
   ringtone.stop()
   $socket.off('exotel_call')
   stopStaleCheck()
