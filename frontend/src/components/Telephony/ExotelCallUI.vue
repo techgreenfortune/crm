@@ -1656,8 +1656,10 @@ async function outcomeNeedsReview(callSid) {
       fieldname: 'status',
     }))
   } catch {
-    // Don't trap the agent behind a failed read; the server still validates the save.
-    return false
+    // Saving now could pin a disposition onto a call that later turns out unanswered; a final
+    // status never changes again, so only a confirmed one makes the save safe.
+    toast.error(__("Couldn't check how the call ended. Try closing again."))
+    return true
   }
   // Another call took the popup while this read was in flight; don't save or touch it.
   if (callData.value?.CallSid !== callSid) return true

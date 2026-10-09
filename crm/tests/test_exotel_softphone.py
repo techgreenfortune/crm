@@ -1279,8 +1279,8 @@ class TestExotelSoftphoneIssueReport(FrappeTestCase):
 		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_LOG_CHARS, report_softphone_issue
 
 		secret = 'response="' + "s" * 20 + '"'
-		# Put the cap's cut inside the secret's value.
-		logs = secret + "x" * (SOFTPHONE_ISSUE_LOG_CHARS - 10)
+		# The cap's cut lands inside the key, so cutting first would leave all 20 characters bare.
+		logs = secret + "x" * (SOFTPHONE_ISSUE_LOG_CHARS - 25)
 		with patch("crm.integrations.exotel.handler.frappe.log_error") as log_error:
 			report_softphone_issue("call-sid", logs)
 
