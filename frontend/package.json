@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "vite",
     "build": "vite build --base=/assets/crm/frontend/ && yarn copy-html-entry",
     "copy-html-entry": "cp ../crm/public/frontend/index.html ../crm/www/crm.html",
@@ -27,6 +28,7 @@
     "leaflet.locatecontrol": "^0.89.0",
     "lodash": "^4.18.1",
     "mime": "^4.0.1",
+    "patch-package": "8.0.0",
     "pinia": "^2.0.33",
     "socket.io-client": "^4.7.2",
     "sortablejs": "^1.15.0",

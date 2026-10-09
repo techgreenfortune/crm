@@ -55,7 +55,16 @@ export function callLogStatusLabel(status) {
 // webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
 export function softphoneTerminalLabel(data) {
   if (data?.Direction !== 'outbound-dial') return null
+  // The customer was never dialled; this is the browser phone failing, not a call outcome.
+  if (isAgentLegFailure(data)) return null
   return callLogStatusLabel(data.CallLogStatus)
+}
+
+// Exotel's verdict when the agent's own browser leg was never taken (the SDK refused the ring).
+export function isAgentLegFailure(data) {
+  return (
+    data?.Direction === 'outbound-dial' && data.Status === 'from_leg_unanswered'
+  )
 }
 
 export const CHECKING_CALL_RESULT = 'Checking result...'
@@ -173,8 +182,9 @@ export const UNKNOWN_DIAL_GUARD_MS = 30_000
 // and that INVITE can arrive before the dial request returns its CallSid. This decides what to
 // do with each INVITE so the agent leg is auto-accepted only on an exact CallSid match.
 // The agent leg rings about a second after the dial. When it never arrives, the SDK has
-// usually rejected it with SIP 480 because it still counts an earlier call as active, and
-// keeps rejecting every ring until it is initialised again.
+// usually rejected it with SIP 480: Exotel still holds older registrations of the same SIP
+// user (each lasts 300 s), sends the leg to every one of them, and the SDK refuses the copies
+// after the first because it takes one call at a time; Exotel then cancels the whole leg.
 export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
 
 // The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
@@ -192,6 +202,10 @@ export function readSoftphoneSdkLog({ storage, lines = 200 } = {}) {
   }
 }
 
+// Exotel can deliver another copy of an agent leg after the dial was settled (one per stale
+// registration, or late). It must never be offered to the agent as an incoming call.
+export const RECENT_DIAL_MS = 60_000
+
 export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let state = 'idle'
   let callSid = ''
@@ -199,6 +213,13 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let accepted = false
   let buffered = null
   let rejectUntil = 0
+  const recentDials = new Map()
+
+  function isRecentDial(sid) {
+    for (const [dialled, at] of recentDials)
+      if (now() - at > RECENT_DIAL_MS) recentDials.delete(dialled)
+    return recentDials.has(sid)
+  }
 
   function takeBuffered() {
     const invite = buffered
@@ -225,6 +246,10 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
     },
 
     onIncoming(inviteSid, details) {
+      // While the dial is current its own copies are handled below (an accepted call's repeat
+      // is ignored: rejecting it would hang up the live call).
+      const current = state === 'dialled' && inviteSid === callSid
+      if (!current && isRecentDial(inviteSid)) return { action: 'reject' }
       if (
         state === 'dialled' &&
         !accepted &&
@@ -256,6 +281,12 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       return state === 'dialled' && !accepted && callSid === dialledSid
     },
 
+    // True from the dial reply until the tracker is reset, whether or not a copy of the
+    // agent leg was already accepted.
+    isCurrentDial(dialledSid) {
+      return state === 'dialled' && callSid === dialledSid
+    },
+
     onCallEnded(endedSid) {
       if (buffered?.callSid === endedSid) buffered = null
     },
@@ -264,6 +295,7 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       state = 'dialled'
       callSid = dialledSid
       dialledAt = now()
+      recentDials.set(dialledSid, dialledAt)
       const invite = takeBuffered()
       if (!invite) return { action: 'wait' }
       if (invite.callSid === dialledSid) {
