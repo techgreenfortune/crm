@@ -412,6 +412,7 @@ import {
   softphoneStatusBadge,
   softphoneTerminalLabel,
   AGENT_LEG_RING_TIMEOUT_MS,
+  readSoftphoneSdkLog,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -1305,12 +1306,17 @@ function watchForAgentLeg(callSid) {
       '[exotel] agent leg never rang; reinitialising the SDK',
       callSid,
     )
-    recoverFromMissedAgentLeg()
+    recoverFromMissedAgentLeg(callSid)
   }, AGENT_LEG_RING_TIMEOUT_MS)
 }
 
 // Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
-function recoverFromMissedAgentLeg() {
+function recoverFromMissedAgentLeg(callSid) {
+  // Read before reconnecting so the log still ends with the stuck SDK's lines.
+  call('crm.integrations.exotel.handler.report_softphone_issue', {
+    call_sid: callSid,
+    logs: readSoftphoneSdkLog(),
+  }).catch(() => {})
   resetSoftphoneSession()
   closeCallPopup()
   toast.error(

@@ -110,6 +110,21 @@ export const UNKNOWN_DIAL_GUARD_MS = 30_000
 // keeps rejecting every ring until it is initialised again.
 export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
 
+// The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
+const SDK_LOG_STORAGE_KEY = 'webrtc_sdk_logs'
+
+export function readSoftphoneSdkLog({
+  storage = localStorage,
+  lines = 200,
+} = {}) {
+  try {
+    const log = JSON.parse(storage.getItem(SDK_LOG_STORAGE_KEY))
+    return Array.isArray(log) ? log.slice(-lines).join('\n') : ''
+  } catch {
+    return ''
+  }
+}
+
 export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let state = 'idle'
   let callSid = ''

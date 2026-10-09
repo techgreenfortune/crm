@@ -1243,3 +1243,48 @@ class TestExotelReconcileWaitsForAgentLeg(FrappeTestCase):
 		_matches, set_value = self._reconcile(outbound)
 
 		set_value.assert_called_once_with("CRM Call Log", "call-sid", "status", "Failed")
+
+
+# Shapes of lines the SDK keeps in localStorage (values replaced).
+SDK_LOG_LINES = (
+	"[2026-10-09T05:44:57.000Z] [LOG] sipjsphone: sipPhoneLogger:log sipjslog: sip.Transport: "
+	"Received WebSocket text message: INVITE sip:agentsip@sip.example SIP/2.0 From: <sip:09876543210@x> "
+	'Authorization: Digest username="agentsip", nonce="abc123", response="deadbeef"\n'
+	'[2026-10-09T05:44:57.100Z] [LOG] init {"sipSecret":"s3cr3t","displayname":"Agent"}'
+)
+
+
+@patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=SOFTPHONE_AGENT)
+class TestExotelSoftphoneIssueReport(FrappeTestCase):
+	def setUp(self):
+		frappe.cache.delete_value(f"crm:exotel:softphone-issue-reports:{frappe.session.user}")
+
+	def _report(self):
+		from crm.integrations.exotel.handler import report_softphone_issue
+
+		with patch("crm.integrations.exotel.handler.frappe.log_error") as log_error:
+			report_softphone_issue("call-sid", SDK_LOG_LINES)
+		return log_error
+
+	def test_sdk_log_is_recorded_without_secrets_or_numbers(self, _agent):
+		message = self._report().call_args.kwargs["message"]
+
+		self.assertIn("CallSid: call-sid", message)
+		self.assertIn("INVITE sip:agentsip", message)
+		for secret in ("abc123", "deadbeef", "s3cr3t", "09876543210"):
+			self.assertNotIn(secret, message)
+		self.assertIn("09***10", message)
+
+	def test_reports_are_capped_per_agent(self, _agent):
+		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_REPORTS_PER_HOUR
+
+		for _ in range(SOFTPHONE_ISSUE_REPORTS_PER_HOUR):
+			self._report().assert_called_once()
+		self._report().assert_not_called()
+
+	def test_only_softphone_agents_can_report(self, agent):
+		from crm.integrations.exotel.handler import report_softphone_issue
+
+		agent.return_value = None
+		with self.assertRaises(frappe.PermissionError):
+			report_softphone_issue("call-sid", SDK_LOG_LINES)
