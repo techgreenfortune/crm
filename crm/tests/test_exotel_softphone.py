@@ -156,6 +156,30 @@ class TestExotelSoftphone(FrappeTestCase):
 		self.assertEqual(payload.CallLogStatus, "Canceled")
 
 	@patch("crm.integrations.exotel.handler.frappe.log_error")
+	def test_agent_leg_never_taken_is_failed(self, log_error):
+		# Seen on prod 2026-10-09: the SDK rejected its own leg, about a second after the dial.
+		payload = normalize_call_payload(
+			{**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "from_leg_unanswered", "TotalDuration": 0}
+		)
+
+		self.assertEqual(payload.CallLogStatus, "Failed")
+		log_error.assert_not_called()
+
+	def test_calls_api_agent_leg_never_taken_is_failed(self):
+		call = {"Direction": "outbound-dial", "Status": "no-answer", "Details": {"Leg1Status": "no-answer"}}
+
+		self.assertEqual(get_calls_api_call_log_status(call), "Failed")
+
+	def test_calls_api_customer_not_answering_is_still_not_answered(self):
+		call = {
+			"Direction": "outbound-dial",
+			"Status": "no-answer",
+			"Details": {"Leg1Status": "completed", "Leg2Status": "no-answer"},
+		}
+
+		self.assertEqual(get_calls_api_call_log_status(call), "Call Not Answered")
+
+	@patch("crm.integrations.exotel.handler.frappe.log_error")
 	def test_unmapped_terminal_status_is_logged(self, log_error):
 		payload = normalize_call_payload({**CAPTURED_OUTBOUND_TERMINAL, "CallStatus": "some_new_value"})
 
@@ -1219,3 +1243,59 @@ class TestExotelReconcileWaitsForAgentLeg(FrappeTestCase):
 		_matches, set_value = self._reconcile(outbound)
 
 		set_value.assert_called_once_with("CRM Call Log", "call-sid", "status", "Failed")
+
+
+# Shapes of lines the SDK keeps in localStorage (values replaced).
+SDK_LOG_LINES = (
+	"[2026-10-09T05:44:57.000Z] [LOG] sipjsphone: sipPhoneLogger:log sipjslog: sip.Transport: "
+	"Received WebSocket text message: INVITE sip:agentsip@sip.example SIP/2.0 From: <sip:09876543210@x> "
+	'Authorization: Digest username="agentsip", nonce="abc123", response="deadbeef"\n'
+	'[2026-10-09T05:44:57.100Z] [LOG] init {"sipSecret":"s3cr3t","displayname":"Agent"}'
+)
+
+
+@patch("crm.integrations.exotel.handler._get_current_softphone_agent", return_value=SOFTPHONE_AGENT)
+class TestExotelSoftphoneIssueReport(FrappeTestCase):
+	def setUp(self):
+		frappe.cache.delete_value(f"crm:exotel:softphone-issue-reports:{frappe.session.user}")
+
+	def _report(self):
+		from crm.integrations.exotel.handler import report_softphone_issue
+
+		with patch("crm.integrations.exotel.handler.frappe.log_error") as log_error:
+			report_softphone_issue("call-sid", SDK_LOG_LINES)
+		return log_error
+
+	def test_sdk_log_is_recorded_without_secrets_or_numbers(self, _agent):
+		message = self._report().call_args.kwargs["message"]
+
+		self.assertIn("CallSid: call-sid", message)
+		self.assertIn("INVITE sip:agentsip", message)
+		for secret in ("abc123", "deadbeef", "s3cr3t", "09876543210"):
+			self.assertNotIn(secret, message)
+		self.assertIn("09***10", message)
+
+	def test_a_secret_split_by_the_size_cap_is_still_masked(self, _agent):
+		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_LOG_CHARS, report_softphone_issue
+
+		secret = 'response="' + "s" * 20 + '"'
+		# The cap's cut lands inside the key, so cutting first would leave all 20 characters bare.
+		logs = secret + "x" * (SOFTPHONE_ISSUE_LOG_CHARS - 25)
+		with patch("crm.integrations.exotel.handler.frappe.log_error") as log_error:
+			report_softphone_issue("call-sid", logs)
+
+		self.assertNotIn("s" * 10, log_error.call_args.kwargs["message"])
+
+	def test_reports_are_capped_per_agent(self, _agent):
+		from crm.integrations.exotel.handler import SOFTPHONE_ISSUE_REPORTS_PER_HOUR
+
+		for _ in range(SOFTPHONE_ISSUE_REPORTS_PER_HOUR):
+			self._report().assert_called_once()
+		self._report().assert_not_called()
+
+	def test_only_softphone_agents_can_report(self, agent):
+		from crm.integrations.exotel.handler import report_softphone_issue
+
+		agent.return_value = None
+		with self.assertRaises(frappe.PermissionError):
+			report_softphone_issue("call-sid", SDK_LOG_LINES)
