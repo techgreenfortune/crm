@@ -105,6 +105,26 @@ export const UNKNOWN_DIAL_GUARD_MS = 30_000
 // Exotel rings the agent's browser (an "incoming" INVITE) as the first leg of an outbound call,
 // and that INVITE can arrive before the dial request returns its CallSid. This decides what to
 // do with each INVITE so the agent leg is auto-accepted only on an exact CallSid match.
+// The agent leg rings about a second after the dial. When it never arrives, the SDK has
+// usually rejected it with SIP 480 because it still counts an earlier call as active, and
+// keeps rejecting every ring until it is initialised again.
+export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
+
+// The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
+const SDK_LOG_STORAGE_KEY = 'webrtc_sdk_logs'
+
+export function readSoftphoneSdkLog({
+  storage = localStorage,
+  lines = 200,
+} = {}) {
+  try {
+    const log = JSON.parse(storage.getItem(SDK_LOG_STORAGE_KEY))
+    return Array.isArray(log) ? log.slice(-lines).join('\n') : ''
+  } catch {
+    return ''
+  }
+}
+
 export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let state = 'idle'
   let callSid = ''
@@ -162,6 +182,11 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       }
       if (now() < rejectUntil) return { action: 'reject' }
       return { action: 'inbound' }
+    },
+
+    // True after a dial until its own agent leg has rung this browser.
+    awaitingAgentLeg(dialledSid) {
+      return state === 'dialled' && !accepted && callSid === dialledSid
     },
 
     onCallEnded(endedSid) {
