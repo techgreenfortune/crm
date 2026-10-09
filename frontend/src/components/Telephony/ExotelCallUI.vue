@@ -1364,8 +1364,9 @@ function watchForAgentLeg(callSid) {
 }
 
 // Exotel has already failed the call by now (from_leg_unanswered); a fresh SDK takes rings again.
+// No reconnect here: every registration adds one more binding until the old ones expire, and
+// duplicate bindings are what made the SDK refuse the leg (see AGENT_LEG_RING_TIMEOUT_MS).
 function recoverFromMissedAgentLeg(callSid) {
-  // Read before reconnecting so the log still ends with the stuck SDK's lines.
   call('crm.integrations.exotel.handler.report_softphone_issue', {
     call_sid: callSid,
     logs: readSoftphoneSdkLog(),
@@ -1374,11 +1375,10 @@ function recoverFromMissedAgentLeg(callSid) {
   closeCallPopup()
   toast.error(
     __(
-      "Your browser phone didn't receive this call, so it has been reconnected. Please call again.",
+      "Your browser phone didn't receive this call. Please wait a minute, then call again.",
     ),
     { duration: 10 },
   )
-  reconnectSoftphone({ silent: true })
 }
 
 function acceptPendingOutboundCall() {

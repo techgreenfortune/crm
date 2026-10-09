@@ -182,8 +182,9 @@ export const UNKNOWN_DIAL_GUARD_MS = 30_000
 // and that INVITE can arrive before the dial request returns its CallSid. This decides what to
 // do with each INVITE so the agent leg is auto-accepted only on an exact CallSid match.
 // The agent leg rings about a second after the dial. When it never arrives, the SDK has
-// usually rejected it with SIP 480 because it still counts an earlier call as active, and
-// keeps rejecting every ring until it is initialised again.
+// usually rejected it with SIP 480: Exotel still holds older registrations of the same SIP
+// user (each lasts 300 s), sends the leg to every one of them, and the SDK refuses the copies
+// after the first because it takes one call at a time; Exotel then cancels the whole leg.
 export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
 
 // The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
