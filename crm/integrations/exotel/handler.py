@@ -384,7 +384,8 @@ def report_softphone_issue(call_sid: str, logs: str):
 	frappe.log_error(
 		title="Exotel softphone stopped taking calls",
 		message=f"Agent: {agent.user}\nCallSid: {cstr(call_sid)[:64]}\n\n"
-		+ mask_softphone_sdk_log(cstr(logs)[-SOFTPHONE_ISSUE_LOG_CHARS:]),
+		# Mask before cutting: a cut could split a secret from the key that marks it.
+		+ mask_softphone_sdk_log(cstr(logs))[-SOFTPHONE_ISSUE_LOG_CHARS:],
 	)
 
 

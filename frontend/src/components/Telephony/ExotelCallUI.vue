@@ -415,6 +415,7 @@ import {
   settleCallOutcome,
   AGENT_LEG_RING_TIMEOUT_MS,
   readSoftphoneSdkLog,
+  callLogStatusLabel,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -1645,7 +1646,7 @@ const NO_ANSWER_DISPOSITION = 'No Answer / Not Reachable'
 // A browser call's agent leg connects before the customer is dialled, so the popup can show
 // "Call ended" for a call the customer never answered. If Exotel's verdict missed the popup,
 // the server would refuse any disposition but "No Answer"; switch the popup to it instead.
-async function customerDidNotAnswer(callSid) {
+async function outcomeNeedsReview(callSid) {
   if (callStatus.value !== 'Call ended') return false
   let status
   try {
@@ -1655,18 +1656,33 @@ async function customerDidNotAnswer(callSid) {
       fieldname: 'status',
     }))
   } catch {
-    return false
+    // Saving now could pin a disposition onto a call that later turns out unanswered; a final
+    // status never changes again, so only a confirmed one makes the save safe.
+    toast.error(__("Couldn't check how the call ended. Try closing again."))
+    return true
   }
   // Another call took the popup while this read was in flight; don't save or touch it.
   if (callData.value?.CallSid !== callSid) return true
-  if (status !== 'Call Not Answered') return false
-  showLateOutcome('No answer')
-  toast.warning(
-    __(
-      'Exotel reports the customer didn\'t answer this call, so it can only be saved as "{0}". Close again to save.',
-      [NO_ANSWER_DISPOSITION],
-    ),
-  )
+  const outcome = callLogStatusLabel(status)
+  // The server doesn't recheck a saved disposition when the status changes later, so
+  // wait for Exotel's verdict instead of saving against a guess.
+  if (!outcome) {
+    toast.info(
+      __(
+        "Exotel hasn't confirmed how this call ended yet. Try closing again in a few seconds.",
+      ),
+    )
+    return true
+  }
+  if (outcome === 'Call ended') return false
+  showLateOutcome(outcome)
+  if (outcome === 'No answer')
+    toast.warning(
+      __(
+        'Exotel reports the customer didn\'t answer this call, so it can only be saved as "{0}". Close again to save.',
+        [NO_ANSWER_DISPOSITION],
+      ),
+    )
   return true
 }
 
@@ -1687,7 +1703,7 @@ async function attemptCloseCallPopup() {
     return
   }
   isSavingDisposition.value = true
-  const outcomeChanged = await customerDidNotAnswer(callData.value.CallSid)
+  const outcomeChanged = await outcomeNeedsReview(callData.value.CallSid)
   isSavingDisposition.value = false
   if (outcomeChanged) return
   if (!disposition.value) return
