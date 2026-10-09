@@ -1,3 +1,4 @@
+import re
 from zoneinfo import ZoneInfo
 
 import frappe
@@ -117,10 +118,12 @@ def handle_request(**kwargs):
 		# Publish realtime AFTER DB commit so the call log exists when the
 		# frontend acts on the event. Terminal events from Exotel don't reliably
 		# include AgentEmail, so fall back to the call log's caller/receiver
-		# (set when the call started) before falling back to a full broadcast —
-		# a stray broadcast is better than a silently dropped terminal update,
-		# which left the call popup stuck on "Calling...".
+		# (set when the call started).
 		target_user = agent_email or (call_log and (call_log.caller or call_log.receiver))
+		# No agent (e.g. a voicemail when nobody was dialled) means no popup shows this call;
+		# user=None would broadcast it into every open popup.
+		if not target_user:
+			return
 		frappe.publish_realtime("exotel_call", call_payload, user=target_user)
 		frappe.logger("exotel").info(
 			f"[Exotel] publish_realtime fired | CallSid={call_payload.get('CallSid')} "
@@ -353,6 +356,42 @@ def _create_softphone_call_log(agent, call_sid, phone_number, call_type, referen
 		if not frappe.db.exists("CRM Call Log", call_sid):
 			raise
 		_claim_existing_softphone_call(call_sid)
+
+
+SOFTPHONE_ISSUE_REPORTS_PER_HOUR = 10
+SOFTPHONE_ISSUE_LOG_CHARS = 60_000
+_SDK_LOG_SECRETS = re.compile(
+	r'((?:response|nonce|cnonce|opaque)="|"(?:secret|password|authorizationPassword|sipSecret)"\s*:\s*")[^"]*'
+)
+_SDK_LOG_NUMBERS = re.compile(r"\d{7,}")
+
+
+@frappe.whitelist(methods=["POST"])
+def report_softphone_issue(call_sid: str, logs: str):
+	"""Keep the browser SDK's recent log lines from when the softphone stopped taking calls.
+
+	The SDK writes its log to the agent's browser only; this is how it reaches an Error Log.
+	"""
+	agent = _get_current_softphone_agent()
+	if not agent:
+		frappe.throw(_("Exotel browser softphone is not enabled for this user."), frappe.PermissionError)
+	key = frappe.cache.make_key(f"crm:exotel:softphone-issue-reports:{frappe.session.user}")
+	reports = frappe.cache.incrby(key, 1)
+	if reports == 1:
+		frappe.cache.expire(key, 60 * 60)
+	if reports > SOFTPHONE_ISSUE_REPORTS_PER_HOUR:
+		return
+	frappe.log_error(
+		title="Exotel softphone stopped taking calls",
+		message=f"Agent: {agent.user}\nCallSid: {cstr(call_sid)[:64]}\n\n"
+		# Mask before cutting: a cut could split a secret from the key that marks it.
+		+ mask_softphone_sdk_log(cstr(logs))[-SOFTPHONE_ISSUE_LOG_CHARS:],
+	)
+
+
+def mask_softphone_sdk_log(text):
+	text = _SDK_LOG_SECRETS.sub(lambda m: m.group(1) + "***", text)
+	return _SDK_LOG_NUMBERS.sub(lambda m: m.group(0)[:2] + "***" + m.group(0)[-2:], text)
 
 
 def _check_softphone_dial_rate():
@@ -799,6 +838,8 @@ INTEGRATION_CORE_STATUS_MAP = {
 	"missed": "Call Not Answered",
 	# Outbound customer leg that never connected; Exotel sends it for rejected calls too.
 	"to_leg_unanswered": "Call Not Answered",
+	# The agent's browser never took its own leg, so the customer was never dialled.
+	"from_leg_unanswered": "Failed",
 	# Agent hung up in the CRM while the customer was still ringing.
 	"from_leg_cancelled": "Canceled",
 	"from_leg_canceled": "Canceled",
@@ -1129,6 +1170,9 @@ def get_calls_api_call_log_status(call):
 		# The Calls API reports an agent hanging up during ringing as "failed"; the customer leg says canceled.
 		if status == "failed" and (details.get("Leg2Status") or "").lower() == "canceled":
 			return "Canceled"
+		# The agent leg failed before the customer was dialled (Webhook: from_leg_unanswered).
+		if not details.get("Leg2Status") and (details.get("Leg1Status") or "").lower() in ("no-answer", "failed"):
+			return "Failed"
 		return CALLS_API_STATUS_MAP.get(status)
 	if status != "completed":
 		return CALLS_API_STATUS_MAP.get(status)

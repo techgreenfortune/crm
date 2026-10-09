@@ -38,15 +38,82 @@ export function softphoneStatusBadge(state) {
   return { label: 'Phone offline', theme: 'red' }
 }
 
+const CALL_LOG_STATUS_LABELS = {
+  Completed: 'Call ended',
+  Canceled: 'Call canceled',
+  'Call Not Answered': 'No answer',
+  Busy: 'No answer',
+  Failed: 'No answer',
+}
+
+// Popup label for a finished call log status; null while the call isn't finished.
+export function callLogStatusLabel(status) {
+  return CALL_LOG_STATUS_LABELS[status] || null
+}
+
 // Popup label from an Integration Core terminal webhook for a browser outbound call. Only the
 // webhook knows whether the customer answered: the SDK sees the agent leg connect either way.
 export function softphoneTerminalLabel(data) {
-  if (data?.Direction !== 'outbound-dial' || !data.CallLogStatus) return null
-  if (data.CallLogStatus === 'Completed') return 'Call ended'
-  if (data.CallLogStatus === 'Canceled') return 'Call canceled'
-  if (['Call Not Answered', 'Busy', 'Failed'].includes(data.CallLogStatus))
-    return 'No answer'
+  if (data?.Direction !== 'outbound-dial') return null
+  return callLogStatusLabel(data.CallLogStatus)
+}
+
+export const CHECKING_CALL_RESULT = 'Checking result...'
+
+// An outbound browser call's agent leg connects before the customer is dialled, so the browser
+// can't tell an answered call from an unanswered one; Exotel's verdict reaches the server about
+// a second after hang-up. Polls the server's status until it is final, or gives up with null.
+export async function waitForCallOutcome(
+  fetchStatus,
+  {
+    attempts = 10,
+    intervalMs = 1000,
+    isSettled = () => false,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  } = {},
+) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (isSettled()) return null
+    let status = null
+    try {
+      status = await fetchStatus()
+    } catch {
+      // A failed read is retried like an unfinished call.
+    }
+    const label = callLogStatusLabel(status)
+    if (label) return label
+    if (attempt < attempts - 1) await sleep(intervalMs)
+  }
   return null
+}
+
+// Settles the popup's outcome for one outbound call. `owns(label)` says whether the popup
+// still shows this call with that label: a terminal webhook or a new call taking the popup
+// ends the check. A guess shown after the quick check is corrected if Exotel disagrees later.
+export async function settleCallOutcome({
+  fetchStatus,
+  owns,
+  show,
+  fallback,
+  sleep,
+}) {
+  const outcome = await waitForCallOutcome(fetchStatus, {
+    isSettled: () => !owns(CHECKING_CALL_RESULT),
+    sleep,
+  })
+  if (!owns(CHECKING_CALL_RESULT)) return
+  if (outcome) {
+    show(outcome, { late: false })
+    return
+  }
+  show(fallback, { late: false })
+  const late = await waitForCallOutcome(fetchStatus, {
+    attempts: 12,
+    intervalMs: 5000,
+    isSettled: () => !owns(fallback),
+    sleep,
+  })
+  if (late && late !== fallback && owns(fallback)) show(late, { late: true })
 }
 
 // The SDK only toggles mute, and keeps the mute flag in one module-level variable that outlives
@@ -105,6 +172,26 @@ export const UNKNOWN_DIAL_GUARD_MS = 30_000
 // Exotel rings the agent's browser (an "incoming" INVITE) as the first leg of an outbound call,
 // and that INVITE can arrive before the dial request returns its CallSid. This decides what to
 // do with each INVITE so the agent leg is auto-accepted only on an exact CallSid match.
+// The agent leg rings about a second after the dial. When it never arrives, the SDK has
+// usually rejected it with SIP 480 because it still counts an earlier call as active, and
+// keeps rejecting every ring until it is initialised again.
+export const AGENT_LEG_RING_TIMEOUT_MS = 8_000
+
+// The client SDK keeps its own last 1000 log lines here (webrtc-client-sdk LogManager).
+const SDK_LOG_STORAGE_KEY = 'webrtc_sdk_logs'
+
+export function readSoftphoneSdkLog({ storage, lines = 200 } = {}) {
+  try {
+    // Touching localStorage itself can throw (blocked storage), so resolve it in here.
+    const log = JSON.parse(
+      (storage ?? localStorage).getItem(SDK_LOG_STORAGE_KEY),
+    )
+    return Array.isArray(log) ? log.slice(-lines).join('\n') : ''
+  } catch {
+    return ''
+  }
+}
+
 export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
   let state = 'idle'
   let callSid = ''
@@ -162,6 +249,11 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       }
       if (now() < rejectUntil) return { action: 'reject' }
       return { action: 'inbound' }
+    },
+
+    // True after a dial until its own agent leg has rung this browser.
+    awaitingAgentLeg(dialledSid) {
+      return state === 'dialled' && !accepted && callSid === dialledSid
     },
 
     onCallEnded(endedSid) {
