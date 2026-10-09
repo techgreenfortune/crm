@@ -281,6 +281,12 @@ export function createOutboundDialTracker({ now = () => Date.now() } = {}) {
       return state === 'dialled' && !accepted && callSid === dialledSid
     },
 
+    // True from the dial reply until the tracker is reset, whether or not a copy of the
+    // agent leg was already accepted.
+    isCurrentDial(dialledSid) {
+      return state === 'dialled' && callSid === dialledSid
+    },
+
     onCallEnded(endedSid) {
       if (buffered?.callSid === endedSid) buffered = null
     },
