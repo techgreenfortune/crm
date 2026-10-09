@@ -6,11 +6,13 @@ import {
   createReconnectPolicy,
   softphoneStatusBadge,
   softphoneTerminalLabel,
+  isAgentLegFailure,
   waitForCallOutcome,
   settleCallOutcome,
   CHECKING_CALL_RESULT,
   readSoftphoneSdkLog,
   UNKNOWN_DIAL_GUARD_MS,
+  RECENT_DIAL_MS,
   createOutboundDialTracker,
   createMuteSync,
 } from '@/utils/exotelSoftphoneCall'
@@ -124,7 +126,9 @@ describe('createOutboundDialTracker', () => {
     dial.dialSucceeded('sid-1')
     dial.reset()
     expect(dial.pending).toBe(false)
-    expect(dial.onIncoming('sid-1')).toEqual({ action: 'inbound' })
+    expect(dial.onIncoming('real-inbound')).toEqual({ action: 'inbound' })
+    // A copy of the reset dial's own leg is still ours, not an inbound call.
+    expect(dial.onIncoming('sid-1')).toEqual({ action: 'reject' })
   })
 })
 
@@ -522,6 +526,27 @@ describe('awaitingAgentLeg', () => {
   })
 })
 
+describe('isCurrentDial', () => {
+  it('stays true after our agent leg was accepted', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.onIncoming('ours', {})
+
+    expect(dial.isCurrentDial('ours')).toBe(true)
+    expect(dial.isCurrentDial('other')).toBe(false)
+  })
+
+  it('is false once the tracker is reset', () => {
+    const dial = createOutboundDialTracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+
+    expect(dial.isCurrentDial('ours')).toBe(false)
+  })
+})
+
 describe('readSoftphoneSdkLog', () => {
   const storage = (value) => ({ getItem: () => value })
 
@@ -563,5 +588,64 @@ describe('readSoftphoneSdkLog', () => {
       },
     }
     expect(readSoftphoneSdkLog({ storage: blocked })).toBe('')
+  })
+})
+
+describe('isAgentLegFailure', () => {
+  // Normalized Integration Core terminal event, as the popup receives it.
+  const agentLegFailed = {
+    Direction: 'outbound-dial',
+    Status: 'from_leg_unanswered',
+    CallLogStatus: 'Failed',
+  }
+
+  it('recognises the browser refusing its own leg', () => {
+    expect(isAgentLegFailure(agentLegFailed)).toBe(true)
+  })
+
+  it('is not a customer outcome, so the popup shows no "No answer"', () => {
+    expect(softphoneTerminalLabel(agentLegFailed)).toBeNull()
+  })
+
+  it('leaves real customer outcomes alone', () => {
+    const unanswered = {
+      Direction: 'outbound-dial',
+      Status: 'to_leg_unanswered',
+      CallLogStatus: 'Call Not Answered',
+    }
+    expect(isAgentLegFailure(unanswered)).toBe(false)
+    expect(softphoneTerminalLabel(unanswered)).toBe('No answer')
+  })
+})
+
+describe('copies of an agent leg after the dial settled', () => {
+  // Seen on prod: our own outbound leg logged as an Incoming call after the tracker reset.
+  it('rejects a late copy instead of offering it as an incoming call', () => {
+    const { dial, advance } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset() // the recovery, or the call ending
+    advance(20_000)
+
+    expect(dial.onIncoming('ours', {})).toEqual({ action: 'reject' })
+  })
+
+  it('still offers a genuine inbound call', () => {
+    const { dial } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+
+    expect(dial.onIncoming('someone-else', {}).action).toBe('inbound')
+  })
+
+  it('forgets a dial after a minute', () => {
+    const { dial, advance } = tracker()
+    dial.start()
+    dial.dialSucceeded('ours')
+    dial.reset()
+    advance(RECENT_DIAL_MS + 1)
+
+    expect(dial.onIncoming('ours', {}).action).toBe('inbound')
   })
 })

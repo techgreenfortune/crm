@@ -1,0 +1,45 @@
+diff --git a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
+index 79a1b53..461344f 100644
+--- a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
++++ b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
+@@ -804,9 +804,37 @@ function onUserAgentTransportConnected() {
+ 		}
+ 	}
+ 
+-	registerer.stateChange.addListener(registererStateEventListner);
+-	registerer.waitingChange.addListener(registererWaitingChangeListener);
+-	registerer.register();
++	// CRM patch (frontend/patches): Exotel keeps every earlier registration of this SIP user
++	// for up to 300 s and forks each call to all of them; this SDK answers the extra copies
++	// 480 and Exotel then cancels the call. Remove all bindings (Contact: *, Expires: 0)
++	// before registering, so only this one remains.
++	var crmRegistered = false;
++	var crmFallback = null;
++	function crmRegister() {
++		if (crmRegistered) return;
++		crmRegistered = true;
++		clearTimeout(crmFallback);
++		registerer.waitingChange.removeListener(crmOnClearWaiting);
++		registerer.stateChange.addListener(registererStateEventListner);
++		registerer.waitingChange.addListener(registererWaitingChangeListener);
++		registerer.register().catch(function (e) {
++			logger.log("sipjsphone: crm patch: register after clearing failed", e);
++		});
++	}
++	// The unregister callbacks run before SIP.js clears "waiting", and register() refuses to run
++	// while it is set, so register once waiting turns false.
++	function crmOnClearWaiting(waiting) {
++		if (!waiting) setTimeout(crmRegister, 0);
++	}
++	// Only a safety net: a slow or lost answer still ends "waiting" (SIP.js times the request out).
++	crmFallback = setTimeout(function () {
++		if (!registerer.waiting) crmRegister();
++	}, 4000);
++	registerer.waitingChange.addListener(crmOnClearWaiting);
++	registerer.unregister({ all: true }).catch(function (e) {
++		logger.log("sipjsphone: crm patch: clearing registrations failed", e);
++		crmRegister();
++	});
+ 
+ }
+ 
