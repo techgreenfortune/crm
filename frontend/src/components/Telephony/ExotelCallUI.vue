@@ -1552,6 +1552,35 @@ function closeCallPopup() {
   if (pendingWrapUps.value.length) resumeParkedWrapUp()
 }
 
+const NO_ANSWER_DISPOSITION = 'No Answer / Not Reachable'
+
+// A browser call's agent leg connects before the customer is dialled, so the popup can show
+// "Call ended" for a call the customer never answered. If Exotel's verdict missed the popup,
+// the server would refuse any disposition but "No Answer"; switch the popup to it instead.
+async function customerDidNotAnswer(callSid) {
+  if (callStatus.value !== 'Call ended') return false
+  let status
+  try {
+    ;({ status } = await call('frappe.client.get_value', {
+      doctype: 'CRM Call Log',
+      filters: callSid,
+      fieldname: 'status',
+    }))
+  } catch {
+    return false
+  }
+  if (status !== 'Call Not Answered') return false
+  callStatus.value = 'No answer'
+  disposition.value = NO_ANSWER_DISPOSITION
+  toast.warning(
+    __(
+      'Exotel reports the customer didn\'t answer this call, so it can only be saved as "{0}". Close again to save.',
+      [NO_ANSWER_DISPOSITION],
+    ),
+  )
+  return true
+}
+
 async function attemptCloseCallPopup() {
   if (isSavingDisposition.value) return
   if (!dispositionRequired.value) {
@@ -1571,6 +1600,10 @@ async function attemptCloseCallPopup() {
     return
   }
   isSavingDisposition.value = true
+  if (await customerDidNotAnswer(callData.value.CallSid)) {
+    isSavingDisposition.value = false
+    return
+  }
   const payload = {
     call_sid: callData.value.CallSid,
     disposition: disposition.value,
