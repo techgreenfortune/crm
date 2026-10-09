@@ -1604,6 +1604,9 @@ function parkCurrentWrapUp(nextSid) {
 
 // A call that needs no disposition isn't parked, but its fields must not carry into the new call.
 function startNewCall(nextSid) {
+  // Exotel's popup event can show an inbound call before the SDK rings with it; that's the
+  // same call, and anything the agent already entered stays.
+  if (nextSid && callData.value?.CallSid === nextSid) return
   if (!parkCurrentWrapUp(nextSid)) resetWrapUpFields()
 }
 
