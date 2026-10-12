@@ -415,7 +415,9 @@ def _dial_rejection_message(error):
 	if code in ("10706", "10710"):
 		return _("Your phone line is still busy with the last call. Wait a few seconds, then call again.")
 	if code == "10709":
-		return _("Your browser phone isn't connected to Exotel. Reconnect it from the phone badge, then call again.")
+		# Exotel can lose the binding while the SDK still shows registered, and the badge only
+		# reconnects when it doesn't; a reload registers afresh.
+		return _("Your browser phone lost its connection to Exotel. Reload the page, then call again.")
 	if code == "10719":
 		return _(
 			"Exotel doesn't allow international calls on this account. Check the number and its country code."

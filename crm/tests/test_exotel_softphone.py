@@ -962,7 +962,7 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 		cases = {
 			10706: "still busy",
 			10710: "still busy",
-			10709: "isn't connected",
+			10709: "Reload the page",
 			10719: "international calls",
 		}
 		for code, expected in cases.items():
