@@ -894,6 +894,10 @@ async function makeOutgoingCall(number, context) {
     softphoneRequired: softphoneRequired.value,
     registered: isExotelSoftphoneRegistered(),
     registrationState: softphoneRegistrationState.value,
+    // A session without a popup can't be a live call; don't let a stuck flag block dialling.
+    onCall:
+      softphoneSessionActive.value &&
+      (showCallPopup.value || showSmallCallPopup.value),
   })
   if (route === 'click-to-call') makeClassicOutgoingCall(number, context)
   else if (route === 'softphone')
@@ -902,6 +906,10 @@ async function makeOutgoingCall(number, context) {
 }
 
 function showSoftphoneUnavailable(route) {
+  if (route === 'blocked-on-call') {
+    toast.info(__('Finish the current call before dialling again.'))
+    return
+  }
   if (route === 'blocked-loading') {
     toast.info(
       __('Your browser phone is still connecting. Try again in a moment.'),

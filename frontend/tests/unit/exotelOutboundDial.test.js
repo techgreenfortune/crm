@@ -190,6 +190,23 @@ describe('chooseOutboundRoute', () => {
       }),
     ).toBe('blocked-browser')
   })
+
+  it('refuses a second dial while a softphone call is live', () => {
+    expect(
+      chooseOutboundRoute({
+        softphoneRequired: true,
+        registered: true,
+        onCall: true,
+      }),
+    ).toBe('blocked-on-call')
+    expect(
+      chooseOutboundRoute({
+        softphoneRequired: false,
+        registered: false,
+        onCall: true,
+      }),
+    ).toBe('click-to-call')
+  })
 })
 
 describe('softphoneStatusBadge', () => {
