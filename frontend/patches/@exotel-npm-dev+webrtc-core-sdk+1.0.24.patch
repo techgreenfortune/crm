@@ -1,5 +1,5 @@
 diff --git a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
-index 79a1b53..8b9155f 100644
+index 79a1b53..e359c01 100644
 --- a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
 +++ b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
 @@ -487,6 +487,26 @@ const addPreferredCodec = (description) => {
@@ -86,20 +86,39 @@ index 79a1b53..8b9155f 100644
  
  }
  
-@@ -1266,8 +1323,15 @@ const SIPJSPhone = {
+@@ -1266,9 +1323,32 @@ const SIPJSPhone = {
  
  	sipUnRegister: () => {
  		if (ctxSip.phone && registerer) {
-+			// CRM patch (frontend/patches): disconnect the phone that was unregistered, not whichever
-+			// phone is current when the answer arrives.
-+			var crmPhone = ctxSip.phone;
- 			registerer.unregister({}).then(function () {
+-			registerer.unregister({}).then(function () {
 -				destroySocketConnection();
-+				try {
-+					if (crmPhone.transport.isConnected()) crmPhone.transport.disconnect();
-+				} catch (e) {
-+					logger.log("sipjsphone: destroySocketConnection: ERROR", e);
+-			});
++			// CRM patch (frontend/patches): disconnect the phone that was unregistered, not whichever
++			// phone is current when the answer arrives. unregister() rejects while a REGISTER is in
++			// flight and throws once terminated; then stop the phone instead, which unregisters after
++			// the pending request, so it can't stay connected and renew its registration.
++			var crmPhone = ctxSip.phone;
++			var crmUnregistered;
++			try {
++				crmUnregistered = registerer.unregister({});
++			} catch (e) {
++				crmUnregistered = Promise.reject(e);
++			}
++			crmUnregistered.then(
++				function () {
++					try {
++						if (crmPhone.transport.isConnected()) crmPhone.transport.disconnect();
++					} catch (e) {
++						logger.log("sipjsphone: destroySocketConnection: ERROR", e);
++					}
++				},
++				function (e) {
++					logger.log("sipjsphone: crm patch: unregister failed, stopping the phone", e);
++					crmPhone.stop().catch(function (err) {
++						logger.log("sipjsphone: crm patch: stopping the phone failed", err);
++					});
 +				}
- 			});
++			);
  		} else {
  			if (ctxSip.phone) {
+ 				destroySocketConnection();
