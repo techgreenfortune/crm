@@ -1,3 +1,4 @@
+import json
 import re
 from zoneinfo import ZoneInfo
 
@@ -404,6 +405,26 @@ def _check_softphone_dial_rate():
 		frappe.throw(_("Too many calls started in the last minute. Wait a moment."), frappe.RateLimitExceededError)
 
 
+# Exotel's error_data codes for a dial it refused before placing any call. "Error" holds JSON
+# whose response also has an HTTP "code", so only error_data's code counts.
+def _dial_rejection_message(error):
+	try:
+		code = cstr(json.loads(error)["response"]["error_data"]["code"])
+	except (ValueError, TypeError, KeyError):
+		code = ""
+	if code in ("10706", "10710"):
+		return _("Your phone line is still busy with the last call. Wait a few seconds, then call again.")
+	if code == "10709":
+		# Exotel can lose the binding while the SDK still shows registered, and the badge only
+		# reconnects when it doesn't; a reload registers afresh.
+		return _("Your browser phone lost its connection to Exotel. Reload the page, then call again.")
+	if code == "10719":
+		return _(
+			"Exotel doesn't allow international calls on this account. Check the number and its country code."
+		)
+	return ""
+
+
 def _place_softphone_call(settings, agent, phone_number):
 	unknown_message = _(
 		"Exotel did not confirm the call. It may still ring: check your call log before dialling again."
@@ -441,10 +462,10 @@ def _place_softphone_call(settings, agent, phone_number):
 	call_sid = cstr((data or {}).get("CallSid")).strip() if isinstance(data, dict) else ""
 	if not response.ok or payload.get("Status") != "Success" or not call_sid:
 		frappe.log_error(title="Exotel softphone dial rejected", message=response.text)
+		error = cstr(payload.get("Error") if isinstance(payload, dict) else "")
 		frappe.throw(
-			_("Exotel rejected the call: {0}").format(
-				cstr(payload.get("Error") if isinstance(payload, dict) else "") or response.status_code
-			)
+			_dial_rejection_message(error)
+			or _("Exotel rejected the call: {0}").format(error or response.status_code)
 		)
 
 	# Checked when present (every real reply so far has it). A missing FromNumber isn't treated as

@@ -15,10 +15,14 @@ export function chooseOutboundRoute({
   softphoneRequired,
   registered,
   registrationState,
+  onCall = false,
 }) {
   // null: config not loaded yet — don't guess, or a softphone agent could ring their mobile.
   if (softphoneRequired == null) return 'blocked-loading'
   if (!softphoneRequired) return 'click-to-call'
+  // The SDK takes one call at a time: a second dial's agent leg is refused (480) and Exotel
+  // fails that call, or Exotel rejects the dial outright as "device busy".
+  if (onCall) return 'blocked-on-call'
   if (registered) return 'softphone'
   if (registrationState === 'unsupported browser') return 'blocked-browser'
   if (registrationState === 'other tab') return 'blocked-other-tab'

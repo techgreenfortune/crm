@@ -1,8 +1,48 @@
 diff --git a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
-index 79a1b53..461344f 100644
+index 79a1b53..e359c01 100644
 --- a/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
 +++ b/node_modules/@exotel-npm-dev/webrtc-core-sdk/src/sipjsphone.js
-@@ -804,9 +804,37 @@ function onUserAgentTransportConnected() {
+@@ -487,6 +487,26 @@ const addPreferredCodec = (description) => {
+ 	return Promise.resolve(description);
+ };
+ 
++function crmRetirePhone() {
++	var oldPhone = ctxSip.phone;
++	var oldRegisterer = registerer;
++	if (!oldPhone) return;
++	ctxSip.phone = null;
++	registerer = null;
++	try {
++		if (oldRegisterer) {
++			oldRegisterer.stateChange.removeListener(registererStateEventListner);
++			oldRegisterer.waitingChange.removeListener(registererWaitingChangeListener);
++		}
++		oldPhone.transport.stateChange.removeListener(transportStateChangeListener);
++		oldPhone.stop().catch(function (e) {
++			logger.log("sipjsphone: crm patch: stopping the previous phone failed", e);
++		});
++	} catch (e) {
++		logger.log("sipjsphone: crm patch: retiring the previous phone failed", e);
++	}
++}
++
+ function sipRegister() {
+ 
+ 	lastRegistererState = "";
+@@ -535,6 +555,12 @@ function sipRegister() {
+ 			window.webkitNotifications.requestPermission();
+ 		}
+ 
++		// CRM patch (frontend/patches): this module keeps one phone in ctxSip.phone and registerer,
++		// and a new registration used to overwrite them while the previous phone stayed connected
++		// and kept renewing its registration. Two live registrations in one page make Exotel send
++		// each call to both, and the copy that is refused cancels the call. Stop the previous
++		// phone first, without its events reaching the app.
++		crmRetirePhone();
+ 		ctxSip.phone = new SIP.UserAgent(ctxSip.config);
+ 		registerPhoneEventListeners();
+ 
+@@ -804,9 +830,40 @@ function onUserAgentTransportConnected() {
  		}
  	}
  
@@ -13,16 +53,19 @@ index 79a1b53..461344f 100644
 +	// for up to 300 s and forks each call to all of them; this SDK answers the extra copies
 +	// 480 and Exotel then cancels the call. Remove all bindings (Contact: *, Expires: 0)
 +	// before registering, so only this one remains.
++	// Kept locally: a newer phone replaces the module-level registerer (see sipRegister).
++	var crmRegisterer = registerer;
 +	var crmRegistered = false;
 +	var crmFallback = null;
 +	function crmRegister() {
 +		if (crmRegistered) return;
 +		crmRegistered = true;
 +		clearTimeout(crmFallback);
-+		registerer.waitingChange.removeListener(crmOnClearWaiting);
-+		registerer.stateChange.addListener(registererStateEventListner);
-+		registerer.waitingChange.addListener(registererWaitingChangeListener);
-+		registerer.register().catch(function (e) {
++		crmRegisterer.waitingChange.removeListener(crmOnClearWaiting);
++		if (crmRegisterer !== registerer) return;
++		crmRegisterer.stateChange.addListener(registererStateEventListner);
++		crmRegisterer.waitingChange.addListener(registererWaitingChangeListener);
++		crmRegisterer.register().catch(function (e) {
 +			logger.log("sipjsphone: crm patch: register after clearing failed", e);
 +		});
 +	}
@@ -33,13 +76,49 @@ index 79a1b53..461344f 100644
 +	}
 +	// Only a safety net: a slow or lost answer still ends "waiting" (SIP.js times the request out).
 +	crmFallback = setTimeout(function () {
-+		if (!registerer.waiting) crmRegister();
++		if (!crmRegisterer.waiting) crmRegister();
 +	}, 4000);
-+	registerer.waitingChange.addListener(crmOnClearWaiting);
-+	registerer.unregister({ all: true }).catch(function (e) {
++	crmRegisterer.waitingChange.addListener(crmOnClearWaiting);
++	crmRegisterer.unregister({ all: true }).catch(function (e) {
 +		logger.log("sipjsphone: crm patch: clearing registrations failed", e);
 +		crmRegister();
 +	});
  
  }
  
+@@ -1266,9 +1323,32 @@ const SIPJSPhone = {
+ 
+ 	sipUnRegister: () => {
+ 		if (ctxSip.phone && registerer) {
+-			registerer.unregister({}).then(function () {
+-				destroySocketConnection();
+-			});
++			// CRM patch (frontend/patches): disconnect the phone that was unregistered, not whichever
++			// phone is current when the answer arrives. unregister() rejects while a REGISTER is in
++			// flight and throws once terminated; then stop the phone instead, which unregisters after
++			// the pending request, so it can't stay connected and renew its registration.
++			var crmPhone = ctxSip.phone;
++			var crmUnregistered;
++			try {
++				crmUnregistered = registerer.unregister({});
++			} catch (e) {
++				crmUnregistered = Promise.reject(e);
++			}
++			crmUnregistered.then(
++				function () {
++					try {
++						if (crmPhone.transport.isConnected()) crmPhone.transport.disconnect();
++					} catch (e) {
++						logger.log("sipjsphone: destroySocketConnection: ERROR", e);
++					}
++				},
++				function (e) {
++					logger.log("sipjsphone: crm patch: unregister failed, stopping the phone", e);
++					crmPhone.stop().catch(function (err) {
++						logger.log("sipjsphone: crm patch: stopping the phone failed", err);
++					});
++				}
++			);
+ 		} else {
+ 			if (ctxSip.phone) {
+ 				destroySocketConnection();
