@@ -1,0 +1,17 @@
+diff --git a/node_modules/@exotel-npm-dev/webrtc-client-sdk/src/listeners/ExWebClient.js b/node_modules/@exotel-npm-dev/webrtc-client-sdk/src/listeners/ExWebClient.js
+index 8f6be64..9ec9400 100644
+--- a/node_modules/@exotel-npm-dev/webrtc-client-sdk/src/listeners/ExWebClient.js
++++ b/node_modules/@exotel-npm-dev/webrtc-client-sdk/src/listeners/ExWebClient.js
+@@ -438,9 +438,9 @@ export class ExotelWebClient {
+         this.shouldAutoRetry = false;
+         this.unregisterInitiated = true;
+         if (!this.registrationInProgress) {
+-            setTimeout(function () {
+-                webrtcSIPPhone.sipUnRegisterWebRTC();
+-            }, 500);
++            // CRM patch (frontend/patches): unregister now. After the old 500 ms delay the core SDK
++            // could already hold a newer phone, which would then be unregistered instead of this one.
++            webrtcSIPPhone.sipUnRegisterWebRTC();
+         }
+     };
+ 

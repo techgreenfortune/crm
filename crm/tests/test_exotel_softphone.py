@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -935,6 +936,48 @@ class TestExotelSoftphoneServerSideToken(FrappeTestCase):
 
 		self.assertNotIsInstance(raised.exception, ExotelDialOutcomeUnknown)
 		create_log.assert_not_called()
+
+	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
+	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
+	@patch("crm.integrations.exotel.handler.requests.post")
+	def test_rejection_codes_get_a_plain_message(self, post, *_):
+		# Shape seen on prod 2026-10-12; the HTTP "code" (404) comes before error_data's code.
+		def rejection(code, description):
+			error = json.dumps(
+				{
+					"request_id": "req",
+					"method": "POST",
+					"http_code": 404,
+					"metadata": None,
+					"response": {
+						"code": 404,
+						"error_data": {"code": code, "description": description, "message": "Not Found"},
+						"status": "failure",
+						"call_details": None,
+					},
+				}
+			)
+			return {"RequestId": "req", "Status": "Failed", "Code": 404, "Error": error, "Data": None}
+
+		cases = {
+			10706: "still busy",
+			10710: "still busy",
+			10709: "Reload the page",
+			10719: "international calls",
+		}
+		for code, expected in cases.items():
+			post.return_value = fake_response(404, rejection(code, "description"))
+			post.return_value.ok = False
+			with self.subTest(code=code), self.assertRaises(frappe.ValidationError) as raised:
+				make_softphone_call("9123456789")
+			self.assertIn(expected, str(raised.exception))
+			self.assertNotIn("request_id", str(raised.exception))
+
+		post.return_value = fake_response(404, rejection(10799, "something new"))
+		post.return_value.ok = False
+		with self.assertRaises(frappe.ValidationError) as raised:
+			make_softphone_call("9123456789")
+		self.assertIn("something new", str(raised.exception))
 
 	@patch("crm.integrations.exotel.handler._check_softphone_dial_rate")
 	@patch("crm.integrations.exotel.handler._create_softphone_call_log")
