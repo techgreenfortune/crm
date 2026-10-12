@@ -319,11 +319,13 @@ What depends on SDK internals:
 | `User` field names and SIP-secret decryption | fields returned by `get_softphone_config` |
 | SDK events and control methods | `ExotelCallUI.vue`, `exotelSoftphone.js` |
 | `webrtc-core-sdk` registration (`onUserAgentTransportConnected` in `src/sipjsphone.js`) | **Patched** by `frontend/patches/@exotel-npm-dev+webrtc-core-sdk+1.0.24.patch` (applied by `patch-package` on `yarn install`): clears every registration of the SIP user (`Contact: *`, `Expires: 0`) before registering. Exotel otherwise forks each call to all stale registrations, the SDK answers the extra copies 480, and Exotel cancels the call |
+| `webrtc-core-sdk` phone lifecycle (`sipRegister` and `sipUnRegister` in `src/sipjsphone.js`) | **Patched** in the same file: a new registration stops the previous phone first, and an unregister disconnects the phone it unregistered. The SDK keeps one phone in module variables and used to overwrite them while the old phone stayed registered, which gave one page two registrations and the same refused-copy failure |
+| `webrtc-client-sdk` unregister (`ExotelWebClient.unregister` in `src/listeners/ExWebClient.js`) | **Patched** by `frontend/patches/@exotel-npm-dev+webrtc-client-sdk+2.0.5.patch`: unregisters immediately instead of after 500 ms. The delayed unregister could land on the phone a reconnect had just created, and on page unload it never ran |
 
 To upgrade:
 
 1. Diff the new version's `output/` folder against the pinned one, focusing on the parts above.
-2. Update our copies in the same change if those parts moved. Re-create the `webrtc-core-sdk` patch on the new version (`npx patch-package @exotel-npm-dev/webrtc-core-sdk` after editing the file), or drop it if the SDK now clears old registrations itself; `yarn install` fails loudly when a patch no longer applies.
+2. Update our copies in the same change if those parts moved. Re-create the `webrtc-core-sdk` and `webrtc-client-sdk` patches on the new versions (`npx patch-package @exotel-npm-dev/<package>` after editing the files), or drop a patch if the SDK now does the same itself; `yarn install` fails loudly when a patch no longer applies.
 3. Bump the version (and the `resolutions` if needed), then `cd frontend && yarn install`.
 4. Run `yarn test:run` (includes the SDK contract tests), `yarn build`, and `bench --site <site> run-tests --app crm --module crm.tests.test_exotel_softphone`.
 5. Before merging, make real calls in Chrome: registration, one outbound and one inbound answered call, and confirm the browser makes no requests to Integration Core.
