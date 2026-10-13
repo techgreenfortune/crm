@@ -71,7 +71,14 @@ def hash_field(value: str | None, *, is_phone: bool = False) -> str:
 	return _sha256(normalized)
 
 
-def build_user_row(*, email: str | None, phone: str | None, first_name: str | None, last_name: str | None, country: str | None) -> list[str]:
+def build_user_row(
+	*,
+	email: str | None,
+	phone: str | None,
+	first_name: str | None,
+	last_name: str | None,
+	country: str | None,
+) -> list[str]:
 	"""Build one AUDIENCE_SCHEMA-ordered, hashed row for the API payload."""
 	return [
 		hash_field(email),
@@ -86,10 +93,14 @@ def build_payload(rows: list[list[str]]) -> dict:
 	return {"payload": {"schema": AUDIENCE_SCHEMA, "data": rows}}
 
 
-def get_settings() -> "frappe.model.document.Document | None":
+def get_settings() -> frappe.model.document.Document | None:
 	"""Return the enabled CRM Meta Audience Settings doc, or None if disabled/unset."""
 	settings = frappe.get_cached_doc("CRM Meta Audience Settings")
-	if not settings.enabled or not settings.get_password("access_token", raise_exception=False) or not settings.audience_id:
+	if (
+		not settings.enabled
+		or not settings.get_password("access_token", raise_exception=False)
+		or not settings.audience_id
+	):
 		return None
 	return settings
 
