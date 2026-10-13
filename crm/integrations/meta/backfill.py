@@ -40,9 +40,7 @@ def _won_lead_names() -> set[str]:
 
 def _leads_to_sync() -> list[dict]:
 	won = _won_lead_names()
-	all_leads = frappe.get_all(
-		"CRM Lead", fields=["name", "email", "mobile_no", "first_name", "last_name"]
-	)
+	all_leads = frappe.get_all("CRM Lead", fields=["name", "email", "mobile_no", "first_name", "last_name"])
 	return [lead for lead in all_leads if lead["name"] not in won]
 
 
@@ -60,7 +58,9 @@ def run_backfill(batch_size: int = DEFAULT_BATCH_SIZE, dry_run: bool = False) ->
 	batch_size = min(batch_size, MAX_BATCH_SIZE)
 
 	if not dry_run and get_settings() is None:
-		frappe.throw("CRM Meta Audience Settings is disabled or incomplete — nothing to backfill into.")
+		frappe.throw(
+			frappe._("CRM Meta Audience Settings is disabled or incomplete — nothing to backfill into.")
+		)
 
 	leads = _leads_to_sync()
 	summary = {

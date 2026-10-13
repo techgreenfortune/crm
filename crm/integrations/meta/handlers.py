@@ -26,7 +26,7 @@ def _deal_status_type(status: str | None) -> str | None:
 	return frappe.db.get_value("CRM Deal Status", status, "type")
 
 
-def on_lead_created(doc, method=None):  # noqa: ARG001 - method kwarg required by Frappe hook signature
+def on_lead_created(doc, method=None):
 	frappe.enqueue(
 		"crm.integrations.meta.handlers.sync_add_lead",
 		queue=QUEUE,
@@ -35,7 +35,7 @@ def on_lead_created(doc, method=None):  # noqa: ARG001 - method kwarg required b
 	)
 
 
-def on_deal_won(doc, method=None):  # noqa: ARG001
+def on_deal_won(doc, method=None):
 	# Guard on an actual status change so re-saving an already-Won deal (e.g.
 	# editing an unrelated field) doesn't re-fire the removal call every time.
 	if not doc.has_value_changed("status"):
