@@ -4,6 +4,15 @@ Wired from hooks.py:
 	CRM Lead -> after_insert -> on_lead_created   (add to audience)
 	CRM Deal -> on_update    -> on_deal_won       (remove from audience, Won only)
 
+``sync_remove_lead`` is NOT wired via hooks.py at all — it's called directly
+from ``crm.api.projects.create_project_for_lead``. That's the only place in
+this fork where a Lead actually becomes "Won" (``lead_status`` flips via
+``frappe.db.set_value``, which bypasses every Document event, including
+``on_update``/``validate``), so a doc-event hook on CRM Lead would never fire
+for this transition. CRM Deal's on_update hook is kept for the (separate,
+generic Frappe CRM) Lead-to-Deal conversion flow, in case that path is ever
+used independently of the Projects handoff.
+
 Both handlers only *enqueue* — the actual Graph API call runs in a background
 worker (frappe.enqueue) so a slow/unavailable Meta API never blocks the save
 that triggered it. Failures inside the job are caught and written to
@@ -107,3 +116,40 @@ def sync_remove_deal(deal_name: str):
 		remove_users_from_audience([row])
 	except Exception:
 		log_sync_failure("Remove", "CRM Deal", deal_name, row)
+
+
+def enqueue_remove_lead(lead_name: str):
+	"""Enqueue the Meta audience removal for a Lead that just became Won.
+
+	Call this directly from any code path that flips a Lead to Won without
+	going through a Document save (e.g. ``frappe.db.set_value`` writes, which
+	don't fire ``on_update``/``validate`` and so can't be caught by a
+	doc-event hook). ``crm.api.projects.create_project_for_lead`` is the
+	current such caller — it's the sole place leads become Won in this fork.
+	No-ops if sync isn't configured, same as the other entry points.
+	"""
+	if get_settings() is None:
+		return
+	frappe.enqueue(
+		"crm.integrations.meta.handlers.sync_remove_lead",
+		queue=QUEUE,
+		enqueue_after_commit=True,
+		lead_name=lead_name,
+	)
+
+
+def sync_remove_lead(lead_name: str):
+	lead = frappe.get_doc("CRM Lead", lead_name)
+	if not has_matchable_contact(email=lead.email, phone=lead.mobile_no):
+		return
+	row = build_user_row(
+		email=lead.email,
+		phone=lead.mobile_no,
+		first_name=lead.first_name,
+		last_name=lead.last_name,
+		country=None,
+	)
+	try:
+		remove_users_from_audience([row])
+	except Exception:
+		log_sync_failure("Remove", "CRM Lead", lead_name, row)
