@@ -438,6 +438,11 @@ def get_data(
 		if group_by_field and group_by_field not in rows:
 			rows.append(group_by_field)
 
+		# parse_list_data may need fields a saved view has no column for.
+		for field in getattr(_list, "required_list_fields", ()):
+			if field not in rows:
+				rows.append(field)
+
 		data = (
 			frappe.get_list(
 				doctype,
