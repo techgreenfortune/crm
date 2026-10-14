@@ -8,6 +8,8 @@ from frappe.model.document import Document
 from crm.integrations.api import get_contact_by_phone_number
 from crm.utils import seconds_to_duration
 
+NO_ANSWER_DISPOSITION = "No Answer / Not Reachable"
+
 
 class CRMCallLog(Document):
 	# begin: auto-generated types
@@ -86,12 +88,6 @@ class CRMCallLog(Document):
 				_("You can only set the disposition on calls you handled."),
 				exc=frappe.PermissionError,
 				title=_("Not Allowed"),
-			)
-
-		if self.status == "Call Not Answered" and new_disposition != "No Answer / Not Reachable":
-			frappe.throw(
-				_("A Call Not Answered call can only be tagged 'No Answer / Not Reachable'."),
-				title=_("Disposition Not Allowed"),
 			)
 
 		lead_name = self._resolve_linked_lead()
@@ -236,9 +232,16 @@ class CRMCallLog(Document):
 
 	def _trigger_no_answer_retry(self):
 		old = self.get_doc_before_save()
-		old_status = old.status if old else None
-
-		if self.status != "Call Not Answered" or old_status == "Call Not Answered":
+		agent_said_no_answer = self.disposition == NO_ANSWER_DISPOSITION and (
+			not old or old.disposition != NO_ANSWER_DISPOSITION
+		)
+		# Nobody took a missed incoming call, so Exotel's status is the only signal for it.
+		missed_incoming = (
+			self.type == "Incoming"
+			and self.status == "Call Not Answered"
+			and (not old or old.status != "Call Not Answered")
+		)
+		if not (agent_said_no_answer or missed_incoming):
 			return
 
 		lead_name = self._resolve_linked_lead()
