@@ -9,6 +9,13 @@
         :actions="callLogsListView.customListActions"
       />
       <Button
+        v-if="canCall"
+        :label="__('Call a number')"
+        @click="showDialNumber = true"
+      >
+        <template #prefix><PhoneIcon class="h-4 w-4" /></template>
+      </Button>
+      <Button
         variant="solid"
         :label="__('Create')"
         iconLeft="plus"
@@ -38,6 +45,7 @@
       totalCount: callLogs.data.total_count,
     }"
     @showCallLog="showCallLog"
+    @call="(number) => makeCall(number)"
     @loadMore="() => loadMore++"
     @columnWidthUpdated="() => triggerResize++"
     @updatePageCount="(count) => (updatedPageCount = count)"
@@ -57,6 +65,31 @@
     v-model="showCallLogDetailModal"
     v-model:callLog="callLog"
   />
+  <Dialog
+    v-model="showDialNumber"
+    :options="{
+      title: __('Call a number'),
+      actions: [
+        {
+          label: __('Call'),
+          variant: 'solid',
+          disabled: !dialNumberValid,
+          onClick: dialNumber,
+        },
+      ],
+    }"
+  >
+    <template #body-content>
+      <FormControl
+        v-model="numberToDial"
+        type="tel"
+        :label="__('Phone number')"
+        :placeholder="__('+91 98765 43210')"
+        autofocus
+        @keydown.enter="dialNumber"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <script setup>
@@ -70,11 +103,34 @@ import EmptyState from '@/components/ListViews/EmptyState.vue'
 import CallLogDetailModal from '@/components/Modals/CallLogDetailModal.vue'
 import { useDoctypeModal } from '@/composables/doctypeModal'
 import { getCallLogDetail } from '@/utils/callLog'
+import { callEnabled } from '@/composables/settings'
+import { globalStore } from '@/stores/global'
+import { usersStore } from '@/stores/users'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { createResource } from 'frappe-ui'
+import { createResource, Dialog, FormControl } from 'frappe-ui'
 import { computed, ref, onMounted } from 'vue'
 
 const callLogsListView = ref(null)
+
+const { makeCall } = globalStore()
+const { isTelephonyAgent } = usersStore()
+const canCall = computed(() => callEnabled.value && isTelephonyAgent())
+
+const showDialNumber = ref(false)
+const numberToDial = ref('')
+const normalizedNumber = computed(() =>
+  numberToDial.value.replace(/[\s\-().]/g, ''),
+)
+const dialNumberValid = computed(() =>
+  /^\+?\d{10,15}$/.test(normalizedNumber.value),
+)
+
+function dialNumber() {
+  if (!dialNumberValid.value) return
+  makeCall(normalizedNumber.value)
+  showDialNumber.value = false
+  numberToDial.value = ''
+}
 
 // callLogs data is loaded in the ViewControls component
 const callLogs = ref({})
@@ -94,12 +150,17 @@ const rows = computed(() => {
     callLogs.value?.data.rows.forEach((row) => {
       _rows[row] = getCallLogDetail(row, callLog, callLogs.value?.data.columns)
     })
+    _rows._call = callLog._customer_number
     return _rows
   })
 })
 
 const columns = computed(() => {
   let _columns = callLogs.value?.data?.columns || []
+  // Not a view column: saving the view must not send it back as a field to select.
+  if (canCall.value && _columns.length) {
+    _columns = [..._columns, { label: __('Call'), key: '_call', width: '5rem' }]
+  }
 
   // Set align right for last column
   if (_columns.length) {
