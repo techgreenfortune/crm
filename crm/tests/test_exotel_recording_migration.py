@@ -75,6 +75,7 @@ class TestExotelMigrationPlan(RecordingConfig, TestCase):
 		self.assertEqual(row["log_action"], "create")
 		self.assertEqual(row["attachment_action"], "create:1")
 		self.assertEqual(row["s3_url"], "s3://bucket/recordings/old-account/old-call.mp3")
+		self.assertEqual(row["call_time"], "2026-06-01 12:00:00")
 		for operation in (upload, upsert, attach, db.commit, db.rollback, db.savepoint):
 			operation.assert_not_called()
 
@@ -567,6 +568,24 @@ class TestExotelMigrationFrappe(RecordingConfig, FrappeTestCase):
 			frappe.db.get_value("CRM Call Log", name, "recording_url"), "s3://bucket/recordings/key.mp3"
 		)
 		self.assertEqual(log.duration, 17)
+		self.assertEqual(log.creation, datetime(2026, 6, 1, 12, 0))
+
+	def test_existing_call_creation_is_preserved_when_recording_is_updated(self):
+		data = call(Sid="test-existing-" + frappe.generate_hash(length=12))
+		log = frappe.get_doc(
+			{
+				"doctype": "CRM Call Log",
+				"id": data["Sid"],
+				"telephony_medium": "Exotel",
+				"from": data["From"],
+				"to": data["To"],
+				"type": "Outgoing",
+				"status": "Completed",
+			}
+		).insert(ignore_permissions=True)
+		original_creation = log.creation
+		migration._upsert_call_log(data, data["Sid"], "s3://bucket/recordings/existing.mp3", log, [])
+		self.assertEqual(log.creation, original_creation)
 
 	def test_apply_then_rerun_creates_one_log_and_one_attachment(self):
 		lead = frappe.get_doc(
