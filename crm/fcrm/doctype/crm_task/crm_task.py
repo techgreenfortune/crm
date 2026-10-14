@@ -271,7 +271,7 @@ def _check_delete_permission(doc):
 			)
 
 
-class CRMTask(Document):  # nosemgrep: frappe-after-save-controller-hook
+class CRMTask(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -313,8 +313,7 @@ class CRMTask(Document):  # nosemgrep: frappe-after-save-controller-hook
 	def after_insert(self):
 		self.assign_to()
 
-	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
-		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+	def on_update(self):
 		self._record_pool_claim_trail()
 
 	def _record_pool_claim_trail(self):

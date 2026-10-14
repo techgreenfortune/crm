@@ -9,7 +9,7 @@ from crm.integrations.api import get_contact_by_phone_number
 from crm.utils import seconds_to_duration
 
 
-class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
+class CRMCallLog(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -57,8 +57,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 	def before_save(self):
 		self._validate_disposition()
 
-	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
-		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+	def on_update(self):
 		self._run_disposition_stage_move()
 		self._trigger_no_answer_retry()
 
@@ -204,14 +203,15 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 							changed = True
 						if changed:
 							lead.save(ignore_permissions=True)
-					except Exception:
+					except Exception as e:
 						frappe.log_error(
 							message=(
 								f"Lead {lead_name} could not auto-move for disposition {new_disposition!r}: "
 								f"current_status={current.get('status')}, "
 								f"current_lead_status={current.get('lead_status')}, "
 								f"next_status={next_status}, next_lead_status={next_lead_status}. "
-								"Lead validation rejected the change. Agent must finalise the stage manually."
+								f"Lead validation rejected the change: {e}. "
+								"Agent must finalise the stage manually.\n\n" + frappe.get_traceback()
 							),
 							title="Disposition stage move skipped — lead validation failed",
 						)

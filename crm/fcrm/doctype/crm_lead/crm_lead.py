@@ -89,7 +89,7 @@ _QUOTE_LEAD_FIELDS = frozenset(
 )
 
 # Stage / engagement transition maps — used by both _apply_stage_transition_guard
-# (before_save) and _run_stage_side_effects (after_save).
+# (before_save) and _run_stage_side_effects (on_update).
 _ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
 	"C0": {"C1", "C2", "C6", "C7"},
 	"C1": {"C2", "C6", "C7"},
@@ -167,7 +167,7 @@ def _is_unassigned(snapshot) -> bool:
 	return bool(snapshot) and not snapshot.get("lead_owner")
 
 
-class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
+class CRMLead(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -267,9 +267,6 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				"lead_owner",
 				self.lead_owner or "",
 			)
-
-	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
-		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
 		self._run_stage_side_effects()
 
 	def before_save(self):
@@ -690,7 +687,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			# — stays consistent with the DB. update_modified=False keeps `modified`
 			# unchanged so the client's cached timestamp doesn't silently go stale and
 			# trip a spurious TimestampMismatchError on the user's next save. This runs
-			# in after_save (post db_update), so a raw frappe.db.set_value here would
+			# in on_update (post db_update), so a raw frappe.db.set_value here would
 			# bump the DB `modified` without the client ever seeing it.
 			self.db_set("custom_reactivated_at", frappe.utils.now_datetime(), update_modified=False)
 
