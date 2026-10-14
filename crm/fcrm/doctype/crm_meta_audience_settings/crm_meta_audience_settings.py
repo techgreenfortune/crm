@@ -1,7 +1,6 @@
 # Copyright (c) 2026, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
-import frappe
 from frappe.model.document import Document
 
 
@@ -13,8 +12,7 @@ class CRMMetaAudienceSettings(Document):
 
 		access_token: DF.Password | None
 		audience_id: DF.Data | None
+		default_country: DF.Data | None
+		default_phone_country_code: DF.Data | None
 		enabled: DF.Check
 		graph_api_version: DF.Data | None
-
-	def on_update(self):
-		frappe.clear_document_cache("CRM Meta Audience Settings", "CRM Meta Audience Settings")

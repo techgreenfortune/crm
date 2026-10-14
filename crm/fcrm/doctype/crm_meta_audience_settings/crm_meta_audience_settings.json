@@ -8,7 +8,9 @@
   "enabled",
   "access_token",
   "audience_id",
-  "graph_api_version"
+  "graph_api_version",
+  "default_phone_country_code",
+  "default_country"
  ],
  "fields": [
   {
@@ -40,6 +42,20 @@
    "fieldname": "graph_api_version",
    "fieldtype": "Data",
    "label": "Graph API Version"
+  },
+  {
+   "default": "91",
+   "description": "Country code prefixed to a phone number that doesn't already include one (e.g. a bare 10-digit Indian mobile number). Change this if leads start coming in from other countries.",
+   "fieldname": "default_phone_country_code",
+   "fieldtype": "Data",
+   "label": "Default Phone Country Code"
+  },
+  {
+   "default": "in",
+   "description": "ISO-2 lowercase country code sent to Meta for a Lead/Deal when no country value is available (CRM Lead/Deal have no country field today).",
+   "fieldname": "default_country",
+   "fieldtype": "Data",
+   "label": "Default Country"
   }
  ],
  "index_web_pages_for_search": 1,
