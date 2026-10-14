@@ -57,11 +57,11 @@ class DuplicateLeadError(ValidationError):
 	pass
 
 
-def get_fb_graph_api_url(endpoint: str) -> str:
+def get_fb_graph_api_url(endpoint: str, version: str | None = None) -> str:
 	if endpoint.startswith("/"):
 		endpoint = endpoint[1:]
 
-	return f"{FB_GRAPH_API_BASE}/{FB_GRAPH_API_VERSION}/{endpoint}"
+	return f"{FB_GRAPH_API_BASE}/{version or FB_GRAPH_API_VERSION}/{endpoint}"
 
 
 class FacebookSyncSource:

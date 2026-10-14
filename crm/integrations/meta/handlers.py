@@ -15,7 +15,14 @@ from __future__ import annotations
 
 import frappe
 
-from crm.integrations.meta.audience import add_users_to_audience, build_user_row, remove_users_from_audience
+from crm.integrations.meta.audience import (
+	add_users_to_audience,
+	build_user_row,
+	get_settings,
+	has_matchable_contact,
+	log_sync_failure,
+	remove_users_from_audience,
+)
 
 QUEUE = "short"
 
@@ -27,6 +34,10 @@ def _deal_status_type(status: str | None) -> str | None:
 
 
 def on_lead_created(doc, method=None):
+	# Skip enqueueing entirely when sync isn't configured — avoids piling up
+	# useless background jobs for every single new lead before go-live.
+	if get_settings() is None:
+		return
 	frappe.enqueue(
 		"crm.integrations.meta.handlers.sync_add_lead",
 		queue=QUEUE,
@@ -42,6 +53,8 @@ def on_deal_won(doc, method=None):
 		return
 	if _deal_status_type(doc.status) != "Won":
 		return
+	if get_settings() is None:
+		return
 	frappe.enqueue(
 		"crm.integrations.meta.handlers.sync_remove_deal",
 		queue=QUEUE,
@@ -50,26 +63,12 @@ def on_deal_won(doc, method=None):
 	)
 
 
-def _log_failure(sync_type: str, entity: str, entity_name: str, payload_row: list[str]):
-	try:
-		frappe.get_doc(
-			{
-				"doctype": "Failed Meta Sync Log",
-				"sync_type": sync_type,
-				"entity": entity,
-				"entity_name": entity_name,
-				"payload_row": frappe.as_json(payload_row),
-				"traceback": frappe.get_traceback(),
-			}
-		).insert(ignore_permissions=True)
-	except Exception:
-		# Logging the failure must never itself raise and swallow the original
-		# error context — fall back to the generic error log.
-		frappe.log_error(title=f"Failed to log Meta Audience sync failure ({sync_type}/{entity_name})")
-
-
 def sync_add_lead(lead_name: str):
 	lead = frappe.get_doc("CRM Lead", lead_name)
+	if not has_matchable_contact(email=lead.email, phone=lead.mobile_no):
+		# No email and no phone — nothing Meta could ever match this row to;
+		# sending it is pure noise against the audience's match rate.
+		return
 	row = build_user_row(
 		email=lead.email,
 		phone=lead.mobile_no,
@@ -80,21 +79,31 @@ def sync_add_lead(lead_name: str):
 	try:
 		add_users_to_audience([row])
 	except Exception:
-		_log_failure("Add", "CRM Lead", lead_name, row)
-		frappe.log_error(title=f"Meta Audience add failed for CRM Lead {lead_name}")
+		log_sync_failure("Add", "CRM Lead", lead_name, row)
 
 
 def sync_remove_deal(deal_name: str):
 	deal = frappe.get_doc("CRM Deal", deal_name)
+	# The Add call (sync_add_lead) hashes the *Lead's* fields. If this Remove
+	# call hashes the Deal's own fields instead, and those differ from the
+	# Lead's (e.g. the rep corrected the email/phone while working the deal),
+	# the hashes won't match what's actually in the audience and the DELETE
+	# silently removes nobody. Prefer the linked Lead's fields — same source
+	# of truth the Add call used — falling back to the Deal's own fields only
+	# when there's no linked Lead (e.g. the Deal was created directly).
+	source = deal
+	if deal.lead and frappe.db.exists("CRM Lead", deal.lead):
+		source = frappe.get_doc("CRM Lead", deal.lead)
+	if not has_matchable_contact(email=source.email, phone=source.mobile_no):
+		return
 	row = build_user_row(
-		email=deal.email,
-		phone=deal.mobile_no,
-		first_name=deal.first_name,
-		last_name=deal.last_name,
+		email=source.email,
+		phone=source.mobile_no,
+		first_name=source.first_name,
+		last_name=source.last_name,
 		country=None,
 	)
 	try:
 		remove_users_from_audience([row])
 	except Exception:
-		_log_failure("Remove", "CRM Deal", deal_name, row)
-		frappe.log_error(title=f"Meta Audience remove failed for CRM Deal {deal_name}")
+		log_sync_failure("Remove", "CRM Deal", deal_name, row)
