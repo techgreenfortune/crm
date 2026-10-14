@@ -328,6 +328,8 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		]
 		return {"columns": columns, "rows": rows}
 
+	required_list_fields = ("type", "from", "to")
+
 	def parse_list_data(calls):
 		if not calls:
 			return []

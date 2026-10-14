@@ -118,13 +118,16 @@ const canCall = computed(() => callEnabled.value && isTelephonyAgent())
 
 const showDialNumber = ref(false)
 const numberToDial = ref('')
+const normalizedNumber = computed(() =>
+  numberToDial.value.replace(/[\s\-().]/g, ''),
+)
 const dialNumberValid = computed(() =>
-  /^\d{10,15}$/.test(numberToDial.value.replace(/\D/g, '')),
+  /^\+?\d{10,15}$/.test(normalizedNumber.value),
 )
 
 function dialNumber() {
   if (!dialNumberValid.value) return
-  makeCall(numberToDial.value.replace(/[\s\-().]/g, ''))
+  makeCall(normalizedNumber.value)
   showDialNumber.value = false
   numberToDial.value = ''
 }
