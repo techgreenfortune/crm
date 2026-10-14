@@ -32,6 +32,16 @@
     </div>
 
     <div v-if="telephonyAgent.doc" class="flex-1 flex flex-col overflow-y-auto">
+      <div
+        v-if="!canManageAgents"
+        class="mx-2 mb-2 rounded bg-surface-gray-2 px-3 py-2 text-p-sm text-ink-gray-6"
+      >
+        {{
+          __(
+            'Your Exotel number, mobile number and browser softphone are set up by a manager.',
+          )
+        }}
+      </div>
       <div class="flex items-center justify-between gap-8 py-3 pl-2 pr-1">
         <div class="flex flex-col">
           <div class="text-p-base font-medium text-ink-gray-7 truncate">
@@ -80,6 +90,7 @@
         <div>
           <FormControl
             v-model="telephonyAgent.doc.twilio_number"
+            :disabled="!canManageAgents"
             class="flex-1 truncate w-44 p-1"
             :placeholder="__('Enter Twilio Number')"
             placement="bottom-end"
@@ -105,11 +116,30 @@
         <div>
           <FormControl
             v-model="telephonyAgent.doc.exotel_number"
+            :disabled="!canManageAgents"
             class="flex-1 truncate w-44 p-1"
             :placeholder="__('Enter Exotel Number')"
             placement="bottom-end"
           />
         </div>
+      </div>
+      <div
+        v-if="exotelEnabled"
+        class="flex items-center justify-between gap-8 py-3 pl-2 pr-1"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base font-medium text-ink-gray-7 truncate">
+            {{ __('Exotel Browser Softphone') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{ __('Use Chrome audio instead of your mobile for Exotel calls') }}
+          </div>
+        </div>
+        <Switch
+          v-model="telephonyAgent.doc.exotel_softphone_enabled"
+          :disabled="!canManageAgents"
+          size="sm"
+        />
       </div>
       <div
         v-if="exotelEnabled"
@@ -130,6 +160,7 @@
         <div>
           <FormControl
             v-model="telephonyAgent.doc.mobile_no"
+            :disabled="!canManageAgents"
             class="flex-1 truncate w-44 p-1"
             :placeholder="__('Enter Personal Mobile No.')"
             placement="bottom-end"
@@ -199,6 +230,8 @@ import {
   FormControl,
   Badge,
   ErrorMessage,
+  Switch,
+  call,
   createResource,
   toast,
 } from 'frappe-ui'
@@ -209,7 +242,9 @@ import { ref, computed } from 'vue'
 
 const emit = defineEmits(['updateStep'])
 
-const { getUser, isManager } = usersStore()
+const { getUser, isManager, isTelephonyAgentManager } = usersStore()
+
+const canManageAgents = computed(() => isTelephonyAgentManager())
 
 const isNewDoc = ref(false)
 
@@ -242,6 +277,20 @@ const insertResource = createResource({
 
 function update() {
   if (!isDirty.value) return
+
+  if (isNewDoc.value && !canManageAgents.value) {
+    // Agents can't create their record; the server method stores only their calling preference.
+    call('crm.integrations.api.set_default_calling_medium', {
+      medium: telephonyAgent.doc.default_medium || '',
+    }).then(() => {
+      isNewDoc.value = false
+      telephonyAgent.originalDoc = JSON.parse(
+        JSON.stringify(telephonyAgent.doc),
+      )
+      toast.success(__('Default calling medium saved'))
+    })
+    return
+  }
 
   if (isNewDoc.value) {
     insertResource.submit({

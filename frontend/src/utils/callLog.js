@@ -26,6 +26,7 @@ export function getCallLogDetail(row, log, columns = []) {
     return {
       label: log.type,
       icon: incoming ? 'phone-incoming' : 'phone-outgoing',
+      hasNote: Boolean(log._has_note),
     }
   } else if (row === 'status') {
     return {

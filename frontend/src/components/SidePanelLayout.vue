@@ -36,7 +36,7 @@
                 >
                   <div
                     v-if="field.visible"
-                    class="field flex items-center gap-2 px-3 leading-5 first:mt-3"
+                    class="field flex items-start gap-2 px-3 leading-5 first:mt-3"
                   >
                     <Tooltip
                       v-if="!['Button', 'HTML'].includes(field.fieldtype)"
@@ -44,7 +44,7 @@
                       :hoverDelay="1"
                     >
                       <div
-                        class="w-[35%] min-w-20 shrink-0 flex items-center gap-0.5"
+                        class="w-[35%] min-w-20 h-8 shrink-0 flex items-center gap-0.5"
                       >
                         <div class="truncate text-sm text-ink-gray-5">
                           {{ __(field.label) }}
@@ -70,7 +70,7 @@
                       ]"
                     >
                       <div
-                        class="grid min-h-[28px] flex-1 items-center overflow-hidden text-base"
+                        class="grid min-h-[28px] min-w-0 flex-1 grid-cols-1 items-center overflow-hidden text-base"
                       >
                         <div
                           v-if="
@@ -92,10 +92,12 @@
                               'Text Editor',
                             ].includes(field.fieldtype)
                           "
-                          class="flex h-7 cursor-pointer items-center px-2 py-1 text-ink-gray-5"
+                          class="flex min-h-7 cursor-pointer items-center px-2 py-1 text-ink-gray-5"
                         >
                           <Tooltip :text="__(field.tooltip)">
-                            <div>{{ doc[field.fieldname] }}</div>
+                            <div class="min-w-0 [overflow-wrap:anywhere]">
+                              {{ doc[field.fieldname] }}
+                            </div>
                           </Tooltip>
                         </div>
                         <PrimaryDropdown
@@ -125,8 +127,9 @@
                               'Code',
                             ].includes(field.fieldtype)
                           "
-                          class="form-control"
+                          class="form-control autosize"
                           type="textarea"
+                          :rows="1"
                           :value="doc[field.fieldname]"
                           :placeholder="field.placeholder"
                           :debounce="500"
@@ -351,11 +354,13 @@
                         />
                         <FormControl
                           v-else
-                          class="form-control"
-                          type="text"
+                          class="form-control autosize"
+                          type="textarea"
+                          :rows="1"
                           :value="doc[field.fieldname]"
                           :placeholder="field.placeholder"
                           :debounce="500"
+                          @keydown.enter.prevent="$event.target.blur()"
                           @change.stop="fieldChange($event.target.value, field)"
                         />
                       </div>
@@ -657,6 +662,14 @@ function firstVisibleIndex() {
 :deep(.form-control button svg) {
   color: white;
   width: 0;
+}
+
+/* Single-line inputs clip long values; grow with content instead. */
+:deep(.form-control.autosize textarea) {
+  field-sizing: content;
+  min-height: 28px;
+  max-height: 160px;
+  resize: none;
 }
 
 .sections .section .column {

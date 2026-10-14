@@ -54,6 +54,11 @@
             <FeatherIcon :name="item.icon" class="h-3 w-3" />
           </div>
         </template>
+        <template v-if="column.key === 'type' && item.hasNote" #suffix>
+          <Tooltip :text="__('Has notes')">
+            <NoteIcon class="size-3.5 shrink-0 text-ink-gray-5" />
+          </Tooltip>
+        </template>
         <template #default="{ label }">
           <div
             v-if="['modified', 'creation'].includes(column.key)"
@@ -73,6 +78,15 @@
               <div>{{ item.timeAgo }}</div>
             </Tooltip>
           </div>
+          <Button
+            v-else-if="column.key === '_call'"
+            v-show="item"
+            variant="ghost"
+            :tooltip="__('Call {0}', [item])"
+            @click.stop.prevent="emit('call', item)"
+          >
+            <PhoneIcon class="h-4 w-4" />
+          </Button>
           <div v-else-if="column.key === 'status'" class="truncate text-base">
             <Badge
               :variant="'subtle'"
@@ -178,6 +192,8 @@
 </template>
 <script setup>
 import HeartIcon from '@/components/Icons/HeartIcon.vue'
+import NoteIcon from '@/components/Icons/NoteIcon.vue'
+import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import RatingInput from '@/components/Controls/RatingInput.vue'
@@ -213,6 +229,7 @@ defineProps({
 
 const emit = defineEmits([
   'showCallLog',
+  'call',
   'loadMore',
   'updatePageCount',
   'columnWidthUpdated',

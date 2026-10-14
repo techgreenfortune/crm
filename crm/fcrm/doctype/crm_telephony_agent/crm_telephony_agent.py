@@ -20,6 +20,8 @@ class CRMTelephonyAgent(Document):
 		call_receiving_device: DF.Literal["Computer", "Phone"]
 		default_medium: DF.Literal["", "Twilio", "Exotel"]
 		exotel_number: DF.Data | None
+		exotel_sip_id: DF.Data | None
+		exotel_softphone_enabled: DF.Check
 		mobile_no: DF.Data | None
 		phone_nos: DF.Table[CRMTelephonyPhone]
 		twilio_number: DF.Data | None
@@ -28,8 +30,21 @@ class CRMTelephonyAgent(Document):
 	# end: auto-generated types
 
 	def validate(self):
+		from crm.permissions.telephony_agent import validate_self_edit
+
+		validate_self_edit(self)
 		self.update_phone_nos_based_on_mobile_no()
 		self.set_primary()
+		self.sync_exotel_softphone_mapping()
+
+	def sync_exotel_softphone_mapping(self):
+		if not self.exotel_softphone_enabled:
+			return
+		# Re-checked on every save, not only when agent fields change: a stored SIP ID says nothing
+		# about the current softphone app (it may have been replaced) or the mapping still being valid.
+		from crm.integrations.exotel.handler import ensure_softphone_user_mapping
+
+		self.exotel_sip_id = ensure_softphone_user_mapping(self)
 
 	def update_phone_nos_based_on_mobile_no(self):
 		doc_before_save = self.get_doc_before_save()

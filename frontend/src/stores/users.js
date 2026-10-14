@@ -61,6 +61,11 @@ export const usersStore = defineStore('crm-users', () => {
   const reviewerRoles = computed(
     () => new Set(roleConfig.data?.reviewer_roles || []),
   )
+  // Roles that may set up any Telephony Agent. Sourced from
+  // role_config.py:TELEPHONY_AGENT_MANAGER_ROLES.
+  const telephonyAgentManagerRoles = computed(
+    () => new Set(roleConfig.data?.telephony_agent_manager_roles || []),
+  )
 
   function getUser(email) {
     if (!email || email === 'sessionUser') {
@@ -89,6 +94,11 @@ export const usersStore = defineStore('crm-users', () => {
   function isManager(email) {
     const role = getUser(email).role
     return !!role && tier1FullRw.value.has(role)
+  }
+
+  function isTelephonyAgentManager(email) {
+    const role = getUser(email).role
+    return !!role && telephonyAgentManagerRoles.value.has(role)
   }
 
   // May this user review a Quote Request (Accept / Request Revision) even when
@@ -140,6 +150,7 @@ export const usersStore = defineStore('crm-users', () => {
     getUser,
     isAdmin,
     isManager,
+    isTelephonyAgentManager,
     isReviewer,
     isSalesUser,
     isTelephonyAgent,

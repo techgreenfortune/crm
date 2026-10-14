@@ -10,6 +10,7 @@
  "engine": "InnoDB",
  "field_order": [
   "telephony_medium",
+  "is_softphone_call",
   "section_break_gyqe",
   "id",
   "from",
@@ -169,13 +170,21 @@
    "read_only": 1
   },
   {
+   "default": "0",
+   "description": "Registered by the Exotel browser softphone; verified against Exotel's call record.",
+   "fieldname": "is_softphone_call",
+   "fieldtype": "Check",
+   "label": "Softphone Call",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_break_gyqe",
    "fieldtype": "Section Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-04 15:08:11.626910",
+ "modified": "2026-09-29 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Call Log",

@@ -574,15 +574,24 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		)
 		if (status_changed or lead_status_changed) and was_retry_active and not is_retry_active:
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 		elif lead_status_changed and new_lead_status == "Archived":
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 		elif lead_status_changed and old_lead_status == "Cold-Unresponsive" and new_lead_status == "Active":
 			frappe.enqueue(
-				"crm.api.call_log.cancel_retry_log", user="Administrator", lead_name=self.name, permanent=True
+				"crm.api.call_log.cancel_retry_log",
+				lead_name=self.name,
+				permanent=True,
+				enqueue_after_commit=True,
 			)
 
 		if status_changed:
@@ -619,6 +628,13 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 							frappe.get_doc(
 								{
 									"doctype": "Notification Log",
+									"title": "C7 routing: empty B2F pool",
+									"description": (
+										f"Lead {self.lead_name or self.name} routed to C7 but no B2F "
+										f"users are configured. The Handle Fabricator Lead task is "
+										f"orphaned until a B2F user is added."
+									),
+									"app": "crm",
 									"subject": "C7 routing: empty B2F pool",
 									"email_content": (
 										f"Lead {self.lead_name or self.name} routed to C7 but no B2F "
