@@ -84,6 +84,32 @@ class TestExotelMigrationPlan(RecordingConfig, TestCase):
 		self.assertEqual(row["result"], "skipped")
 		resolve.assert_not_called()
 
+	def test_legacy_recording_url_is_included_in_dry_run_without_download(self):
+		with (
+			patch(f"{MODULE}._resolve_call", return_value=(None, [("CRM Lead", "LEAD-1")])),
+			patch(f"{MODULE}._s3_has", return_value=False),
+			patch(f"{MODULE}._attachment_exists", return_value=False),
+			patch(f"{MODULE}._upload") as upload,
+		):
+			row = self._process(
+				PreSignedRecordingUrl="null",
+				RecordingUrl="https://recordings.exotel.com/legacy.mp3",
+			)
+		self.assertEqual(row["result"], "planned", row["detail"])
+		self.assertEqual(row["source_field"], "RecordingUrl")
+		self.assertEqual(row["upload_action"], "upload")
+		upload.assert_not_called()
+
+	def test_presigned_recording_takes_priority_over_legacy_url(self):
+		with (
+			patch(f"{MODULE}._resolve_call", return_value=(None, [("CRM Lead", "LEAD-1")])),
+			patch(f"{MODULE}._s3_has", return_value=False),
+			patch(f"{MODULE}._attachment_exists", return_value=False),
+		):
+			row = self._process(RecordingUrl="https://recordings.exotel.com/legacy.mp3")
+		self.assertEqual(row["result"], "planned", row["detail"])
+		self.assertEqual(row["source_field"], "PreSignedRecordingUrl")
+
 	def test_unmatched_call_is_error_without_upload(self):
 		with (
 			patch(f"{MODULE}._resolve_call", return_value=(None, [])),
@@ -369,6 +395,53 @@ class TestExotelMigrationAPI(RecordingConfig, TestCase):
 
 
 class TestExotelMigrationUpload(TestCase):
+	def test_legacy_recording_retries_401_using_old_account_auth(self):
+		denied, audio = MagicMock(status_code=401), MagicMock(status_code=200)
+		denied.__enter__.return_value = denied
+		audio.__enter__.return_value = audio
+		download = MagicMock()
+		download.get.side_effect = [denied, audio]
+		url = "https://recordings.exotel.com/legacy.mp3"
+		with migration._recording_response(download, url, ("old-key", "old-token")) as response:
+			self.assertIs(response, audio)
+		self.assertEqual(download.get.call_count, 2)
+		self.assertNotIn("auth", download.get.call_args_list[0].kwargs)
+		self.assertEqual(download.get.call_args_list[1].kwargs["auth"], ("old-key", "old-token"))
+		denied.__exit__.assert_called_once()
+		audio.raise_for_status.assert_called_once()
+
+	def test_auth_is_never_sent_to_signed_or_untrusted_recording_urls(self):
+		for url in (
+			"https://recordings.exotel.com/legacy.mp3?Signature=secret",
+			"https://recordings.exotel.com.evil.example/legacy.mp3",
+			"https://storage.example/legacy.mp3",
+			"http://recordings.exotel.com/legacy.mp3",
+		):
+			denied = MagicMock(status_code=401)
+			denied.__enter__.return_value = denied
+			denied.raise_for_status.side_effect = requests.HTTPError("Unauthorized")
+			download = MagicMock()
+			download.get.return_value = denied
+			with self.subTest(url=url), self.assertRaises(requests.HTTPError):
+				with migration._recording_response(download, url, ("old-key", "old-token")):
+					self.fail("Unauthorized download must raise")
+			self.assertEqual(download.get.call_count, 1)
+			self.assertNotIn("auth", download.get.call_args.kwargs)
+
+	def test_public_legacy_recording_does_not_send_credentials(self):
+		audio = MagicMock(status_code=200)
+		audio.__enter__.return_value = audio
+		download = MagicMock()
+		download.get.return_value = audio
+		with migration._recording_response(
+			download,
+			"https://recordings.exotel.com/legacy.mp3",
+			("old-key", "old-token"),
+		) as response:
+			self.assertIs(response, audio)
+		self.assertEqual(download.get.call_count, 1)
+		self.assertNotIn("auth", download.get.call_args.kwargs)
+
 	def test_download_length_mismatch_never_uploads(self):
 		response = MagicMock()
 		response.headers = {"Content-Length": "10"}

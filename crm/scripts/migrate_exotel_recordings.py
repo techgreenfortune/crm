@@ -28,6 +28,9 @@ The existing phone matcher prefers deals and excludes
 converted leads; the printed references are authoritative, not necessarily leads.
 Existing S3 objects are reused only when their migration metadata is verified.
 Downloads are staged on local disk and length-checked BEFORE uploading.
+Presigned URL fields take precedence over legacy RecordingUrl. Downloads start
+without credentials; only unsigned recordings.exotel.com URLs returning 401 may
+be retried with the explicitly supplied old-account credentials.
 Exotel API contract: https://developer.exotel.com/docs/voice-v1/api-reference/call-details
 Daily requests stay within its maximum one-month query range.
 """
@@ -40,6 +43,7 @@ import os
 import re
 import tempfile
 from collections import Counter
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -55,8 +59,10 @@ from crm.permissions.recordings import get_s3_recording_location
 
 TIMEOUT = (10, 60)
 TERMINAL_STATUSES = {"completed", "no-answer", "busy", "failed", "canceled"}
+RECORDING_URL_FIELDS = ("PreSignedRecordingUrl", "pre_signed_recording_url", "RecordingUrl", "recording_url")
 REPORT_FIELDS = [
 	"call_sid",
+	"source_field",
 	"phone",
 	"references",
 	"call_log",
@@ -171,10 +177,11 @@ def _process_call(
 		sid = row["call_sid"]
 		if not re.fullmatch(r"[A-Za-z0-9_-]{1,140}", sid):
 			raise ValueError("Missing or invalid CallSid")
-		source_url = _pick(call, "PreSignedRecordingUrl", "pre_signed_recording_url")
+		source_url = _pick(call, *RECORDING_URL_FIELDS)
 		if not source_url:
-			row["result"], row["detail"] = "skipped", "No presigned recording URL"
+			row["result"], row["detail"] = "skipped", "No recording URL"
 			return row
+		row["source_field"] = next(field for field in RECORDING_URL_FIELDS if call.get(field) == source_url)
 		_validate_recording_url(source_url)
 		call = _with_call_details(call, session, subdomain, account_sid)
 		key = "/".join(part for part in (prefix, account_sid, f"{sid}.mp3") if part)
@@ -206,7 +213,15 @@ def _process_call(
 		frappe.db.savepoint("exotel_recording_call")
 		savepoint = True
 		if row["upload_action"] == "upload":
-			_upload(source_url, s3, bucket, key, account_sid, sid)
+			_upload(
+				source_url,
+				s3,
+				bucket,
+				key,
+				account_sid,
+				sid,
+				recording_auth=session.auth if session is not None else None,
+			)
 		_upsert_call_log(call, sid, row["s3_url"], log, references)
 		for doctype, docname in missing_attachments:
 			_attach_to_reference(doctype, docname, row["call_log"], sid)
@@ -432,16 +447,30 @@ def _redact_url(url):
 	return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", ""))
 
 
-def _upload(source_url, s3, bucket, key, account_sid, sid):
-	# Never forward Exotel Basic auth to the independently signed recording host.
-	with _session() as download, tempfile.TemporaryFile() as audio:
-		with download.get(
-			source_url,
-			headers={"Accept-Encoding": "identity"},
-			stream=True,
-			timeout=TIMEOUT,
-		) as response:
+@contextmanager
+def _recording_response(download, source_url, recording_auth):
+	options = {"headers": {"Accept-Encoding": "identity"}, "stream": True, "timeout": TIMEOUT}
+	parts = urlsplit(source_url)
+	can_authenticate = (
+		recording_auth
+		and parts.scheme == "https"
+		and parts.netloc == "recordings.exotel.com"
+		and not parts.query
+	)
+	with download.get(source_url, **options) as response:
+		if response.status_code != 401 or not can_authenticate:
 			response.raise_for_status()
+			yield response
+			return
+	# Do not attach old-account credentials to signed URLs or third-party storage.
+	with download.get(source_url, auth=recording_auth, **options) as response:
+		response.raise_for_status()
+		yield response
+
+
+def _upload(source_url, s3, bucket, key, account_sid, sid, *, recording_auth=None):
+	with _session() as download, tempfile.TemporaryFile() as audio:
+		with _recording_response(download, source_url, recording_auth) as response:
 			if response.headers.get("Content-Encoding", "identity").lower() != "identity":
 				raise ValueError("Encoded recording response prevents byte-length verification")
 			if not response.headers.get("Content-Length"):
