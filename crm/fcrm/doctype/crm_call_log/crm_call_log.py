@@ -59,6 +59,8 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 
 	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
 		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+		if self.flags.crm_historical_import:
+			return
 		self._run_disposition_stage_move()
 		self._trigger_no_answer_retry()
 

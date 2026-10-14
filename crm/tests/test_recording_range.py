@@ -67,3 +67,36 @@ class TestRecordingRange(FrappeTestCase):
 		unsatisfiable.raise_for_status.assert_not_called()
 		self.assertEqual(response.status_code, 416)
 		self.assertEqual(response.headers["Content-Range"], f"bytes */{len(AUDIO)}")
+
+
+class TestS3Recording(FrappeTestCase):
+	def test_s3_recording_requires_read_permission(self):
+		log = MagicMock(recording_url="s3://bucket/recording.mp3")
+		log.check_permission.side_effect = frappe.PermissionError
+		with (
+			patch("crm.integrations.api.frappe.db.exists", return_value=True),
+			patch("crm.integrations.api.frappe.get_doc", return_value=log),
+			patch("boto3.client") as client,
+			self.assertRaises(frappe.PermissionError),
+		):
+			get_recording_url("call-log")
+		log.check_permission.assert_called_once_with("read")
+		client.assert_not_called()
+
+	def test_s3_recording_redirects_to_presigned_url(self):
+		client = MagicMock()
+		client.generate_presigned_url.return_value = "https://signed.example/x"
+		with (
+			patch("crm.integrations.api.frappe.db.exists", return_value=True),
+			patch(
+				"crm.integrations.api.frappe.get_doc",
+				return_value=MagicMock(recording_url="s3://bkt/pre/abc.mp3", telephony_medium="Exotel"),
+			),
+			patch("boto3.client", return_value=client),
+		):
+			response = get_recording_url("call-log")
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(response.headers["Location"], "https://signed.example/x")
+		client.generate_presigned_url.assert_called_once_with(
+			"get_object", Params={"Bucket": "bkt", "Key": "pre/abc.mp3"}, ExpiresIn=900
+		)
