@@ -66,3 +66,17 @@ class TestSaveHooksRun(FrappeTestCase):
 			pluck="error",
 		)
 		self.assertTrue(error and "Not An Option" in error[0])
+
+	def test_requirement_confirmed_dispositions_stop_at_c1(self):
+		# C2 is set by hand; a call outcome never skips past C1.
+		dispositions = frappe.get_all(
+			"CRM Call Disposition", filters={"name": ["like", "Requirement Confirmed%"]}, pluck="name"
+		)
+		for i, disposition in enumerate(dispositions):
+			lead = make_lead(phone=f"+9198000003{i:02d}")
+			log = make_call_log(lead_name=lead.name, status="Completed", call_type="Outgoing")
+
+			log.disposition = disposition
+			log.save(ignore_permissions=True)
+
+			self.assertEqual(frappe.db.get_value("CRM Lead", lead.name, "status"), "C1", disposition)
