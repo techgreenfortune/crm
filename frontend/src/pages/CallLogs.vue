@@ -118,8 +118,8 @@ const canCall = computed(() => callEnabled.value && isTelephonyAgent())
 
 const showDialNumber = ref(false)
 const numberToDial = ref('')
-const dialNumberValid = computed(
-  () => numberToDial.value.replace(/\D/g, '').length >= 10,
+const dialNumberValid = computed(() =>
+  /^\d{10,15}$/.test(numberToDial.value.replace(/\D/g, '')),
 )
 
 function dialNumber() {

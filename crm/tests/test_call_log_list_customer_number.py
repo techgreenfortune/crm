@@ -25,8 +25,18 @@ class TestCallLogListCustomerNumber(FrappeTestCase):
 
 		rows = CRMCallLog.parse_list_data(
 			[
-				frappe._dict(name=incoming.name, type="Incoming", duration=0, **{"from": "9000000011", "to": "9000000099"}),
-				frappe._dict(name=outgoing.name, type="Outgoing", duration=0, **{"from": "9000000099", "to": "9000000022"}),
+				frappe._dict(
+					name=incoming.name,
+					type="Incoming",
+					duration=0,
+					**{"from": "9000000011", "to": "9000000099"},
+				),
+				frappe._dict(
+					name=outgoing.name,
+					type="Outgoing",
+					duration=0,
+					**{"from": "9000000099", "to": "9000000022"},
+				),
 			]
 		)
 
