@@ -102,7 +102,13 @@ def run(
 	s3 = boto3.client("s3", region_name=region)
 	os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
 
-	with _session() as session, open(report_path, "w", newline="") as report:
+	# report_path is operator-selected in this non-whitelisted bench command, not HTTP input.
+	with (
+		_session() as session,
+		open(  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-security-file-traversal
+			report_path, "w", newline=""
+		) as report,
+	):
 		session.auth = (api_key, api_token)
 		writer = csv.DictWriter(report, fieldnames=REPORT_FIELDS)
 		writer.writeheader()
