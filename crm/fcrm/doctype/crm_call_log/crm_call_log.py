@@ -6,6 +6,7 @@ from frappe import _, generate_hash
 from frappe.model.document import Document
 
 from crm.integrations.api import get_contact_by_phone_number
+from crm.permissions.recordings import validate_recording_url_change
 from crm.utils import seconds_to_duration
 
 
@@ -55,6 +56,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 			self.telephony_medium = "Manual"
 
 	def before_save(self):
+		validate_recording_url_change(self)
 		self._validate_disposition()
 
 	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook

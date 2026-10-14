@@ -27,12 +27,27 @@ def call(**updates):
 		"To": "9876543210",
 		"DateCreated": "2026-06-01 12:00:00",
 		"StartTime": "2026-06-01 12:00:00",
+		"Details": {"Leg1Status": "completed", "Leg2Status": "completed", "ConversationDuration": 17},
 		"PreSignedRecordingUrl": "https://recordings.example/old-call.mp3?Signature=secret",
 		**updates,
 	}
 
 
-class TestExotelMigrationPlan(TestCase):
+class RecordingConfig:
+	def setUp(self):
+		super().setUp()
+		config = patch.dict(
+			frappe.conf,
+			{
+				"crm_recording_bucket": "bucket",
+				"crm_recording_prefix": "recordings",
+			},
+		)
+		config.start()
+		self.addCleanup(config.stop)
+
+
+class TestExotelMigrationPlan(RecordingConfig, TestCase):
 	def _process(self, dry_run=True, **updates):
 		return migration._process_call(
 			call(**updates),
@@ -99,6 +114,41 @@ class TestExotelMigrationPlan(TestCase):
 		with self.assertRaisesRegex(ValueError, "Unsupported Exotel direction"):
 			migration._customer_number(call(Direction="unknown"))
 
+	def test_inbound_missed_call_is_not_completed(self):
+		data = call(
+			Direction="inbound",
+			Details={
+				"ConversationDuration": 0,
+				"Leg1Status": "completed",
+				"Leg2Status": "no-answer",
+			},
+		)
+		self.assertEqual(migration._status(data), "Call Not Answered")
+		self.assertEqual(migration._duration(data), 0)
+
+	def test_outbound_cancellation_uses_agent_leg_details(self):
+		data = call(
+			Status="failed",
+			Details={
+				"ConversationDuration": 0,
+				"Leg1Status": "completed",
+				"Leg2Status": "canceled",
+			},
+		)
+		self.assertEqual(migration._status(data), "Canceled")
+
+	def test_zero_conversation_duration_never_falls_back_to_total_duration(self):
+		data = call(
+			Duration=95,
+			ConversationDuration=88,
+			Details={
+				"ConversationDuration": 0,
+				"Leg1Status": "completed",
+				"Leg2Status": "no-answer",
+			},
+		)
+		self.assertEqual(migration._duration(data), 0)
+
 	def test_existing_links_take_precedence_over_phone_match(self):
 		log = frappe._dict(
 			name="renamed-log",
@@ -135,7 +185,56 @@ class TestExotelMigrationPlan(TestCase):
 			migration._resolve_call(call(), "old-call", "9876543210", "s3://b/k")
 
 
-class TestExotelMigrationAPI(TestCase):
+class TestExotelMigrationAPI(RecordingConfig, TestCase):
+	def test_missing_detail_fields_are_fetched_for_dry_run_status_and_duration(self):
+		session = MagicMock()
+		session.get.return_value.json.return_value = {
+			"Call": call(
+				Direction="inbound",
+				AccountSid="old-account",
+				Details={"ConversationDuration": 0, "Leg1Status": "completed", "Leg2Status": "no-answer"},
+			)
+		}
+		with (
+			patch(f"{MODULE}._resolve_call", return_value=(None, [("CRM Lead", "LEAD-1")])),
+			patch(f"{MODULE}._s3_has", return_value=False),
+			patch(f"{MODULE}._attachment_exists", return_value=False),
+			patch(f"{MODULE}._upload") as upload,
+		):
+			row = migration._process_call(
+				call(Details=None),
+				MagicMock(),
+				"bucket",
+				"recordings",
+				"old-account",
+				True,
+				session=session,
+			)
+		self.assertEqual(row["result"], "planned", row["detail"])
+		self.assertEqual(row["status"], "Call Not Answered")
+		self.assertEqual(row["duration"], 0)
+		upload.assert_not_called()
+
+	def test_detail_lookup_uses_supplied_old_account_session(self):
+		session = MagicMock()
+		session.auth = ("old-key", "old-token")
+		bulk = call(Details=None)
+		session.get.return_value.json.return_value = {"Call": call(AccountSid="old-account")}
+		detailed = migration._with_call_details(bulk, session, "api.exotel.com", "old-account")
+		session.get.assert_called_once_with(
+			"https://api.exotel.com/v1/Accounts/old-account/Calls/old-call.json",
+			params={"details": "true"},
+			timeout=migration.TIMEOUT,
+		)
+		self.assertEqual(detailed["Details"]["ConversationDuration"], 17)
+		self.assertEqual(detailed["PreSignedRecordingUrl"], bulk["PreSignedRecordingUrl"])
+
+	def test_mismatched_detail_response_is_rejected(self):
+		session = MagicMock()
+		session.get.return_value.json.return_value = {"Call": call(Sid="other-call")}
+		with self.assertRaisesRegex(ValueError, "mismatched CallSid"):
+			migration._with_call_details(call(Details=None), session, "api.exotel.com", "old-account")
+
 	def test_nested_envelope_pagination_and_final_boundary(self):
 		session = MagicMock()
 		first, second = MagicMock(), MagicMock()
@@ -230,6 +329,7 @@ class TestExotelMigrationAPI(TestCase):
 					"2026-06-01",
 					"2026-09-30",
 					"bucket",
+					prefix="recordings",
 					report_path=str(report),
 				)
 			with report.open() as handle:
@@ -260,6 +360,7 @@ class TestExotelMigrationAPI(TestCase):
 					"2026-06-01",
 					"2026-09-30",
 					"bucket",
+					prefix="recordings",
 					limit=1,
 					report_path=str(Path(tmp) / "report.csv"),
 				)
@@ -317,7 +418,34 @@ class TestExotelMigrationUpload(TestCase):
 			migration._s3_has(s3, "b", "key", "old", "sid")
 
 
-class TestExotelMigrationFrappe(FrappeTestCase):
+class TestExotelMigrationFrappe(RecordingConfig, FrappeTestCase):
+	def test_sales_users_cannot_assign_replace_or_remove_s3_locations(self):
+		for previous, current in (
+			("", "s3://bucket/recordings/call.mp3"),
+			("s3://bucket/recordings/call.mp3", "s3://bucket/recordings/other.mp3"),
+			("s3://bucket/recordings/call.mp3", "https://other.example/recording"),
+			("s3://bucket/recordings/call.mp3", ""),
+		):
+			doc = CRMCallLog({"doctype": "CRM Call Log", "recording_url": current})
+			with (
+				self.subTest(previous=previous, current=current),
+				patch.object(doc, "get_doc_before_save", return_value=frappe._dict(recording_url=previous)),
+				patch.dict(frappe.session, {"user": "sales@example.com"}),
+				patch("crm.permissions.recordings.frappe.get_roles", return_value=["Sales User"]),
+				self.assertRaises(frappe.PermissionError),
+			):
+				doc.before_save()
+
+	def test_sales_users_can_save_other_fields_without_changing_s3_location(self):
+		url = "s3://bucket/recordings/call.mp3"
+		doc = CRMCallLog({"doctype": "CRM Call Log", "recording_url": url})
+		with (
+			patch.object(doc, "get_doc_before_save", return_value=frappe._dict(recording_url=url)),
+			patch.dict(frappe.session, {"user": "sales@example.com"}),
+			patch("crm.permissions.recordings.frappe.get_roles", return_value=["Sales User"]),
+		):
+			doc.before_save()
+
 	def test_absolute_file_url_passes_real_validation(self):
 		file = frappe.get_doc(
 			{
@@ -356,15 +484,16 @@ class TestExotelMigrationFrappe(FrappeTestCase):
 		sid = "test-recording-" + frappe.generate_hash(length=12)
 		references = [("CRM Lead", lead.name)]
 		data = call(Sid=sid)
-		name = migration._upsert_call_log(data, sid, "s3://bucket/old/key.mp3", None, references)
+		name = migration._upsert_call_log(data, sid, "s3://bucket/recordings/key.mp3", None, references)
 		migration._attach_to_reference("CRM Lead", lead.name, name, sid)
 		log = frappe.get_doc("CRM Call Log", name)
-		migration._upsert_call_log(data, sid, "s3://bucket/old/key.mp3", log, references)
+		migration._upsert_call_log(data, sid, "s3://bucket/recordings/key.mp3", log, references)
 		self.assertEqual(len(log.links), 1)
 		self.assertTrue(migration._attachment_exists("CRM Lead", lead.name, name))
 		self.assertEqual(
-			frappe.db.get_value("CRM Call Log", name, "recording_url"), "s3://bucket/old/key.mp3"
+			frappe.db.get_value("CRM Call Log", name, "recording_url"), "s3://bucket/recordings/key.mp3"
 		)
+		self.assertEqual(log.duration, 17)
 
 	def test_apply_then_rerun_creates_one_log_and_one_attachment(self):
 		lead = frappe.get_doc(
@@ -380,8 +509,8 @@ class TestExotelMigrationFrappe(FrappeTestCase):
 			patch(f"{MODULE}._s3_has", return_value=True),
 			patch.object(frappe.db, "commit") as commit,
 		):
-			first = migration._process_call(call(Sid=sid), MagicMock(), "bucket", "prefix", "old", False)
-			second = migration._process_call(call(Sid=sid), MagicMock(), "bucket", "prefix", "old", False)
+			first = migration._process_call(call(Sid=sid), MagicMock(), "bucket", "recordings", "old", False)
+			second = migration._process_call(call(Sid=sid), MagicMock(), "bucket", "recordings", "old", False)
 		self.assertEqual(first["result"], "saved", first["detail"])
 		self.assertEqual(second["result"], "saved", second["detail"])
 		self.assertEqual(second["log_action"], "unchanged")
@@ -413,6 +542,6 @@ class TestExotelMigrationFrappe(FrappeTestCase):
 			patch(f"{MODULE}._s3_has", return_value=True),
 			patch(f"{MODULE}._upsert_call_log", side_effect=ValueError("test failure")),
 		):
-			row = migration._process_call(call(), MagicMock(), "bucket", "prefix", "old", False)
+			row = migration._process_call(call(), MagicMock(), "bucket", "recordings", "old", False)
 		self.assertEqual(row["result"], "error")
 		self.assertTrue(frappe.db.exists("CRM Lead", lead.name))

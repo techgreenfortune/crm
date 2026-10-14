@@ -70,6 +70,51 @@ class TestRecordingRange(FrappeTestCase):
 
 
 class TestS3Recording(FrappeTestCase):
+	def setUp(self):
+		super().setUp()
+		config = patch.dict(
+			frappe.conf,
+			{
+				"crm_recording_bucket": "bkt",
+				"crm_recording_prefix": "pre",
+				"crm_recording_region": "ap-south-1",
+			},
+		)
+		config.start()
+		self.addCleanup(config.stop)
+
+	def test_s3_recording_rejects_unconfigured_bucket_or_prefix(self):
+		for url in (
+			"s3://other/pre/key.mp3",
+			"s3://bkt/private/key.mp3",
+			"s3://bkt/prefix/key.mp3",
+			"s3://bkt/pre/../secret",
+			"s3://bkt/pre/key?extra=1",
+		):
+			with (
+				self.subTest(url=url),
+				patch("crm.integrations.api.frappe.db.exists", return_value=True),
+				patch("crm.integrations.api.frappe.get_doc", return_value=MagicMock(recording_url=url)),
+				patch("boto3.client") as client,
+				self.assertRaises(frappe.PermissionError),
+			):
+				get_recording_url("call-log")
+			client.assert_not_called()
+
+	def test_s3_recording_requires_storage_configuration(self):
+		with (
+			patch.dict(frappe.conf, {"crm_recording_bucket": None}),
+			patch("crm.integrations.api.frappe.db.exists", return_value=True),
+			patch(
+				"crm.integrations.api.frappe.get_doc",
+				return_value=MagicMock(recording_url="s3://bkt/pre/key"),
+			),
+			patch("boto3.client") as client,
+			self.assertRaises(frappe.ValidationError),
+		):
+			get_recording_url("call-log")
+		client.assert_not_called()
+
 	def test_s3_recording_requires_read_permission(self):
 		log = MagicMock(recording_url="s3://bucket/recording.mp3")
 		log.check_permission.side_effect = frappe.PermissionError
@@ -92,11 +137,12 @@ class TestS3Recording(FrappeTestCase):
 				"crm.integrations.api.frappe.get_doc",
 				return_value=MagicMock(recording_url="s3://bkt/pre/abc.mp3", telephony_medium="Exotel"),
 			),
-			patch("boto3.client", return_value=client),
+			patch("boto3.client", return_value=client) as create_client,
 		):
 			response = get_recording_url("call-log")
 		self.assertEqual(response.status_code, 302)
 		self.assertEqual(response.headers["Location"], "https://signed.example/x")
+		create_client.assert_called_once_with("s3", region_name="ap-south-1")
 		client.generate_presigned_url.assert_called_once_with(
 			"get_object", Params={"Bucket": "bkt", "Key": "pre/abc.mp3"}, ExpiresIn=900
 		)

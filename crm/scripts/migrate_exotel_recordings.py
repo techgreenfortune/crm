@@ -13,10 +13,18 @@ limit counts ALL scanned calls, including calls without recordings.
 Set dry_run=0 to apply the same plan. Each successful call commits independently.
 The CSV is flushed and fsynced after each row, including skipped/error rows.
 
+Before migration, configure the allowed location on the site:
+
+    bench --site crm.indiframe.com set-config crm_recording_bucket YOUR_BUCKET
+    bench --site crm.indiframe.com set-config crm_recording_prefix exotel-old-recordings
+    bench --site crm.indiframe.com set-config crm_recording_region ap-south-1
+
 AWS credentials use boto3's standard chain. Both the migration process and CRM
 backend need S3 access; playback generates short-lived URLs, never stores them.
-Set AWS_DEFAULT_REGION to the bucket region in BOTH processes (region overrides
-only the migration client). The existing phone matcher prefers deals and excludes
+bucket/prefix arguments must remain inside the configured recording location.
+region defaults to crm_recording_region, then AWS_DEFAULT_REGION.
+Ordinary users cannot assign, replace or remove S3 recording locations.
+The existing phone matcher prefers deals and excludes
 converted leads; the printed references are authoritative, not necessarily leads.
 Existing S3 objects are reused only when their migration metadata is verified.
 Downloads are staged on local disk and length-checked BEFORE uploading.
@@ -27,6 +35,7 @@ Daily requests stay within its maximum one-month query range.
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -41,15 +50,11 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from crm.integrations.api import get_contact_by_phone_number
+from crm.integrations.exotel.handler import get_calls_api_call_log_status
+from crm.permissions.recordings import get_s3_recording_location
 
 TIMEOUT = (10, 60)
-STATUS_MAP = {
-	"completed": "Completed",
-	"no-answer": "Call Not Answered",
-	"busy": "Busy",
-	"failed": "Failed",
-	"canceled": "Canceled",
-}
+TERMINAL_STATUSES = {"completed", "no-answer", "busy", "failed", "canceled"}
 REPORT_FIELDS = [
 	"call_sid",
 	"phone",
@@ -57,6 +62,8 @@ REPORT_FIELDS = [
 	"call_log",
 	"previous_url",
 	"s3_url",
+	"status",
+	"duration",
 	"upload_action",
 	"log_action",
 	"attachment_action",
@@ -96,10 +103,11 @@ def run(
 	if not bucket or "/" in bucket:
 		raise ValueError("Invalid S3 bucket")
 	prefix = prefix.strip("/")
+	get_s3_recording_location(f"s3://{bucket}/{prefix}/{account_sid}/recording.mp3")
 	end_exclusive = datetime.combine(end + timedelta(days=1), datetime.min.time())
 	seen, counts = set(), Counter()
 	summary = {"dry_run": dry_run, "report": os.path.abspath(report_path)}
-	s3 = boto3.client("s3", region_name=region)
+	s3 = boto3.client("s3", region_name=region or frappe.conf.get("crm_recording_region"))
 	os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
 
 	# report_path is operator-selected in this non-whitelisted bench command, not HTTP input.
@@ -121,7 +129,9 @@ def run(
 					continue
 				if sid:
 					seen.add(sid)
-				row = _process_call(call, s3, bucket, prefix, account_sid, dry_run)
+				row = _process_call(
+					call, s3, bucket, prefix, account_sid, dry_run, session=session, subdomain=subdomain
+				)
 				writer.writerow(row)
 				report.flush()
 				os.fsync(report.fileno())
@@ -151,7 +161,9 @@ def _session():
 	return session
 
 
-def _process_call(call, s3, bucket, prefix, account_sid, dry_run):
+def _process_call(
+	call, s3, bucket, prefix, account_sid, dry_run, *, session=None, subdomain="api.exotel.com"
+):
 	row = dict.fromkeys(REPORT_FIELDS, "")
 	row["call_sid"] = _pick(call, "Sid", "sid", "CallSid", "call_sid") or ""
 	savepoint = False
@@ -164,8 +176,11 @@ def _process_call(call, s3, bucket, prefix, account_sid, dry_run):
 			row["result"], row["detail"] = "skipped", "No presigned recording URL"
 			return row
 		_validate_recording_url(source_url)
+		call = _with_call_details(call, session, subdomain, account_sid)
 		key = "/".join(part for part in (prefix, account_sid, f"{sid}.mp3") if part)
 		row["s3_url"] = f"s3://{bucket}/{key}"
+		get_s3_recording_location(row["s3_url"])
+		row["status"], row["duration"] = _status(call), _duration(call)
 		row["phone"] = _customer_number(call)
 		log, references = _resolve_call(call, sid, row["phone"], row["s3_url"])
 		row["call_log"] = log.name if log else sid
@@ -302,9 +317,49 @@ def _customer_number(call):
 
 def _status(call):
 	status = cstr(_pick(call, "Status", "status")).lower()
-	if status not in STATUS_MAP:
+	if status not in TERMINAL_STATUSES:
 		raise ValueError(f"Unsupported historical call status: {status!r}")
-	return STATUS_MAP[status]
+	_duration(call)
+	return get_calls_api_call_log_status(call)
+
+
+def _duration(call):
+	details = call.get("Details")
+	if not isinstance(details, dict) or details.get("ConversationDuration") is None:
+		raise ValueError("Call details missing ConversationDuration")
+	if not all(key in details for key in ("Leg1Status", "Leg2Status")):
+		raise ValueError("Call details missing leg statuses")
+	duration = float(details["ConversationDuration"])
+	if not math.isfinite(duration) or duration < 0:
+		raise ValueError("Invalid ConversationDuration")
+	return duration
+
+
+def _with_call_details(call, session, subdomain, account_sid):
+	details = call.get("Details")
+	if (
+		isinstance(details, dict)
+		and details.get("ConversationDuration") is not None
+		and all(key in details for key in ("Leg1Status", "Leg2Status"))
+	):
+		return call
+	sid = _pick(call, "Sid", "sid", "CallSid", "call_sid")
+	if session is None:
+		raise ValueError("Old-account API session required to fetch call details")
+	response = session.get(
+		f"https://{subdomain}/v1/Accounts/{account_sid}/Calls/{sid}.json",
+		params={"details": "true"},
+		timeout=TIMEOUT,
+	)
+	response.raise_for_status()
+	detailed = response.json().get("Call")
+	if not isinstance(detailed, dict) or detailed.get("Sid") != sid:
+		raise ValueError("Exotel detail response has a missing or mismatched CallSid")
+	if detailed.get("AccountSid", account_sid) != account_sid:
+		raise ValueError("Exotel detail response belongs to a different account")
+	merged = {**call, **detailed}
+	_duration(merged)
+	return merged
 
 
 def _resolve_call(call, sid, number, s3_url):
@@ -432,7 +487,7 @@ def _upsert_call_log(call, sid, s3_url, log, references):
 		log.status = _status(call)
 		log.to = cstr(_pick(call, "To", "to"))
 		setattr(log, "from", cstr(_pick(call, "From", "from")))
-		log.duration = cint(_pick(call, "ConversationDuration", "Duration", "duration"))
+		log.duration = _duration(call)
 		log.start_time = _pick(call, "StartTime", "start_time", "DateCreated")
 		log.end_time = _pick(call, "EndTime", "end_time")
 		log.recording_url = s3_url

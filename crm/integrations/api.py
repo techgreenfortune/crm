@@ -193,8 +193,10 @@ def get_contact_by_phone_number(phone_number: str):
 def _redirect_to_s3_recording(s3_url: str):
 	import boto3
 
-	bucket, _sep, key = s3_url.removeprefix("s3://").partition("/")
-	signed = boto3.client("s3").generate_presigned_url(
+	from crm.permissions.recordings import get_s3_recording_location
+
+	bucket, key = get_s3_recording_location(s3_url)
+	signed = boto3.client("s3", region_name=frappe.conf.get("crm_recording_region")).generate_presigned_url(
 		"get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=900
 	)
 	return Response(status=302, headers={"Location": signed})
