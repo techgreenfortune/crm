@@ -328,6 +328,8 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		]
 		return {"columns": columns, "rows": rows}
 
+	required_list_fields = ("type", "from", "to")
+
 	def parse_list_data(calls):
 		if not calls:
 			return []
@@ -335,6 +337,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		calls = [parse_call_log(call) for call in calls]
 		for call in calls:
 			call["_has_note"] = bool(call.get("note")) or call.get("name") in with_notes
+			call["_customer_number"] = call.get("from") if call.get("type") == "Incoming" else call.get("to")
 		return calls
 
 	def has_link(self, doctype, name):
