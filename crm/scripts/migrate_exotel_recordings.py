@@ -12,6 +12,8 @@ and writes a local CSV. It does NOT download audio or validate actual playback.
 limit counts ALL scanned calls, including calls without recordings.
 Set dry_run=0 to apply the same plan. Each successful call commits independently.
 The CSV is flushed and fsynced after each row, including skipped/error rows.
+New Call Logs use Exotel DateCreated as their timeline date; existing logs keep
+their original creation timestamp.
 
 Before migration, configure the allowed location on the site:
 
@@ -70,6 +72,7 @@ REPORT_FIELDS = [
 	"s3_url",
 	"status",
 	"duration",
+	"call_time",
 	"upload_action",
 	"log_action",
 	"attachment_action",
@@ -188,6 +191,7 @@ def _process_call(
 		row["s3_url"] = f"s3://{bucket}/{key}"
 		get_s3_recording_location(row["s3_url"])
 		row["status"], row["duration"] = _status(call), _duration(call)
+		row["call_time"] = cstr(get_datetime(call["DateCreated"]))
 		row["phone"] = _customer_number(call)
 		log, references = _resolve_call(call, sid, row["phone"], row["s3_url"])
 		row["call_log"] = log.name if log else sid
@@ -506,6 +510,7 @@ def _upload(source_url, s3, bucket, key, account_sid, sid, *, recording_auth=Non
 
 
 def _upsert_call_log(call, sid, s3_url, log, references):
+	is_new = log is None
 	if log:
 		log.recording_url = s3_url
 	else:
@@ -528,6 +533,10 @@ def _upsert_call_log(call, sid, s3_url, log, references):
 		log.link_with_reference_doc(doctype, docname)
 	log.flags.crm_historical_import = True
 	log.save(ignore_permissions=True)
+	if is_new:
+		# Frappe overwrites creation during insert; the call timeline uses this field.
+		log.creation = get_datetime(call["DateCreated"])
+		frappe.db.set_value("CRM Call Log", log.name, "creation", log.creation, update_modified=False)
 	return log.name
 
 
