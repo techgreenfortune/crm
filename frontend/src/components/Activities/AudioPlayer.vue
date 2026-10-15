@@ -73,7 +73,6 @@
     <audio
       ref="audio"
       :src="src"
-      crossorigin="anonymous"
       @loadedmetadata="setupDuration"
       @timeupdate="updateCurrentTime"
       @ended="isPaused = true"
