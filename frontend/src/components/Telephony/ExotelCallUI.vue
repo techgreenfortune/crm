@@ -196,23 +196,12 @@
             ])
           }}
         </div>
-        <div
-          v-if="
-            dispositionRequired && (dispositionEligible || dispositionLocked)
-          "
-          class="mt-3"
-        >
+        <div v-if="dispositionRequired && dispositionEligible" class="mt-3">
           <div class="text-sm text-ink-gray-5 mb-1">
             {{ __('Disposition') }}
             <span class="text-red-500">*</span>
           </div>
-          <div
-            v-if="dispositionLocked"
-            class="w-full bg-surface-gray-6 text-ink-white px-3 py-1.5 rounded text-base"
-          >
-            {{ disposition || __('No Answer / Not Reachable') }}
-          </div>
-          <Dropdown v-else :options="dispositionDropdownOptions">
+          <Dropdown :options="dispositionDropdownOptions">
             <Button
               :label="disposition || __('Select a disposition...')"
               icon-right="chevron-down"
@@ -412,11 +401,8 @@ import {
   softphoneStatusBadge,
   softphoneTerminalLabel,
   isAgentLegFailure,
-  CHECKING_CALL_RESULT,
-  settleCallOutcome,
   AGENT_LEG_RING_TIMEOUT_MS,
   readSoftphoneSdkLog,
-  callLogStatusLabel,
 } from '@/utils/exotelSoftphoneCall'
 import { claimSoftphoneTab } from '@/utils/exotelSoftphoneTab'
 import { createRingtone } from '@/utils/ringtone'
@@ -641,8 +627,6 @@ watch(disposition, () => {
   }
 })
 
-const dispositionLocked = computed(() => callStatus.value === 'No answer')
-
 // Outcome dispositions are only meaningful on leads in the disposition-eligible set
 // (C0 OR engagement Cold-Unresponsive/Reactivated). Mirrors the backend gate in
 // crm/api/call_log.py:register_no_answer and the disposition Before-Save server
@@ -656,20 +640,10 @@ const dispositionEligible = computed(() => {
 })
 
 const dispositionDropdownOptions = computed(() =>
-  dispositions.value
-    .filter((d) => {
-      // 'No Answer / Not Reachable' contradicts a Call ended (completed) call.
-      if (
-        callStatus.value === 'Call ended' &&
-        d.name === 'No Answer / Not Reachable'
-      )
-        return false
-      return true
-    })
-    .map((d) => ({
-      label: d.label || d.name,
-      onClick: () => (disposition.value = d.name),
-    })),
+  dispositions.value.map((d) => ({
+    label: d.label || d.name,
+    onClick: () => (disposition.value = d.name),
+  })),
 )
 
 const callTerminated = computed(
@@ -683,13 +657,9 @@ watch(callTerminated, (val) => {
 })
 
 const callActive = computed(() =>
-  [
-    'Calling...',
-    'Ringing...',
-    'In progress',
-    'Incoming call',
-    CHECKING_CALL_RESULT,
-  ].includes(callStatus.value),
+  ['Calling...', 'Ringing...', 'In progress', 'Incoming call'].includes(
+    callStatus.value,
+  ),
 )
 
 const POPUP_STATE_KEY = 'exotel_call_popup_state'
@@ -754,9 +724,6 @@ function restorePopupState() {
     partnerFabricatorName.value = s.partnerFabricatorName || ''
     fabricatorRoutingNotes.value = s.fabricatorRoutingNotes || ''
     if (typeof s.lastSocketAt === 'number') lastSocketAt.value = s.lastSocketAt
-    // A reload interrupted the check; without restarting it the popup could never close.
-    if (s.callStatus === CHECKING_CALL_RESULT && s.callData?.CallSid)
-      settleOutboundOutcome(s.callData.CallSid, 'Call ended')
     if (Array.isArray(s.pendingWrapUps)) pendingWrapUps.value = s.pendingWrapUps
   } catch {
     /* parse error — ignore */
@@ -829,8 +796,6 @@ const canClose = computed(() => {
 
 const closeTooltip = computed(() => {
   if (isSavingDisposition.value) return __('Saving disposition...')
-  if (callStatus.value === CHECKING_CALL_RESULT)
-    return __('Checking with Exotel how the call ended')
   if (callActive.value) return __('Wait for the call to end')
   if (callTerminated.value && !isCallHandler.value)
     return __('Only the agent who handled this call can save the disposition')
@@ -1321,40 +1286,10 @@ function handleSoftphoneCallEvent(eventType, details = {}) {
     )
       return
     counterUp.value?.stop()
-    // A terminal webhook may already have set the real outcome. The agent leg connecting
-    // doesn't mean the customer answered, so an outbound call asks the server.
-    if (!callTerminated.value) {
-      if (softphoneConnected && callData.value?.Direction === 'outbound-dial')
-        settleOutboundOutcome(callData.value.CallSid, 'Call ended')
-      else callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
-    }
+    if (!callTerminated.value)
+      callStatus.value = softphoneConnected ? 'Call ended' : 'No answer'
     resetSoftphoneSession()
   }
-}
-
-async function settleOutboundOutcome(callSid, fallback) {
-  callStatus.value = CHECKING_CALL_RESULT
-  await settleCallOutcome({
-    fetchStatus: async () =>
-      (
-        await call('frappe.client.get_value', {
-          doctype: 'CRM Call Log',
-          filters: callSid,
-          fieldname: 'status',
-        })
-      )?.status,
-    owns: (label) =>
-      callData.value?.CallSid === callSid && callStatus.value === label,
-    show: (label, { late }) =>
-      late ? showLateOutcome(label) : (callStatus.value = label),
-    fallback,
-  })
-}
-
-// The agent may already have picked a disposition for the guessed outcome.
-function showLateOutcome(label) {
-  callStatus.value = label
-  if (label === 'No answer') disposition.value = NO_ANSWER_DISPOSITION
 }
 
 let agentLegTimer = null
@@ -1503,8 +1438,6 @@ function checkStale() {
   // Once call is terminated, no more socket events are expected — stale
   // detection has no purpose and must not race against disposition save.
   if (callTerminated.value) return
-  // The call has ended and the outcome check settles it within seconds.
-  if (callStatus.value === CHECKING_CALL_RESULT) return
   // The browser owns a connected softphone call; quiet webhooks must never hang it up.
   if (softphoneSessionActive.value && softphoneConnected) return
   // No intermediate socket events expected while call is live, so use a long
@@ -1587,7 +1520,7 @@ function parkCurrentWrapUp(nextSid) {
   if (
     !shouldParkWrapUp({
       terminated:
-        (callTerminated.value || callStatus.value === CHECKING_CALL_RESULT) &&
+        callTerminated.value &&
         dispositionEligible.value &&
         isCallHandler.value,
       currentSid: callData.value?.CallSid,
@@ -1644,9 +1577,6 @@ function resumeParkedWrapUp() {
   fabricatorRoutingNotes.value = wrapUp.fabricatorRoutingNotes
   showCallPopup.value = true
   showSmallCallPopup.value = false
-  // Set aside mid-check; its check stopped when the other call took the popup.
-  if (wrapUp.callStatus === CHECKING_CALL_RESULT)
-    settleOutboundOutcome(wrapUp.callData.CallSid, 'Call ended')
 }
 
 function closeCallPopup() {
@@ -1658,51 +1588,6 @@ function closeCallPopup() {
   lastSocketAt.value = Date.now()
   clearPopupState()
   if (pendingWrapUps.value.length) resumeParkedWrapUp()
-}
-
-const NO_ANSWER_DISPOSITION = 'No Answer / Not Reachable'
-
-// A browser call's agent leg connects before the customer is dialled, so the popup can show
-// "Call ended" for a call the customer never answered. If Exotel's verdict missed the popup,
-// the server would refuse any disposition but "No Answer"; switch the popup to it instead.
-async function outcomeNeedsReview(callSid) {
-  if (callStatus.value !== 'Call ended') return false
-  let status
-  try {
-    ;({ status } = await call('frappe.client.get_value', {
-      doctype: 'CRM Call Log',
-      filters: callSid,
-      fieldname: 'status',
-    }))
-  } catch {
-    // Saving now could pin a disposition onto a call that later turns out unanswered; a final
-    // status never changes again, so only a confirmed one makes the save safe.
-    toast.error(__("Couldn't check how the call ended. Try closing again."))
-    return true
-  }
-  // Another call took the popup while this read was in flight; don't save or touch it.
-  if (callData.value?.CallSid !== callSid) return true
-  const outcome = callLogStatusLabel(status)
-  // The server doesn't recheck a saved disposition when the status changes later, so
-  // wait for Exotel's verdict instead of saving against a guess.
-  if (!outcome) {
-    toast.info(
-      __(
-        "Exotel hasn't confirmed how this call ended yet. Try closing again in a few seconds.",
-      ),
-    )
-    return true
-  }
-  if (outcome === 'Call ended') return false
-  showLateOutcome(outcome)
-  if (outcome === 'No answer')
-    toast.warning(
-      __(
-        'Exotel reports the customer didn\'t answer this call, so it can only be saved as "{0}". Close again to save.',
-        [NO_ANSWER_DISPOSITION],
-      ),
-    )
-  return true
 }
 
 async function attemptCloseCallPopup() {
@@ -1721,10 +1606,6 @@ async function attemptCloseCallPopup() {
     closeCallPopup()
     return
   }
-  isSavingDisposition.value = true
-  const outcomeChanged = await outcomeNeedsReview(callData.value.CallSid)
-  isSavingDisposition.value = false
-  if (outcomeChanged) return
   if (!disposition.value) return
   if (callbackRequired.value && !scheduledCallbackAt.value) return
   isSavingDisposition.value = true
@@ -1848,8 +1729,8 @@ function updateStatus(data) {
     return 'Call ended'
   }
 
-  const softphoneOutcome = softphoneTerminalLabel(data)
-  if (softphoneOutcome) return softphoneOutcome
+  // The agent decides how an outbound call went; Exotel's verdict only ends it.
+  if (softphoneTerminalLabel(data)) return 'Call ended'
 
   // No branch matched — keep current status rather than returning undefined,
   // which would corrupt every computed that checks callStatus.value.
