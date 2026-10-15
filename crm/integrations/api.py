@@ -190,6 +190,18 @@ def get_contact_by_phone_number(phone_number: str):
 		return get_contact(phone_number, number.get("country"), exact_match=True)
 
 
+def _redirect_to_s3_recording(s3_url: str):
+	import boto3
+
+	from crm.permissions.recordings import get_s3_recording_location
+
+	bucket, key = get_s3_recording_location(s3_url)
+	signed = boto3.client("s3", region_name=frappe.conf.get("crm_recording_region")).generate_presigned_url(
+		"get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=900
+	)
+	return Response(status=302, headers={"Location": signed})
+
+
 @frappe.whitelist()
 def get_recording_url(call_log_name: str):
 	"""Fetch and stream a call recording, authenticating with the provider's credentials."""
@@ -200,6 +212,10 @@ def get_recording_url(call_log_name: str):
 
 	if not log.recording_url:
 		frappe.throw(_("Recording URL not found"), frappe.DoesNotExistError)
+
+	if log.recording_url.startswith("s3://"):
+		log.check_permission("read")
+		return _redirect_to_s3_recording(log.recording_url)
 
 	auth = _get_recording_credentials(log.telephony_medium)
 	# Browsers can only seek audio when the server answers Range requests with 206 Partial Content.
