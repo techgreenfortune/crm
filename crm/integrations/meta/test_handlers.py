@@ -19,10 +19,12 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from crm.integrations.meta.handlers import (
+	enqueue_remove_lead,
 	on_deal_won,
 	on_lead_created,
 	sync_add_lead,
 	sync_remove_deal,
+	sync_remove_lead,
 )
 
 
@@ -193,3 +195,57 @@ class TestSyncRemoveDeal(FrappeTestCase):
 		deal = self._make_deal(first_name="NoContact")
 		sync_remove_deal(deal.name)
 		mock_remove.assert_not_called()
+
+
+class TestEnqueueRemoveLead(FrappeTestCase):
+	"""enqueue_remove_lead is called directly from crm.api.projects (NOT a
+	doc-event hook) because that's the only place a Lead becomes Won in this
+	fork, and it writes via frappe.db.set_value, which bypasses on_update."""
+
+	@patch("crm.integrations.meta.handlers.get_settings", return_value=None)
+	@patch("crm.integrations.meta.handlers.frappe.enqueue")
+	def test_does_not_enqueue_when_sync_unconfigured(self, mock_enqueue, _mock_settings):
+		enqueue_remove_lead("CRM-LEAD-0001")
+		mock_enqueue.assert_not_called()
+
+	@patch("crm.integrations.meta.handlers.get_settings", return_value=MagicMock())
+	@patch("crm.integrations.meta.handlers.frappe.enqueue")
+	def test_enqueues_sync_remove_lead_when_configured(self, mock_enqueue, _mock_settings):
+		enqueue_remove_lead("CRM-LEAD-0001")
+		mock_enqueue.assert_called_once()
+		args, kwargs = mock_enqueue.call_args
+		self.assertEqual(args[0], "crm.integrations.meta.handlers.sync_remove_lead")
+		self.assertEqual(kwargs["lead_name"], "CRM-LEAD-0001")
+
+
+class TestSyncRemoveLead(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+		super().tearDown()
+
+	def _make_lead(self, **kwargs):
+		defaults = {"doctype": "CRM Lead", "first_name": "Test"}
+		defaults.update(kwargs)
+		return frappe.get_doc(defaults).insert(ignore_permissions=True)
+
+	@patch("crm.integrations.meta.handlers.remove_users_from_audience")
+	def test_skips_row_with_no_email_and_no_phone(self, mock_remove):
+		lead = self._make_lead(first_name="NoContact")
+		sync_remove_lead(lead.name)
+		mock_remove.assert_not_called()
+
+	@patch("crm.integrations.meta.handlers.remove_users_from_audience")
+	def test_removes_row_when_email_present(self, mock_remove):
+		lead = self._make_lead(first_name="HasEmail", email="winner@example.com")
+		sync_remove_lead(lead.name)
+		mock_remove.assert_called_once()
+
+	@patch("crm.integrations.meta.handlers.log_sync_failure")
+	@patch("crm.integrations.meta.handlers.remove_users_from_audience", side_effect=Exception("boom"))
+	def test_logs_failure_exactly_once_on_exception(self, _mock_remove, mock_log_failure):
+		lead = self._make_lead(first_name="WillFail", email="fails@email.com")
+		sync_remove_lead(lead.name)
+		mock_log_failure.assert_called_once()
+		self.assertEqual(mock_log_failure.call_args[0][0], "Remove")
+		self.assertEqual(mock_log_failure.call_args[0][1], "CRM Lead")
+		self.assertEqual(mock_log_failure.call_args[0][2], lead.name)

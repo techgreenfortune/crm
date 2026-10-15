@@ -163,6 +163,17 @@ def create_project_for_lead(lead: str) -> str:
 	# write — db.set_value bypasses validate().
 	frappe.db.set_value("CRM Lead", lead_doc.name, "lead_status", "Won")
 
+	# --- Remove from the Meta Custom Audience (so converted leads stop seeing
+	# retargeting ads). db.set_value above bypasses on_update, so there's no
+	# doc-event hook that would catch this Won transition — call explicitly.
+	# No-ops if Meta Audience sync isn't configured.
+	try:
+		from crm.integrations.meta.handlers import enqueue_remove_lead
+
+		enqueue_remove_lead(lead_doc.name)
+	except Exception:
+		frappe.log_error(title="Meta audience removal enqueue failed", message=frappe.get_traceback())
+
 	# --- Fire Lead Won notification from Python (after project confirmed + Won set).
 	# Notification is disabled in fixtures; send() bypasses enabled/condition checks.
 	lead_doc.lead_status = "Won"  # reflect in-memory for .send()
