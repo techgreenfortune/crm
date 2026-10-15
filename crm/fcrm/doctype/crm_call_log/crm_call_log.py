@@ -6,6 +6,7 @@ from frappe import _, generate_hash
 from frappe.model.document import Document
 
 from crm.integrations.api import get_contact_by_phone_number
+from crm.permissions.recordings import validate_recording_url_change
 from crm.utils import seconds_to_duration
 
 NO_ANSWER_DISPOSITION = "No Answer / Not Reachable"
@@ -57,9 +58,12 @@ class CRMCallLog(Document):
 			self.telephony_medium = "Manual"
 
 	def before_save(self):
+		validate_recording_url_change(self)
 		self._validate_disposition()
 
 	def on_update(self):
+		if self.flags.crm_historical_import:
+			return
 		self._run_disposition_stage_move()
 		self._trigger_no_answer_retry()
 
