@@ -554,7 +554,7 @@ onMounted(async () => {
 
 watch(error, (err) => {
   if (err) {
-    const friendly = getFriendlyDocError(err, 'lead')
+    const friendly = getFriendlyDocError(err, 'CRM Lead')
     errorTitle.value = friendly.title
     errorMessage.value = friendly.message
   } else {
