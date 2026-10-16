@@ -184,7 +184,12 @@ doc_events = {
 	},
 	"CRM Deal": {
 		"on_update": [
-			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext"
+			"crm.fcrm.doctype.erpnext_crm_settings.erpnext_crm_settings.create_customer_in_erpnext",
+			# Meta Custom Audience sync: removes the contact from the audience once
+			# the deal's status type is "Won" so converted leads stop seeing ads.
+			# Self-guards on has_value_changed("status"), so it's a no-op on every
+			# other save of an already-Won deal.
+			"crm.integrations.meta.handlers.on_deal_won",
 		],
 	},
 	"User": {
@@ -222,6 +227,10 @@ doc_events = {
 			"crm.overrides.crm_lead_permissions.bust_downstream_users_cache",
 			"crm.fcrm.doctype.crm_lead.crm_lead.clear_contact_lead_link",
 		],
+		# Meta Custom Audience sync: adds every newly created lead (any source)
+		# to the configured audience. No-ops if CRM Meta Audience Settings is
+		# disabled/incomplete.
+		"after_insert": ["crm.integrations.meta.handlers.on_lead_created"],
 	},
 	"Notification": {
 		"on_update": ["crm.api.desk_audit.on_desk_edit"],
