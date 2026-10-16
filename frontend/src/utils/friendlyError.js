@@ -1,26 +1,28 @@
 const TECHNICAL_PATTERN =
-  /^(no permission|not permitted|insufficient permission|traceback)|\b(doctype|frappe|CRM-[A-Z]+-)/i
+  /^(no permission|not permitted|not allowed|insufficient permission|traceback)|\b(doctype|frappe|CRM-[A-Z]+-)/i
 
-export function getFriendlyDocError(err, label = 'record') {
+export function getFriendlyDocError(err, doctype) {
   const type = err?.exc_type
   const first = err?.messages?.[0]
+  const isLead = doctype === 'CRM Lead'
 
   if (type === 'PermissionError') {
     return {
-      title: __('Access removed'),
-      message: __(
-        'You no longer have access to this {0}. It may have been reassigned or moved to another stage. Go back to the list to see your {0}s.',
-        [label],
-      ),
+      title: __("You don't have access"),
+      message: isLead
+        ? __(
+            "You don't have access to this lead. It may have been reassigned or moved to another stage. Go back to the Leads list to see the leads available to you.",
+          )
+        : __("You don't have access to this record."),
     }
   }
 
   if (type === 'DoesNotExistError') {
     return {
-      title: __('{0} not found', [
-        label.charAt(0).toUpperCase() + label.slice(1),
-      ]),
-      message: __('This {0} does not exist or has been deleted.', [label]),
+      title: isLead ? __('Lead not found') : __('Record not found'),
+      message: isLead
+        ? __('This lead does not exist or has been deleted.')
+        : __('This record does not exist or has been deleted.'),
     }
   }
 
@@ -29,8 +31,8 @@ export function getFriendlyDocError(err, label = 'record') {
     title: __('Something went wrong'),
     message: safe
       ? first
-      : __('We could not load this {0}. Please refresh and try again.', [
-          label,
-        ]),
+      : isLead
+        ? __('We could not load this lead. Please refresh and try again.')
+        : __('We could not load this record. Please refresh and try again.'),
   }
 }

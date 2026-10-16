@@ -58,15 +58,11 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
         onSuccess: async () => await setupFormScript(),
         onError: (err) => {
           error.value = err
-          const friendly = getFriendlyDocError(
-            err,
-            doctype === 'CRM Lead' ? 'lead' : 'record',
-          )
           if (
             err.exc_type === 'DoesNotExistError' ||
             err.exc_type === 'PermissionError'
           ) {
-            showErrorToastOnce(friendly.message)
+            showErrorToastOnce(getFriendlyDocError(err, doctype).message)
           }
         },
         setValue: {
