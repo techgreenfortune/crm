@@ -30,7 +30,7 @@ export function getFriendlyDocError(err, doctype) {
   return {
     title: __('Something went wrong'),
     message: safe
-      ? first
+      ? __(first)
       : isLead
         ? __('We could not load this lead. Please refresh and try again.')
         : __('We could not load this record. Please refresh and try again.'),
