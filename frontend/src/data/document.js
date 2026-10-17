@@ -5,6 +5,7 @@ import { useAttachments } from '@/composables/useAttachments'
 import { showSettings, activeSettingsPage } from '@/composables/settings'
 import { runSequentially, parseAssignees } from '@/utils'
 import { findMissingMandatory } from '@/utils/fieldTransforms'
+import { getFriendlyDocError } from '@/utils/friendlyError'
 import { createDocumentResource, createResource, toast } from 'frappe-ui'
 import { ref, reactive } from 'vue'
 
@@ -57,16 +58,11 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
         onSuccess: async () => await setupFormScript(),
         onError: (err) => {
           error.value = err
-          if (err.exc_type === 'DoesNotExistError') {
-            toast.error(__(err.messages[0] || 'Document does not exist'))
-          }
-          if (err.exc_type === 'PermissionError') {
-            showErrorToastOnce(
-              __(
-                err.messages[0] ||
-                  'You do not have permission to access this document',
-              ),
-            )
+          if (
+            err.exc_type === 'DoesNotExistError' ||
+            err.exc_type === 'PermissionError'
+          ) {
+            showErrorToastOnce(getFriendlyDocError(err, doctype).message)
           }
         },
         setValue: {

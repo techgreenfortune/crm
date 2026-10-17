@@ -437,6 +437,7 @@
 <script setup>
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import ErrorPage from '@/components/ErrorPage.vue'
+import { getFriendlyDocError } from '@/utils/friendlyError'
 import Icon from '@/components/Icon.vue'
 import Resizer from '@/components/Resizer.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
@@ -553,12 +554,9 @@ onMounted(async () => {
 
 watch(error, (err) => {
   if (err) {
-    errorTitle.value = __(
-      err.exc_type == 'DoesNotExistError'
-        ? 'Document not found'
-        : 'Error occurred',
-    )
-    errorMessage.value = __(err.messages?.[0] || 'An error occurred')
+    const friendly = getFriendlyDocError(err, 'CRM Lead')
+    errorTitle.value = friendly.title
+    errorMessage.value = friendly.message
   } else {
     errorTitle.value = ''
     errorMessage.value = ''
