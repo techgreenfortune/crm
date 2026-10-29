@@ -42,7 +42,9 @@ export const sessionStore = defineStore('crm-session', () => {
         window.opsgate_login_redirect &&
         window.opsgate_url
       ) {
-        window.location.href = window.opsgate_url
+        // Hit OpsGate's single-logout route so its session is cleared too, not just CRM's.
+        window.location.href =
+          window.opsgate_url.replace(/\/$/, '') + '/auth/logout'
         return
       }
       window.location.href = '/login?redirect-to=/crm'
