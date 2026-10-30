@@ -35,6 +35,16 @@ def _header_returning(token: str | None):
 	return _stub
 
 
+def _latest_comment(lead_name: str) -> str:
+	return frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": "CRM Lead", "reference_name": lead_name, "comment_type": "Comment"},
+		pluck="content",
+		order_by="creation desc",
+		limit=1,
+	)[0]
+
+
 class _BaseWebsite(FrappeTestCase):
 	"""Common setUp: stash a valid token in conf + return it on header read."""
 
@@ -233,18 +243,20 @@ class TestCreateLeadDedup(_BaseWebsite):
 
 	def test_c7_lead_returns_closed_match(self):
 		"""C7 is non-Open but still in play — no new lead, no re-attribution."""
-		make_lead(phone="+919812345017", first_name="Fab", status="C7")
-		res = website.create_lead(name="Resubmit", mobile="+919812345017")
+		fab = make_lead(phone="+919812345017", first_name="Fab", status="C7")
+		res = website.create_lead(name="Resubmit", mobile="+919812345017", message="second enquiry")
 		self.assertEqual(res["status"], "closed_match")
 		self.assertEqual(res["stage"], "C7")
 		self.assertNotIn("name", res)
+		self.assertIn("second enquiry", _latest_comment(fab.name))
 
 	def test_archived_lead_returns_closed_match_terminal(self):
 		"""Archived engagement is terminal even on an Open-type C-stage (website.py:237-238)."""
-		make_lead(phone="+919812345013", first_name="Arch", lead_status="Archived")
-		res = website.create_lead(name="Resubmit", mobile="+919812345013")
+		arch = make_lead(phone="+919812345013", first_name="Arch", lead_status="Archived")
+		res = website.create_lead(name="Resubmit", mobile="+919812345013", message="still interested")
 		self.assertEqual(res["status"], "closed_match")
 		self.assertEqual(res["stage"], "C0")
+		self.assertIn("still interested", _latest_comment(arch.name))
 
 	def test_cold_unresponsive_auto_reactivates(self):
 		"""PRD §8.2 Phase 1 — Cold lead resubmitting via website auto-reactivates."""
