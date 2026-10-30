@@ -13,7 +13,7 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
 from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
-from crm.utils import parse_phone_number, phone_dedup_candidates
+from crm.utils import CLOSED_LEAD_STAGES, parse_phone_number, phone_dedup_candidates
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
 # Everything else in self.meta.fields is blocked for non-owners.
@@ -489,7 +489,12 @@ class CRMLead(Document):
 			return
 		if not self.mobile_no:
 			return
-		if not self.has_value_changed("mobile_no"):
+		mobile_changed = self.has_value_changed("mobile_no")
+		old = self.get_doc_before_save()
+		reopened = (
+			old is not None and old.status in CLOSED_LEAD_STAGES and self.status not in CLOSED_LEAD_STAGES
+		)
+		if not (mobile_changed or reopened):
 			return
 
 		parsed = parse_phone_number(self.mobile_no)
@@ -503,27 +508,42 @@ class CRMLead(Document):
 		# Match across all stored formats (+91 / 91 / national / 0-prefix), not just
 		# exact E164 — legacy/imported rows may be stored un-normalized.
 		candidates = phone_dedup_candidates(self.mobile_no, self.mobile_no, parsed["national_number"])
-		existing = frappe.db.get_value(
+
+		# A number may have many closed (Won/Lost) leads — a returning customer's new
+		# project — but never more than one lead still in play. A closed lead (e.g. a
+		# historical import) can't add a second live one, so it skips the check.
+		existing = self.status not in CLOSED_LEAD_STAGES and frappe.db.get_value(
 			"CRM Lead",
-			{"mobile_no": ["in", candidates], "name": ["!=", self.name]},
+			{
+				"mobile_no": ["in", candidates],
+				"name": ["!=", self.name],
+				"status": ["not in", CLOSED_LEAD_STAGES],
+			},
 			["name", "lead_name", "status", "lead_status"],
 			as_dict=True,
 		)
 		if existing:
-			hint = {
-				"Cold-Unresponsive": "Use the Reactivation flow.",
-				"Archived": "Use the Reactivation flow.",
-			}.get(existing.lead_status) or {
-				"C6": "Lead is marked Lost — investigate before creating a new lead.",
-				"C4": "This number is already a customer.",
-			}.get(existing.status, "")
 			message = (
 				f"A lead with mobile {self.mobile_no} already exists: "
 				f"{existing.lead_name} ({existing.name}) — Stage: {existing.status} / {existing.lead_status}."
 			)
-			if hint:
-				message += " " + hint
+			if existing.lead_status in ("Cold-Unresponsive", "Archived"):
+				message += " Use the Reactivation flow."
+			elif reopened and not mobile_changed:
+				message += " Continue on that lead instead of reopening this one."
 			frappe.throw(_(message), title=_("Duplicate Mobile Number"))
+
+		if mobile_changed and not self.get("custom_previous_lead"):
+			self.custom_previous_lead = frappe.db.get_value(
+				"CRM Lead",
+				{
+					"mobile_no": ["in", candidates],
+					"name": ["!=", self.name],
+					"status": ["in", CLOSED_LEAD_STAGES],
+				},
+				"name",
+				order_by="creation desc",
+			)
 
 	def _run_stage_side_effects(self):
 		old = self.get_doc_before_save()

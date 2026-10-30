@@ -14,7 +14,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import validate_email_address
 
-from crm.utils import parse_phone_number, phone_dedup_candidates
+from crm.utils import CLOSED_LEAD_STAGES, parse_phone_number, phone_dedup_candidates
 
 if TYPE_CHECKING:
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
@@ -129,9 +129,9 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 	Returns ``(open_match_name, closed_match_status)``. Exactly one of the
 	two is non-None on a match; both are None on a fresh number.
 
-	Closed leads (status type != "Open" — i.e. C4 Won, C6 Lost, Archived) deliberately
-	do NOT count as a dedup hit: the Phone Dedup server script's own message
-	directs callers to the Reactivation flow rather than silent re-attribution.
+	Non-Open leads still in play (e.g. C7) are reported as a closed match rather than
+	silently re-attributed. Leads in ``CLOSED_LEAD_STAGES`` (Won / Lost) are ignored, so
+	a returning customer gets a fresh lead linked to the old one by the controller.
 	"""
 	candidates = _phone_candidates(e164, national_number, raw)
 	open_statuses = frappe.get_all("CRM Lead Status", filters={"type": "Open"}, pluck="name")
@@ -147,7 +147,7 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 
 	closed_match = frappe.db.get_value(
 		"CRM Lead",
-		{"mobile_no": ["in", candidates]},
+		{"mobile_no": ["in", candidates], "status": ["not in", CLOSED_LEAD_STAGES]},
 		["name", "status"],
 		as_dict=True,
 	)

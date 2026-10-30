@@ -203,8 +203,8 @@ class TestCreateLeadDedup(_BaseWebsite):
 		self.assertEqual(res["name"], existing.name)
 		self.assertEqual(res["stage"], "C0")
 
-	def test_closed_match_c6_returns_closed_match_no_attribution(self):
-		"""C6 (Lost) lead → closed_match with stage; existing UTM untouched."""
+	def test_c6_lead_gets_new_linked_lead_without_touching_old(self):
+		"""Returning customer on a Lost (C6) number → fresh C0 lead linked back; old UTM untouched."""
 		closed = make_lead(
 			phone="+919812345012",
 			first_name="Lost",
@@ -212,19 +212,32 @@ class TestCreateLeadDedup(_BaseWebsite):
 			lost_reason="Chose Competitor",
 			custom_utm_source="original-campaign",
 		)
-		res = website.create_lead(
-			name="Resubmit",
-			mobile="+919812345012",
-			utm_source="new-campaign",  # MUST NOT overwrite
-		)
-		self.assertEqual(res["status"], "closed_match")
-		self.assertEqual(res["stage"], "C6")
-		self.assertNotIn("name", res)
-		# UTM stayed put — first-touch attribution preserved
+		original = frappe.flags.in_test
+		frappe.flags.in_test = False
+		try:
+			res = website.create_lead(
+				name="Resubmit",
+				mobile="+919812345012",
+				utm_source="new-campaign",
+			)
+		finally:
+			frappe.flags.in_test = original
+		self.assertEqual(res["status"], "created")
+		self.assertEqual(res["stage"], "C0")
+		self.assertNotEqual(res["name"], closed.name)
+		self.assertEqual(frappe.db.get_value("CRM Lead", res["name"], "custom_previous_lead"), closed.name)
 		self.assertEqual(
 			frappe.db.get_value("CRM Lead", closed.name, "custom_utm_source"),
 			"original-campaign",
 		)
+
+	def test_c7_lead_returns_closed_match(self):
+		"""C7 is non-Open but still in play — no new lead, no re-attribution."""
+		make_lead(phone="+919812345017", first_name="Fab", status="C7")
+		res = website.create_lead(name="Resubmit", mobile="+919812345017")
+		self.assertEqual(res["status"], "closed_match")
+		self.assertEqual(res["stage"], "C7")
+		self.assertNotIn("name", res)
 
 	def test_archived_lead_returns_closed_match_terminal(self):
 		"""Archived engagement is terminal even on an Open-type C-stage (website.py:237-238)."""
