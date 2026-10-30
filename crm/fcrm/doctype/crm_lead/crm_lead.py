@@ -648,6 +648,19 @@ class CRMLead(Document):
 			)
 
 		if status_changed:
+			if (
+				new_status in CLOSED_LEAD_STAGES
+				and old_status not in CLOSED_LEAD_STAGES
+				and self.email
+				and any("C1" in (row.get("from"), row.to) for row in self.status_change_log)
+			):
+				frappe.enqueue(
+					"crm.integrations.brevo.api.unenroll_from_sequence",
+					email=self.email,
+					lead_name=self.name,
+					enqueue_after_commit=True,
+				)
+
 			if new_status == "C1" and self.email:
 				frappe.enqueue(
 					"crm.integrations.brevo.api.enroll_in_sequence",
