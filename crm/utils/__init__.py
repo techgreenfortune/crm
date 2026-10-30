@@ -39,6 +39,11 @@ def parse_phone_number(phone_number, default_country="IN"):
 		return {"success": False, "error": str(e)}
 
 
+# Won / Lost. A mobile number may carry several leads in these stages but at most
+# one outside them.
+CLOSED_LEAD_STAGES = ("C4", "C6")
+
+
 def phone_dedup_candidates(raw: str, e164: str, national_number: str) -> list[str]:
 	"""All stored-format variants of an Indian mobile number for dedup lookup.
 

@@ -5,7 +5,7 @@ from frappe.query_builder import Order
 from pypika.functions import Replace
 from werkzeug.wrappers import Response
 
-from crm.utils import are_same_phone_number, parse_phone_number
+from crm.utils import CLOSED_LEAD_STAGES, are_same_phone_number, parse_phone_number
 
 
 def _get_recording_credentials(telephony_medium: str) -> tuple:
@@ -275,6 +275,8 @@ def get_contact(phone_number, country="IN", exact_match=False):
 		.orderby("modified", order=Order.desc)
 	)
 	leads = query.run(as_dict=True)
+	# A number can carry closed (Won/Lost) leads alongside its one live lead; route there.
+	leads.sort(key=lambda lead: lead.status in CLOSED_LEAD_STAGES)
 
 	if len(leads):
 		for lead in leads:
