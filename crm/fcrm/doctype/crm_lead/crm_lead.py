@@ -155,6 +155,19 @@ _C7_ROUTING_FIELDS = (
 _SUB_SOURCE_TRIGGER_SOURCES = frozenset({"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"})
 
 
+def _add_automation_comment(lead_name: str, content: str) -> None:
+	# comment_type "Comment" (not "Info") — only that type reaches the activity panel.
+	frappe.get_doc(
+		{
+			"doctype": "Comment",
+			"comment_type": "Comment",
+			"reference_doctype": "CRM Lead",
+			"reference_name": lead_name,
+			"content": f"[AUTOMATION] {content}",
+		}
+	).insert(ignore_permissions=True)
+
+
 def _is_unassigned(snapshot) -> bool:
 	"""Return True when a CRM Lead snapshot has no ``lead_owner``.
 
@@ -267,7 +280,30 @@ class CRMLead(Document):
 				"lead_owner",
 				self.lead_owner or "",
 			)
+		if self.has_value_changed("custom_previous_lead") and self.get("custom_previous_lead"):
+			self._comment_previous_lead_link()
 		self._run_stage_side_effects()
+
+	def _comment_previous_lead_link(self):
+		previous = frappe.db.get_value(
+			"CRM Lead",
+			self.custom_previous_lead,
+			["name", "lead_name", "status", "lead_owner", "creation"],
+			as_dict=True,
+		)
+		if not previous:
+			return
+		_add_automation_comment(
+			self.name,
+			f"An earlier lead exists with this mobile number: {previous.lead_name} ({previous.name}) — "
+			f"Stage {previous.status}, owner {previous.lead_owner or 'unassigned'}, "
+			f"created {frappe.utils.format_date(previous.creation)}. Linked as Previous Lead.",
+		)
+		_add_automation_comment(
+			previous.name,
+			f"A new lead was created with this mobile number: {self.lead_name} ({self.name}) — "
+			f"Stage {self.status}, owner {self.lead_owner or 'unassigned'}.",
+		)
 
 	def before_save(self):
 		self.apply_sla()

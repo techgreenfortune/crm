@@ -154,3 +154,22 @@ class TestLeadPhoneDedup(FrappeTestCase):
 		finally:
 			frappe.flags.in_test = original
 		self.assertEqual(lead.custom_previous_lead, old.name)
+
+	def test_linking_comments_on_both_leads(self):
+		old = make_lead(phone="9876543210", status="C6", lost_reason="Chose Competitor")
+		lead = self._insert_with_dedup("+919876543210")
+
+		def automation_comments(name):
+			return frappe.get_all(
+				"Comment",
+				filters={
+					"reference_doctype": "CRM Lead",
+					"reference_name": name,
+					"comment_type": "Comment",
+					"content": ["like", "[AUTOMATION]%"],
+				},
+				pluck="content",
+			)
+
+		self.assertTrue(any(old.name in c for c in automation_comments(lead.name)))
+		self.assertTrue(any(lead.name in c for c in automation_comments(old.name)))
