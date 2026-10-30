@@ -9,8 +9,10 @@ from crm.integrations.api import get_contact_by_phone_number
 from crm.permissions.recordings import validate_recording_url_change
 from crm.utils import seconds_to_duration
 
+NO_ANSWER_DISPOSITION = "No Answer / Not Reachable"
 
-class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
+
+class CRMCallLog(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -59,8 +61,7 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 		validate_recording_url_change(self)
 		self._validate_disposition()
 
-	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
-		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+	def on_update(self):
 		if self.flags.crm_historical_import:
 			return
 		self._run_disposition_stage_move()
@@ -91,12 +92,6 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 				_("You can only set the disposition on calls you handled."),
 				exc=frappe.PermissionError,
 				title=_("Not Allowed"),
-			)
-
-		if self.status == "Call Not Answered" and new_disposition != "No Answer / Not Reachable":
-			frappe.throw(
-				_("A Call Not Answered call can only be tagged 'No Answer / Not Reachable'."),
-				title=_("Disposition Not Allowed"),
 			)
 
 		lead_name = self._resolve_linked_lead()
@@ -208,14 +203,15 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 							changed = True
 						if changed:
 							lead.save(ignore_permissions=True)
-					except Exception:
+					except Exception as e:
 						frappe.log_error(
 							message=(
 								f"Lead {lead_name} could not auto-move for disposition {new_disposition!r}: "
 								f"current_status={current.get('status')}, "
 								f"current_lead_status={current.get('lead_status')}, "
 								f"next_status={next_status}, next_lead_status={next_lead_status}. "
-								"Lead validation rejected the change. Agent must finalise the stage manually."
+								f"Lead validation rejected the change: {e}. "
+								"Agent must finalise the stage manually.\n\n" + frappe.get_traceback()
 							),
 							title="Disposition stage move skipped — lead validation failed",
 						)
@@ -240,9 +236,16 @@ class CRMCallLog(Document):  # nosemgrep: frappe-after-save-controller-hook
 
 	def _trigger_no_answer_retry(self):
 		old = self.get_doc_before_save()
-		old_status = old.status if old else None
-
-		if self.status != "Call Not Answered" or old_status == "Call Not Answered":
+		agent_said_no_answer = self.disposition == NO_ANSWER_DISPOSITION and (
+			not old or old.disposition != NO_ANSWER_DISPOSITION
+		)
+		# Nobody took a missed incoming call, so Exotel's status is the only signal for it.
+		missed_incoming = (
+			self.type == "Incoming"
+			and self.status == "Call Not Answered"
+			and (not old or old.status != "Call Not Answered")
+		)
+		if not (agent_said_no_answer or missed_incoming):
 			return
 
 		lead_name = self._resolve_linked_lead()

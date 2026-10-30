@@ -7,7 +7,7 @@ Two-path design:
   task_reminder Brevo email the moment a task is saved with
   ``due_date`` matching today and ``reminder_sent = 0``.
 
-* **Path B — daily 9 PM cron** (``send_due_today_reminders_batch``):
+* **Path B — daily 9 AM cron** (``send_due_today_reminders_batch``):
   Catches tasks whose due_date arrives today but were created on
   earlier days (so no on-save event ever fired with due == today).
 
