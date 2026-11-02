@@ -6,9 +6,11 @@ from frappe import _
 
 from crm.integrations.brevo.brevo_handler import get_brevo_settings, send_email
 from crm.integrations.brevo.brevo_handler import is_brevo_enabled as _is_enabled
+from crm.utils import CLOSED_LEAD_STAGES
 
 BREVO_CONTACTS_API_URL = "https://api.brevo.com/v3/contacts"
 BREVO_ADD_TO_LIST_URL = "https://api.brevo.com/v3/contacts/lists/{list_id}/contacts/add"
+BREVO_REMOVE_FROM_LIST_URL = "https://api.brevo.com/v3/contacts/lists/{list_id}/contacts/remove"
 
 # Cap on the Retry-After header so a malicious or misconfigured value can't
 # stall a worker. Five seconds is well above Brevo's typical rate-limit
@@ -134,6 +136,45 @@ def enroll_in_sequence(email: str, lead_name: str) -> None:
 			).insert(ignore_permissions=True)
 		except Exception:
 			pass
+
+
+def unenroll_from_sequence(email: str, lead_name: str) -> None:
+	"""Remove the contact from the C1 nurture list once its lead is Won/Lost.
+
+	Skipped while another live lead shares the email — a returning customer's new lead
+	may itself be in C1, and the list is keyed by email, not by lead.
+	"""
+	if not email:
+		return
+	if frappe.db.exists(
+		"CRM Lead",
+		{"email": email, "name": ["!=", lead_name], "status": ["not in", CLOSED_LEAD_STAGES]},
+	):
+		return
+
+	settings = get_brevo_settings()
+	if not settings.enabled:
+		return
+	nurture_list_id = getattr(settings, "nurture_list_id", None)
+	if not nurture_list_id:
+		return
+
+	response = _post_with_retry(
+		BREVO_REMOVE_FROM_LIST_URL.format(list_id=nurture_list_id),
+		json={"emails": [email]},
+		headers={
+			"accept": "application/json",
+			"api-key": settings.get_password("api_key"),
+			"content-type": "application/json",
+		},
+	)
+	# Brevo answers 400 "Contact already removed from list and/or does not exist" when
+	# the email isn't on the list — that is the desired end state, not a failure.
+	if not response.ok and "already removed" not in response.text:
+		frappe.log_error(
+			f"Lead {lead_name}: status {response.status_code} — {response.text}",
+			"Brevo C1 Nurture Unenroll Failed",
+		)
 
 
 @frappe.whitelist()

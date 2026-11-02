@@ -75,14 +75,6 @@
     "details": null,
     "docstatus": 0,
     "doctype": "CRM Lead Source",
-    "modified": "2026-06-04 12:44:17.446364",
-    "name": "Google ads",
-    "source_name": "Google ads"
-  },
-  {
-    "details": null,
-    "docstatus": 0,
-    "doctype": "CRM Lead Source",
     "modified": "2026-05-08 00:00:00",
     "name": "Referral",
     "source_name": "Referral"
@@ -116,14 +108,6 @@
     "docstatus": 0,
     "doctype": "CRM Lead Source",
     "modified": "2026-05-08 00:00:00",
-    "name": "Direct",
-    "source_name": "Direct"
-  },
-  {
-    "details": null,
-    "docstatus": 0,
-    "doctype": "CRM Lead Source",
-    "modified": "2026-05-08 00:00:00",
     "name": "Paid",
     "source_name": "Paid"
   },
@@ -134,5 +118,13 @@
     "modified": "2026-05-08 00:00:00",
     "name": "Lead Spotting",
     "source_name": "Lead Spotting"
+  },
+  {
+    "details": null,
+    "docstatus": 0,
+    "doctype": "CRM Lead Source",
+    "modified": "2026-05-08 00:00:00",
+    "name": "Chat",
+    "source_name": "Chat"
   }
 ]

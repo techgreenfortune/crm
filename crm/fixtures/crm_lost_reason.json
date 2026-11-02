@@ -118,5 +118,149 @@
     "lost_reason": "Requirement Cancelled",
     "modified": "2026-05-04 18:20:58.035839",
     "name": "Requirement Cancelled"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "having a local vendor",
+    "modified": "2026-06-25 12:10:44.245983",
+    "name": "having a local vendor"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "lost to fabricator",
+    "modified": "2026-06-17 15:55:22.866988",
+    "name": "lost to fabricator"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "requirement closed",
+    "modified": "2026-06-17 12:51:17.128962",
+    "name": "requirement closed"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "no fesibility",
+    "modified": "2026-06-17 15:50:29.869460",
+    "name": "no fesibility"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Duplicate lead",
+    "modified": "2026-08-17 16:43:08.740560",
+    "name": "Duplicate lead"
+  },
+  {
+    "description": "<p><span>he is an builder and only works on aluminium projects</span><br><br></p>",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "aluminium",
+    "modified": "2026-10-01 18:17:26.009942",
+    "name": "aluminium"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Customer gone for wooden windows",
+    "modified": "2026-10-27 16:31:21.909519",
+    "name": "Customer gone for wooden windows"
+  },
+  {
+    "description": "<p>As per Arjun lost to system Aluminum</p>",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Went to aluminum",
+    "modified": "2026-06-18 11:20:54.235382",
+    "name": "Went to aluminum"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "reequirement closed",
+    "modified": "2026-06-23 13:41:22.710202",
+    "name": "reequirement closed"
+  },
+  {
+    "description": "<p>Customer needs urgent delivery. He said, I cannot choose you as your factory is in Hyderabad. His house Opening is on this month. He said, he might face problem if it is not delivered intime and fixed intime.  So he is choosing local now.</p>",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Customer cannot wait for 15 days",
+    "modified": "2026-10-07 13:58:25.483865",
+    "name": "Customer cannot wait for 15 days"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "out of service area",
+    "modified": "2026-10-08 12:42:57.797611",
+    "name": "out of service area"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "considering aluminum windows and doors instead of UPVC.",
+    "modified": "2026-10-13 16:25:40.027624",
+    "name": "considering aluminum windows and doors instead of UPVC."
+  },
+  {
+    "description": "The prospect found the pricing to be too high or not competitive.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Pricing",
+    "modified": "2026-05-23 13:00:40.129161",
+    "name": "Pricing"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Local fabricator",
+    "modified": "2026-08-24 11:48:53.821596",
+    "name": "Local fabricator"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "not responding",
+    "modified": "2026-06-17 12:54:04.450940",
+    "name": "not responding"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Unserviceable Location",
+    "modified": "2026-06-25 14:53:31.780843",
+    "name": "Unserviceable Location"
+  },
+  {
+    "description": "The prospect did not have the budget to proceed with the purchase.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Budget Constraints",
+    "modified": "2026-05-23 13:00:40.133952",
+    "name": "Budget Constraints"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "No requirement",
+    "modified": "2026-06-24 17:03:43.732822",
+    "name": "No requirement"
   }
 ]

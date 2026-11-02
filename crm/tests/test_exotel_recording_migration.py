@@ -539,11 +539,11 @@ class TestExotelMigrationFrappe(RecordingConfig, FrappeTestCase):
 			patch.object(CRMCallLog, "_trigger_no_answer_retry") as retry,
 		):
 			log.flags.crm_historical_import = True
-			log.after_save()
+			log.on_update()
 			stage.assert_not_called()
 			retry.assert_not_called()
 			log.flags.crm_historical_import = False
-			log.after_save()
+			log.on_update()
 			stage.assert_called_once()
 			retry.assert_called_once()
 

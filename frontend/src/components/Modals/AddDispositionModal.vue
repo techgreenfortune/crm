@@ -80,8 +80,6 @@ import {
 } from 'frappe-ui'
 import { computed, ref, watch } from 'vue'
 
-const NO_ANSWER = 'No Answer / Not Reachable'
-
 const props = defineProps({
   callLog: { type: Object, required: true },
 })
@@ -116,16 +114,12 @@ const dispositions = createResource({
   auto: true,
 })
 
-// Same choices as the call popup: an answered call can't be "no answer", any other outcome only can.
 const dispositionOptions = computed(() => [
   { label: __('Select a disposition'), value: '' },
-  ...(dispositions.data || [])
-    .filter((d) =>
-      props.callLog.status === 'Completed'
-        ? d.name !== NO_ANSWER
-        : d.name === NO_ANSWER,
-    )
-    .map((d) => ({ label: d.label || d.name, value: d.name })),
+  ...(dispositions.data || []).map((d) => ({
+    label: d.label || d.name,
+    value: d.name,
+  })),
 ])
 
 const selected = computed(() =>

@@ -306,6 +306,7 @@ scheduler_events = {
 	"hourly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_hourly"],
 	"monthly_long": ["crm.lead_syncing.background_sync.sync_leads_from_sources_monthly"],
 	"cron": {
+		"0 9 * * *": ["crm.api.tasks.send_due_today_reminders_batch"],
 		"*/5 * * * *": [
 			"crm.lead_syncing.background_sync.sync_leads_from_sources_5_minutes",
 			"crm.integrations.exotel.handler.reconcile_stale_call_logs",
@@ -314,13 +315,6 @@ scheduler_events = {
 		"*/15 * * * *": ["crm.lead_syncing.background_sync.sync_leads_from_sources_15_minutes"],
 	},
 }
-
-# Task reminder daily-catch-up cron lives in a Server Script (Scheduler Event)
-# named "CRM Task — Daily Due-Today Reminder Batch" so admins can change the
-# schedule from the desk without a deploy.  See script body documented in
-# CRM_GUIDE.md.  ``send_due_today_reminders_batch`` is kept in crm/api/tasks.py
-# as a callable utility for ad-hoc admin use (bench execute), but is NOT
-# auto-fired from this file.
 
 # Testing
 # -------

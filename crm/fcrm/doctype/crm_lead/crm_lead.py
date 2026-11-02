@@ -13,7 +13,7 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
 from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
-from crm.utils import parse_phone_number, phone_dedup_candidates
+from crm.utils import CLOSED_LEAD_STAGES, parse_phone_number, phone_dedup_candidates
 
 # Fields non-owners are explicitly allowed to change (stage transitions + Lost flow).
 # Everything else in self.meta.fields is blocked for non-owners.
@@ -89,7 +89,7 @@ _QUOTE_LEAD_FIELDS = frozenset(
 )
 
 # Stage / engagement transition maps — used by both _apply_stage_transition_guard
-# (before_save) and _run_stage_side_effects (after_save).
+# (before_save) and _run_stage_side_effects (on_update).
 _ALLOWED_STATUS_TRANSITIONS: dict[str, set] = {
 	"C0": {"C1", "C2", "C6", "C7"},
 	"C1": {"C2", "C6", "C7"},
@@ -155,6 +155,19 @@ _C7_ROUTING_FIELDS = (
 _SUB_SOURCE_TRIGGER_SOURCES = frozenset({"Referral", "Channel Partner", "Event", "Chat", "Lead Spotting"})
 
 
+def _add_automation_comment(lead_name: str, content: str) -> None:
+	# comment_type "Comment" (not "Info") — only that type reaches the activity panel.
+	frappe.get_doc(
+		{
+			"doctype": "Comment",
+			"comment_type": "Comment",
+			"reference_doctype": "CRM Lead",
+			"reference_name": lead_name,
+			"content": f"[AUTOMATION] {content}",
+		}
+	).insert(ignore_permissions=True)
+
+
 def _is_unassigned(snapshot) -> bool:
 	"""Return True when a CRM Lead snapshot has no ``lead_owner``.
 
@@ -167,7 +180,7 @@ def _is_unassigned(snapshot) -> bool:
 	return bool(snapshot) and not snapshot.get("lead_owner")
 
 
-class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
+class CRMLead(Document):
 	# begin: auto-generated types
 	# This code is auto-generated. Do not modify anything in this block.
 
@@ -267,10 +280,30 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 				"lead_owner",
 				self.lead_owner or "",
 			)
-
-	def after_save(self):  # nosemgrep: frappe-after-save-controller-hook
-		# after_save is a valid Frappe v15 hook (alias of on_update); rule docs are v13-era.
+		if self.has_value_changed("custom_previous_lead") and self.get("custom_previous_lead"):
+			self._comment_previous_lead_link()
 		self._run_stage_side_effects()
+
+	def _comment_previous_lead_link(self):
+		previous = frappe.db.get_value(
+			"CRM Lead",
+			self.custom_previous_lead,
+			["name", "lead_name", "status", "lead_owner", "creation"],
+			as_dict=True,
+		)
+		if not previous:
+			return
+		_add_automation_comment(
+			self.name,
+			f"An earlier lead exists with this mobile number: {previous.lead_name} ({previous.name}) — "
+			f"Stage {previous.status}, owner {previous.lead_owner or 'unassigned'}, "
+			f"created {frappe.utils.format_date(previous.creation)}. Linked as Previous Lead.",
+		)
+		_add_automation_comment(
+			previous.name,
+			f"A new lead was created with this mobile number: {self.lead_name} ({self.name}) — "
+			f"Stage {self.status}, owner {self.lead_owner or 'unassigned'}.",
+		)
 
 	def before_save(self):
 		self.apply_sla()
@@ -492,7 +525,12 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			return
 		if not self.mobile_no:
 			return
-		if not self.has_value_changed("mobile_no"):
+		mobile_changed = self.has_value_changed("mobile_no")
+		old = self.get_doc_before_save()
+		reopened = (
+			old is not None and old.status in CLOSED_LEAD_STAGES and self.status not in CLOSED_LEAD_STAGES
+		)
+		if not (mobile_changed or reopened):
 			return
 
 		parsed = parse_phone_number(self.mobile_no)
@@ -506,27 +544,42 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 		# Match across all stored formats (+91 / 91 / national / 0-prefix), not just
 		# exact E164 — legacy/imported rows may be stored un-normalized.
 		candidates = phone_dedup_candidates(self.mobile_no, self.mobile_no, parsed["national_number"])
-		existing = frappe.db.get_value(
+
+		# A number may have many closed (Won/Lost) leads — a returning customer's new
+		# project — but never more than one lead still in play. A closed lead (e.g. a
+		# historical import) can't add a second live one, so it skips the check.
+		existing = self.status not in CLOSED_LEAD_STAGES and frappe.db.get_value(
 			"CRM Lead",
-			{"mobile_no": ["in", candidates], "name": ["!=", self.name]},
+			{
+				"mobile_no": ["in", candidates],
+				"name": ["!=", self.name],
+				"status": ["not in", CLOSED_LEAD_STAGES],
+			},
 			["name", "lead_name", "status", "lead_status"],
 			as_dict=True,
 		)
 		if existing:
-			hint = {
-				"Cold-Unresponsive": "Use the Reactivation flow.",
-				"Archived": "Use the Reactivation flow.",
-			}.get(existing.lead_status) or {
-				"C6": "Lead is marked Lost — investigate before creating a new lead.",
-				"C4": "This number is already a customer.",
-			}.get(existing.status, "")
 			message = (
 				f"A lead with mobile {self.mobile_no} already exists: "
 				f"{existing.lead_name} ({existing.name}) — Stage: {existing.status} / {existing.lead_status}."
 			)
-			if hint:
-				message += " " + hint
+			if existing.lead_status in ("Cold-Unresponsive", "Archived"):
+				message += " Use the Reactivation flow."
+			elif reopened and not mobile_changed:
+				message += " Continue on that lead instead of reopening this one."
 			frappe.throw(_(message), title=_("Duplicate Mobile Number"))
+
+		if mobile_changed and not self.get("custom_previous_lead"):
+			self.custom_previous_lead = frappe.db.get_value(
+				"CRM Lead",
+				{
+					"mobile_no": ["in", candidates],
+					"name": ["!=", self.name],
+					"status": ["in", CLOSED_LEAD_STAGES],
+				},
+				"name",
+				order_by="creation desc",
+			)
 
 	def _run_stage_side_effects(self):
 		old = self.get_doc_before_save()
@@ -595,6 +648,19 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			)
 
 		if status_changed:
+			if (
+				new_status in CLOSED_LEAD_STAGES
+				and old_status not in CLOSED_LEAD_STAGES
+				and self.email
+				and any("C1" in (row.get("from"), row.to) for row in self.status_change_log)
+			):
+				frappe.enqueue(
+					"crm.integrations.brevo.api.unenroll_from_sequence",
+					email=self.email,
+					lead_name=self.name,
+					enqueue_after_commit=True,
+				)
+
 			if new_status == "C1" and self.email:
 				frappe.enqueue(
 					"crm.integrations.brevo.api.enroll_in_sequence",
@@ -690,7 +756,7 @@ class CRMLead(Document):  # nosemgrep: frappe-after-save-controller-hook
 			# — stays consistent with the DB. update_modified=False keeps `modified`
 			# unchanged so the client's cached timestamp doesn't silently go stale and
 			# trip a spurious TimestampMismatchError on the user's next save. This runs
-			# in after_save (post db_update), so a raw frappe.db.set_value here would
+			# in on_update (post db_update), so a raw frappe.db.set_value here would
 			# bump the DB `modified` without the client ever seeing it.
 			self.db_set("custom_reactivated_at", frappe.utils.now_datetime(), update_modified=False)
 

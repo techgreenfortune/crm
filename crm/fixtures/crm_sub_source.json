@@ -146,9 +146,9 @@
   {
     "docstatus": 0,
     "doctype": "CRM Sub Source",
-    "modified": "2026-06-19 11:26:43.125185",
+    "modified": "2026-05-04 18:26:09.483780",
     "name": "iDAC Mumbai 2026",
-    "source": "Events",
+    "source": "Event",
     "sub_source_name": "iDAC Mumbai 2026"
   },
   {
@@ -202,14 +202,6 @@
   {
     "docstatus": 0,
     "doctype": "CRM Sub Source",
-    "modified": "2026-06-04 14:35:51.171561",
-    "name": "AceTech Hyderabad 2026",
-    "source": "Events",
-    "sub_source_name": "AceTech Hyderabad 2026"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
     "modified": "2026-05-04 18:26:09.468784",
     "name": "Showroom Walk-in",
     "source": "Direct",
@@ -226,34 +218,10 @@
   {
     "docstatus": 0,
     "doctype": "CRM Sub Source",
-    "modified": "2026-05-04 18:26:09.476900",
-    "name": "Employee",
-    "source": "Referral",
-    "sub_source_name": "Employee"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
-    "modified": "2026-05-04 18:26:09.483780",
-    "name": "iDAC Mumbai 2026",
-    "source": "Event",
-    "sub_source_name": "iDAC Mumbai 2026"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
     "modified": "2026-05-04 18:26:09.479189",
     "name": "Future Living",
     "source": "Channel Partner",
     "sub_source_name": "Future Living"
-  },
-  {
-    "docstatus": 0,
-    "doctype": "CRM Sub Source",
-    "modified": "2026-05-04 18:26:09.473480",
-    "name": "Customer",
-    "source": "Referral",
-    "sub_source_name": "Customer"
   },
   {
     "docstatus": 0,
@@ -310,5 +278,61 @@
     "name": "IndiFrame Retail",
     "source": "Lead Spotting",
     "sub_source_name": "IndiFrame Retail"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-05-04 18:26:09.475766",
+    "name": "Freelancer",
+    "source": "Referral",
+    "sub_source_name": "Freelancer"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-07-24 10:22:01.683506",
+    "name": "Sri Gayathri Creations",
+    "source": "Channel Partner",
+    "sub_source_name": "Sri Gayathri Creations"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-05-04 18:26:09.480324",
+    "name": "Home 360 Degree",
+    "source": "Channel Partner",
+    "sub_source_name": "Home 360 Degree"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-07-03 12:01:47.601752",
+    "name": "GF Website",
+    "source": "Direct",
+    "sub_source_name": "GF Website"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-10-03 13:21:30.270268",
+    "name": "CREDAI RJA 26",
+    "source": "Events",
+    "sub_source_name": "CREDAI RJA 26"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-07-13 12:47:52.126911",
+    "name": "Projects",
+    "source": "Lead Spotting",
+    "sub_source_name": "Projects"
+  },
+  {
+    "docstatus": 0,
+    "doctype": "CRM Sub Source",
+    "modified": "2026-07-13 12:47:53.640433",
+    "name": "Retail",
+    "source": "Lead Spotting",
+    "sub_source_name": "Retail"
   }
 ]

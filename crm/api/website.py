@@ -14,7 +14,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import validate_email_address
 
-from crm.utils import parse_phone_number, phone_dedup_candidates
+from crm.utils import CLOSED_LEAD_STAGES, parse_phone_number, phone_dedup_candidates
 
 if TYPE_CHECKING:
 	from crm.fcrm.doctype.crm_lead.crm_lead import CRMLead
@@ -129,9 +129,9 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 	Returns ``(open_match_name, closed_match_status)``. Exactly one of the
 	two is non-None on a match; both are None on a fresh number.
 
-	Closed leads (status type != "Open" — i.e. C4 Won, C6 Lost, Archived) deliberately
-	do NOT count as a dedup hit: the Phone Dedup server script's own message
-	directs callers to the Reactivation flow rather than silent re-attribution.
+	Non-Open leads still in play (e.g. C7) are reported as a closed match rather than
+	silently re-attributed. Leads in ``CLOSED_LEAD_STAGES`` (Won / Lost) are ignored, so
+	a returning customer gets a fresh lead linked to the old one by the controller.
 	"""
 	candidates = _phone_candidates(e164, national_number, raw)
 	open_statuses = frappe.get_all("CRM Lead Status", filters={"type": "Open"}, pluck="name")
@@ -147,7 +147,7 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 
 	closed_match = frappe.db.get_value(
 		"CRM Lead",
-		{"mobile_no": ["in", candidates]},
+		{"mobile_no": ["in", candidates], "status": ["not in", CLOSED_LEAD_STAGES]},
 		["name", "status"],
 		as_dict=True,
 	)
@@ -155,6 +155,23 @@ def _find_existing_lead(e164: str, national_number: str, raw: str) -> tuple[str 
 		return None, closed_match.status
 
 	return None, None
+
+
+_NOT_REOPENED_LINE = "No new lead created and this lead was not reopened — follow up manually."
+
+
+def _comment_on_closed_match(e164: str, national_number: str, raw: str, trail: list[str]) -> None:
+	"""Record a submission that hit a non-Open lead still in play (e.g. C7), so it isn't lost."""
+	name = frappe.db.get_value(
+		"CRM Lead",
+		{
+			"mobile_no": ["in", _phone_candidates(e164, national_number, raw)],
+			"status": ["not in", CLOSED_LEAD_STAGES],
+		},
+		"name",
+	)
+	if name:
+		frappe.get_doc("CRM Lead", name).add_comment("Comment", "<br>".join([*trail, _NOT_REOPENED_LINE]))
 
 
 def _trail_parts(message: str | None, payload: dict) -> list[str]:
@@ -357,6 +374,14 @@ def create_lead(
 
 	open_name, closed_stage = _find_existing_lead(e164, national_number, mobile)
 
+	last_touch_line = _last_touch_trail_line(last_touch)
+	trail = [
+		"[API_SUBMIT] Re-submission from indiframe.com contact form.",
+		*_trail_parts(message, payload),
+		*([last_touch_line] if last_touch_line else []),
+		*extra_lines,
+	]
+
 	if open_name:
 		# Intentionally do not overwrite stored email / pincode / UTM / etc.
 		# on the existing lead — preserve first-touch attribution. The new
@@ -365,16 +390,10 @@ def create_lead(
 
 		# Archived engagement is terminal even on an Open-typed C-stage.
 		if lead.lead_status == "Archived":
+			lead.add_comment("Comment", "<br>".join([*trail, _NOT_REOPENED_LINE]))
 			return {"status": "closed_match", "stage": lead.status}
 
 		last_touch_changed = _update_last_touch(lead, last_touch)
-		last_touch_line = _last_touch_trail_line(last_touch)
-		trail = [
-			"[API_SUBMIT] Re-submission from indiframe.com contact form.",
-			*_trail_parts(message, payload),
-			*([last_touch_line] if last_touch_line else []),
-			*extra_lines,
-		]
 
 		# Auto-reactivate Cold engagement; Script 3 stamps custom_reactivated_at,
 		# Script 1 enforces invariants. C-stage preserved per PRD §7.
@@ -396,6 +415,7 @@ def create_lead(
 	if closed_stage:
 		# Don't leak the closed lead's name; website should prompt the user
 		# to call sales rather than silently re-submit.
+		_comment_on_closed_match(e164, national_number, mobile, trail)
 		return {"status": "closed_match", "stage": closed_stage}
 
 	first_name, last_name = _split_name(name)
@@ -452,18 +472,12 @@ def create_lead(
 		open_name, closed_stage = _find_existing_lead(e164, national_number, mobile)
 		if open_name:
 			lead = frappe.get_doc("CRM Lead", open_name)
-			last_touch_line = _last_touch_trail_line(last_touch)
-			trail = [
-				"[API_SUBMIT] Re-submission from indiframe.com contact form.",
-				*_trail_parts(message, payload),
-				*([last_touch_line] if last_touch_line else []),
-				*extra_lines,
-			]
 			if _update_last_touch(lead, last_touch):
 				lead.save(ignore_permissions=True)
 			lead.add_comment("Comment", "<br>".join(trail))
 			return {"status": "existing", "name": open_name, "stage": lead.status}
 		if closed_stage:
+			_comment_on_closed_match(e164, national_number, mobile, trail)
 			return {"status": "closed_match", "stage": closed_stage}
 		raise
 
