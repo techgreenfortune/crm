@@ -2,7 +2,13 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, REVIEWER_ROLES, TIER1_FULL_RW
+from crm.permissions.role_config import (
+	DOWNSTREAM_SCOPE_ROLES,
+	QUOTE_REVERT_LOCKED_STAGES,
+	QUOTE_REVERT_ROLES,
+	REVIEWER_ROLES,
+	TIER1_FULL_RW,
+)
 
 # Estimation Team uploads quotes for any lead (including closed ones), so they
 # bypass the lead-scoped filter on top of the tier-1 bypasses.
@@ -488,6 +494,8 @@ class CRMQuoteRequest(Document):
 		old_doc = self.get_doc_before_save()
 		if old_doc is None or old_doc.status == self.status:
 			return
+		if old_doc.status == "Accepted":
+			self._guard_accepted_reversal()
 		if self.status not in ("Accepted", "Revision Requested"):
 			return
 
@@ -506,4 +514,25 @@ class CRMQuoteRequest(Document):
 					"Only the Lead Owner or an authorized manager can Accept or Request Revision on a quote."
 				),
 				frappe.PermissionError,
+			)
+
+	def _guard_accepted_reversal(self):
+		"""Managers only, and only while the lead is not in a terminal stage (C4/C6)."""
+		user = frappe.session.user
+		if user == "Administrator":
+			return
+
+		roles = set(frappe.get_roles(user))
+		if not (roles & QUOTE_REVERT_ROLES):
+			frappe.throw(
+				_("Only a manager can move an Accepted quote back."),
+				frappe.PermissionError,
+			)
+		if "System Manager" in roles:
+			return
+
+		if frappe.db.get_value("CRM Lead", self.lead, "status") in QUOTE_REVERT_LOCKED_STAGES:
+			frappe.throw(
+				_("An Accepted quote cannot be moved back once the lead is Won (C4) or Lost (C6)."),
+				title=_("Quote Locked"),
 			)

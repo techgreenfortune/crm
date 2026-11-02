@@ -49,7 +49,20 @@ def after_install(force=False):
 	create_default_manager_dashboard(force)
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
+	add_manager_data_import_permissions()
 	frappe.db.commit()
+
+
+def add_manager_data_import_permissions():
+	"""Data Import is System Manager-only by default; managers need it to use Import on CRM Lead."""
+	from frappe.permissions import add_permission, update_permission_property
+
+	for role in ("Sales Head", "Sales Coordinator"):
+		for doctype in ("Data Import", "Data Import Log"):
+			add_permission(doctype, role, 0)
+		for ptype in ("read", "write", "create", "delete"):
+			update_permission_property("Data Import", role, 0, ptype, 1)
+		update_permission_property("Data Import Log", role, 0, "read", 1)
 
 
 def add_default_lead_statuses():

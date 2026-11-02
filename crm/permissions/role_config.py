@@ -123,6 +123,12 @@ ASSIGN_BLOCKED_ROLES: frozenset[str] = frozenset({"B2F Team", "Estimation Team"}
 # can review quotes for their SEs' leads without being the lead_owner.
 REVIEWER_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
 
+# Managers (tier-1; ASM/RSM are not managers) allowed to move an Accepted quote back (e.g. to Quote Received) while the lead
+# is not in a terminal stage. C4 (Won) and C6 (Lost) are terminal, so quotes there stay locked;
+# C7 (Forwarded to Fabricator) is not — it still resolves to C4 or C6. Management is read-only.
+QUOTE_REVERT_ROLES: frozenset[str] = TIER1_FULL_RW - {"Management"}
+QUOTE_REVERT_LOCKED_STAGES: frozenset[str] = frozenset({"C4", "C6"})
+
 # Roles that occupy non-leaf positions in CRM Sales Hierarchy: tier-1 sits at
 # the root, downstream-scoped roles (RSM / ASM) sit in the middle with reports
 # below them. Used by ``crm.api.user.update_user_role`` to block demoting a
