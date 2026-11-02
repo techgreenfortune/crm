@@ -95,6 +95,31 @@ class TestAcceptedQuoteRevert(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			qr.save(ignore_permissions=True)
 
+	def test_manager_can_request_revision_with_reason(self):
+		qr = self._accepted_qr()
+		self._as("qr-head7@example.com", "Sales Head")
+		qr = frappe.get_doc("CRM Quote Request", qr.name)
+		qr.status = "Revision Requested"
+		qr.notes = "Customer wants a different finish"
+		qr.save(ignore_permissions=True)
+
+		self.assertTrue(frappe.db.get_value("CRM Quote Request", qr.name, "is_superseded"))
+		self.assertTrue(
+			frappe.db.exists(
+				"CRM Quote Request",
+				{"lead": self.lead.name, "status": "Pending", "notes": "Customer wants a different finish"},
+			)
+		)
+
+	def test_notes_stay_frozen_when_moving_back_to_quote_received(self):
+		qr = self._accepted_qr()
+		self._as("qr-head8@example.com", "Sales Head")
+		qr = frappe.get_doc("CRM Quote Request", qr.name)
+		qr.status = "Quote Received"
+		qr.notes = "sneaky edit"
+		with self.assertRaises(frappe.ValidationError):
+			qr.save(ignore_permissions=True)
+
 	def test_move_back_does_not_resync_lead(self):
 		qr = self._accepted_qr()
 		frappe.db.set_value("CRM Lead", self.lead.name, "custom_tentative_value", 1)

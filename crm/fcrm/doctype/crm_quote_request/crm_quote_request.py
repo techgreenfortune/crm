@@ -540,14 +540,20 @@ class CRMQuoteRequest(Document):
 				title=_("Invalid Status"),
 			)
 
+		editable = {"status"}
+		if self.status == "Revision Requested":
+			editable |= {"notes", "images"}
+
 		frozen = [
 			df.fieldname
 			for df in self.meta.fields
-			if df.fieldname != "status"
+			if df.fieldname not in editable
 			and df.fieldtype not in frappe.model.no_value_fields
 			and cstr(self.get(df.fieldname)) != cstr(old.get(df.fieldname))
 		]
 		for df in self.meta.get_table_fields():
+			if df.fieldname in editable:
+				continue
 			if [r.name for r in self.get(df.fieldname)] != [r.name for r in old.get(df.fieldname)]:
 				frozen.append(df.fieldname)
 		if frozen:
