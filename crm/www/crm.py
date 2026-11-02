@@ -61,6 +61,7 @@ def get_boot():
 			"opsgate_url": frappe.db.get_single_value("FCRM Settings", "opsgate_url") or "",
 			"user_roles": frappe.get_roles(),
 			"reviewer_roles": _get_reviewer_roles(),
+			"quote_revert_roles": _get_quote_revert_roles(),
 			"opsgate_login_redirect": bool(
 				frappe.db.get_single_value("FCRM Settings", "opsgate_login_redirect")
 			),
@@ -72,6 +73,12 @@ def _get_reviewer_roles():
 	from crm.permissions.role_config import REVIEWER_ROLES
 
 	return sorted(REVIEWER_ROLES)
+
+
+def _get_quote_revert_roles():
+	from crm.permissions.role_config import QUOTE_REVERT_ROLES
+
+	return sorted(QUOTE_REVERT_ROLES)
 
 
 def get_default_route():
