@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import cstr
 
 from crm.permissions.role_config import (
 	DOWNSTREAM_SCOPE_ROLES,
@@ -9,6 +10,8 @@ from crm.permissions.role_config import (
 	REVIEWER_ROLES,
 	TIER1_FULL_RW,
 )
+
+ACCEPTED_REVERT_TARGETS = frozenset({"Quote Received", "Revision Requested"})
 
 # Estimation Team uploads quotes for any lead (including closed ones), so they
 # bypass the lead-scoped filter on top of the tier-1 bypasses.
@@ -99,6 +102,7 @@ class CRMQuoteRequest(Document):
 		self._validate_positive_quote_values()
 
 	def validate(self):
+		self._guard_accepted_edits()
 		self._guard_status_transition()
 		if self.status == "Revision Requested" and not (self.notes or "").strip():
 			frappe.throw(
@@ -112,11 +116,15 @@ class CRMQuoteRequest(Document):
 
 	def on_update(self):
 		self._sync_tentative_value_to_lead()
-		if self.has_value_changed("status") and self.status == "Quote Received":
+		if self.has_value_changed("status") and self.status == "Quote Received" and not self._moved_back():
 			try:
 				frappe.get_doc("Notification", "Quote Received — Review & Share").send(self)
 			except Exception:
 				frappe.log_error(title="Quote Received notification failed", message=frappe.get_traceback())
+
+	def _moved_back(self):
+		old = self.get_doc_before_save()
+		return bool(old and old.status == "Accepted")
 
 	def _check_superseded(self):
 		if self.is_superseded:
@@ -230,7 +238,11 @@ class CRMQuoteRequest(Document):
 		if new_status not in ("Quote Received", "Revision Requested", "Accepted"):
 			return
 
-		if new_status == "Quote Received":
+		if old_status == "Accepted" and new_status == "Quote Received":
+			content = (
+				f"[AUTOMATION] Quote moved back from Accepted to Quote Received by {frappe.session.user}."
+			)
+		elif new_status == "Quote Received":
 			parts = []
 			if self.quote_value:
 				parts.append(f"Value: {self.quote_value}")
@@ -405,7 +417,7 @@ class CRMQuoteRequest(Document):
 		old = self.get_doc_before_save()
 		old_status = old.status if old else None
 
-		if old_status != self.status and self.status == "Quote Received":
+		if old_status != self.status and self.status == "Quote Received" and old_status != "Accepted":
 			updates = _build_lead_updates(self)
 			if updates:
 				frappe.db.set_value("CRM Lead", self.lead, updates)
@@ -516,8 +528,38 @@ class CRMQuoteRequest(Document):
 				frappe.PermissionError,
 			)
 
+	def _guard_accepted_edits(self):
+		"""An Accepted quote is frozen except for its status (moved back by a manager)."""
+		old = self.get_doc_before_save()
+		if old is None or old.status != "Accepted":
+			return
+
+		if self.status not in ACCEPTED_REVERT_TARGETS | {"Accepted"}:
+			frappe.throw(
+				_("An Accepted quote can only be moved back to Quote Received or Revision Requested."),
+				title=_("Invalid Status"),
+			)
+
+		frozen = [
+			df.fieldname
+			for df in self.meta.fields
+			if df.fieldname != "status"
+			and df.fieldtype not in frappe.model.no_value_fields
+			and cstr(self.get(df.fieldname)) != cstr(old.get(df.fieldname))
+		]
+		for df in self.meta.get_table_fields():
+			if [r.name for r in self.get(df.fieldname)] != [r.name for r in old.get(df.fieldname)]:
+				frozen.append(df.fieldname)
+		if frozen:
+			frappe.throw(
+				_("An Accepted quote cannot be edited. Move it back first. Changed: {0}").format(
+					", ".join(frozen)
+				),
+				title=_("Quote Locked"),
+			)
+
 	def _guard_accepted_reversal(self):
-		"""Managers only, and only while the lead is not in a terminal stage (C4/C6)."""
+		"""Managers only (Administrator excepted), and only while the lead is not at C4/C6."""
 		user = frappe.session.user
 		if user == "Administrator":
 			return
@@ -528,9 +570,6 @@ class CRMQuoteRequest(Document):
 				_("Only a manager can move an Accepted quote back."),
 				frappe.PermissionError,
 			)
-		if "System Manager" in roles:
-			return
-
 		if frappe.db.get_value("CRM Lead", self.lead, "status") in QUOTE_REVERT_LOCKED_STAGES:
 			frappe.throw(
 				_("An Accepted quote cannot be moved back once the lead is Won (C4) or Lost (C6)."),

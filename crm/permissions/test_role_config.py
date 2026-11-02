@@ -24,6 +24,7 @@ EXPECTED_ROLES = frozenset(
 		"Sales Coordinator",
 		"RSM",
 		"ASM",
+		"Dealer",
 		"Sales Executive",
 		"Project Sales Executive",
 		"Spotter",
@@ -42,7 +43,7 @@ class TestRoleConfigStructure(IntegrationTestCase):
 
 	def test_role_rank_has_expected_roles(self):
 		self.assertEqual(set(ROLE_RANK.keys()), EXPECTED_ROLES)
-		self.assertEqual(len(ROLE_RANK), 14)
+		self.assertEqual(len(ROLE_RANK), 15)
 
 	def test_role_priority_covers_every_role_exactly_once(self):
 		self.assertEqual(set(ROLE_PRIORITY), EXPECTED_ROLES)
