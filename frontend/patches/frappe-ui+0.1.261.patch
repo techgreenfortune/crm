@@ -1,0 +1,55 @@
+diff --git a/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue b/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
+index adad72d..e85ccb3 100644
+--- a/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
++++ b/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
+@@ -21,6 +21,22 @@
+             <div class="leading-5">
+                 Import data into your system using CSV files or Google Sheets.
+             </div>
++            <div v-if="props.data?.name" class="pt-2 font-medium text-ink-gray-9">
++                {{ importType }}
++            </div>
++            <div v-else class="flex items-center space-x-2 pt-2">
++                <Button
++                    v-for="type in importTypes"
++                    :key="type"
++                    :variant="importType === type ? 'solid' : 'outline'"
++                    @click="importType = type"
++                >
++                    {{ type }}
++                </Button>
++            </div>
++            <div v-if="importType === 'Update Existing Records'" class="leading-5 text-ink-gray-5">
++                Keep the ID column in your CSV. Rows are matched to existing records by ID. Export the records from the list view to get their IDs.
++            </div>
+         </div>
+ 
+         <div class="space-y-4">
+@@ -176,6 +192,8 @@ const showFileSelector = ref(true)
+ const showSheetSelector = ref(false)
+ const showLibrarySelector = ref(false)
+ const router = useRouter()
++const importTypes = ['Insert New Records', 'Update Existing Records']
++const importType = ref<string>('Insert New Records')
+ 
+ const props = defineProps<{
+     dataImports: DataImports
+@@ -245,7 +263,7 @@ const saveImport = () => {
+ const createImport = () => {
+     props.dataImports.insert.submit({
+         reference_doctype: props.doctype!,
+-        import_type: "Insert New Records",
++        import_type: importType.value,
+         mute_emails: true,
+         status: 'Pending',
+         google_sheets_url: googleSheet.value.trim(),
+@@ -373,6 +391,9 @@ const disableContinueButton = computed(() => {
+ 
+ watch(() => props.data, () => {
+     if (props.data) {
++        if (props.data.import_type) {
++            importType.value = props.data.import_type
++        }
+         if (props.data.import_file) {
+             importFile.value = props.data.import_file
+         } else if (props.data.google_sheets_url) {
