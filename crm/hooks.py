@@ -400,6 +400,7 @@ after_migrate = [
 	# add_crm_lead_property_setters() (e.g. read_only_depends_on value changes)
 	# propagate without an after_install path. The function is upsert-aware.
 	"crm.install.add_property_setter",
+	"crm.install.add_manager_data_import_permissions",
 ]
 
 standard_dropdown_items = [
