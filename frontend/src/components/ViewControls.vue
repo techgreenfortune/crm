@@ -15,16 +15,6 @@
         orientation="horizontal"
       >
         <div
-          v-for="filter in quickFilterList"
-          :key="filter.fieldname"
-          class="m-1 min-w-36"
-        >
-          <QuickFilterField
-            :filter="filter"
-            @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
-          />
-        </div>
-        <div
           v-if="
             doctype === 'CRM Lead' &&
             visibleUsers.data &&
@@ -43,6 +33,16 @@
                 : ''
             "
             @update:model-value="applyOwners"
+          />
+        </div>
+        <div
+          v-for="filter in quickFilterList"
+          :key="filter.fieldname"
+          class="m-1 min-w-36"
+        >
+          <QuickFilterField
+            :filter="filter"
+            @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
           />
         </div>
       </FadedScrollableDiv>
@@ -176,16 +176,6 @@
       class="flex flex-1 items-center overflow-x-auto -ml-1 h-9"
       orientation="horizontal"
     >
-      <div
-        v-for="filter in quickFilterList"
-        :key="filter.fieldname"
-        class="m-1 min-w-36"
-      >
-        <QuickFilterField
-          :filter="filter"
-          @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
-        />
-      </div>
       <!-- Multi-select Lead Owner filter (same row as quick filters so it
            shares the responsive horizontal scroll).  Hierarchy-scoped via
            crm.api.dashboard.get_visible_users; hidden for leaf users. -->
@@ -208,6 +198,16 @@
               : ''
           "
           @update:model-value="applyOwners"
+        />
+      </div>
+      <div
+        v-for="filter in quickFilterList"
+        :key="filter.fieldname"
+        class="m-1 min-w-36"
+      >
+        <QuickFilterField
+          :filter="filter"
+          @applyQuickFilter="(f, v) => applyQuickFilter(f, v)"
         />
       </div>
     </FadedScrollableDiv>
