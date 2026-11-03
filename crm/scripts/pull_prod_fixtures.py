@@ -17,6 +17,8 @@ Why not `bench export-fixtures` inside the container:
 Exits 1 on merge conflicts or when any fixture doctype failed to export (its prod edits
 would otherwise be overwritten silently). Use --allow-missing for doctypes that don't
 exist on prod yet.
+
+Full deploy runbook: docker/FIXTURES.md
 """
 
 import argparse
