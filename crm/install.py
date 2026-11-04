@@ -562,8 +562,7 @@ def seed_master_data():
 
 
 def _load_seed(fname):
-	with open(os.path.join(SEED_DATA_DIR, fname)) as f:
-		return json.load(f)
+	return frappe.get_file_json(os.path.join(SEED_DATA_DIR, fname))
 
 
 def _seed_key(record):
