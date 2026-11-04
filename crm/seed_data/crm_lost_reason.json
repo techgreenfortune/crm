@@ -1,0 +1,106 @@
+[
+  {
+    "description": "The prospect chose a competitor's product or service.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Competition",
+    "modified": "2026-05-23 13:00:40.131526",
+    "name": "Competition"
+  },
+  {
+    "description": "The prospect did not respond to follow-ups.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Unresponsive Prospect",
+    "modified": "2026-05-23 13:00:40.142844",
+    "name": "Unresponsive Prospect"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Chose Competitor",
+    "modified": "2026-05-04 18:20:58.033086",
+    "name": "Chose Competitor"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Price Too High",
+    "modified": "2026-05-04 18:20:58.034794",
+    "name": "Price Too High"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Went with Local Fabricator",
+    "modified": "2026-05-04 18:20:58.037019",
+    "name": "Went with Local Fabricator"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Timeline Mismatch",
+    "modified": "2026-05-04 18:20:58.038166",
+    "name": "Timeline Mismatch"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Other",
+    "modified": "2026-05-04 18:20:58.042862",
+    "name": "Other"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Junk",
+    "modified": "2026-05-12 00:00:00",
+    "name": "Junk"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Requirement Cancelled",
+    "modified": "2026-05-04 18:20:58.035839",
+    "name": "Requirement Cancelled"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Duplicate lead",
+    "modified": "2026-08-17 16:43:08.740560",
+    "name": "Duplicate lead"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Unserviceable Location",
+    "modified": "2026-06-25 14:53:31.780843",
+    "name": "Unserviceable Location"
+  },
+  {
+    "description": "The prospect did not have the budget to proceed with the purchase.",
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "Budget Constraints",
+    "modified": "2026-05-23 13:00:40.133952",
+    "name": "Budget Constraints"
+  },
+  {
+    "description": null,
+    "docstatus": 0,
+    "doctype": "CRM Lost Reason",
+    "lost_reason": "No requirement",
+    "modified": "2026-06-24 17:03:43.732822",
+    "name": "No requirement"
+  }
+]

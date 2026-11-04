@@ -289,9 +289,6 @@ fixtures = [
 		"dt": "CRM Form Script",
 		"filters": [["dt", "in", ["CRM Quote Request", "CRM Lead", "CRM Affiliate"]]],
 	},
-	{"dt": "CRM Lead Source"},
-	{"dt": "CRM Sub Source"},
-	{"dt": "CRM Lost Reason"},
 	{"dt": "CRM Call Disposition"},
 ]
 
@@ -395,6 +392,7 @@ after_migrate = [
 	# propagate without an after_install path. The function is upsert-aware.
 	"crm.install.add_property_setter",
 	"crm.install.add_manager_data_import_permissions",
+	"crm.install.seed_master_data",
 ]
 
 standard_dropdown_items = [
