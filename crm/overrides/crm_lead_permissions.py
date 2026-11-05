@@ -83,7 +83,7 @@ def has_permission(doc, ptype, user):
 	  - B2F Team (pool) → all assigned C7 leads.
 	  - Estimation Team (pool) → all assigned leads with an active Quote Request
 	    (Pending / Quote Received / Revision Requested) and no Accepted QR
-	    (Accepted is terminal).
+	    (a manager can move an Accepted QR back, which restores visibility).
 	  - Owner-scoped (SE = own Retail, PSE = own Projects, Spotter/JSE = own any
 	    type, ASM/RSM = own + downstream subtree any type).
 
@@ -149,7 +149,7 @@ def has_permission(doc, ptype, user):
 		return True
 
 	# Estimation Team (pool) — all assigned leads with an active QR and no Accepted QR.
-	# Accepted is terminal; the UI disables re-requesting once any QR is Accepted.
+	# Accepted hides the lead until a manager moves the QR back; the UI disables re-requesting once any QR is Accepted.
 	# SQL mirror: get_permission_query_conditions Estimation block.
 	if roles & QUOTE_SCOPE_ROLES and not is_unassigned:
 		if _estimation_qr_gate(name):

@@ -2,18 +2,20 @@
 Three-way merge of a prod fixture export into crm/fixtures.
 
 `bench migrate` re-imports every fixture with force=True, so any Desk edit made on prod
-to a record we also ship is overwritten on the next deploy. Run this BEFORE deploying,
-on an export taken from prod BEFORE migrate (an export taken after migrate has already
-lost the edits):
+to a record we also ship is overwritten on the next deploy. Run this BEFORE deploying.
+Normally via pull_prod_fixtures.py, which exports prod's live DB and the fixtures its
+container actually shipped, then calls this with --base-dir:
 
-    # on prod, inside the backend container
-    bench --site crm.indiframe.com export-fixtures --app crm
-    # copy apps/crm/crm/fixtures out, then locally:
-    python3 crm/scripts/merge_prod_fixtures.py <export_dir>            # report only
-    python3 crm/scripts/merge_prod_fixtures.py <export_dir> --write    # apply
+    python3 crm/scripts/pull_prod_fixtures.py <ssh-host>            # report only
+    python3 crm/scripts/pull_prod_fixtures.py <ssh-host> --write    # apply
+
+Manual use on an existing export dir:
+
+    python3 crm/scripts/merge_prod_fixtures.py <export_dir> [--base-dir <dir> | --base <ref>] [--write]
 
 Versions per record (matched by `name`):
-    base   = fixture as last shipped to prod (git ref, default origin/custom/production)
+    base   = fixture as last shipped to prod (--base-dir, else git ref --base,
+             default origin/custom/production)
     prod   = the export
     ours   = crm/fixtures in the working tree
 
@@ -21,17 +23,21 @@ Merged field by field: a field changed on only one side takes that side's value;
 changed differently on both sides is a conflict, keeps ours, and is reported. Records
 deleted on either side are never dropped automatically — they are reported instead,
 because removing a record from a fixture file does not delete it from any site.
+Export files for doctypes no longer listed in crm/hooks.py `fixtures` are skipped.
 
 Exits 1 when there are conflicts, so a deploy script can stop on them.
 """
 
 import argparse
+import ast
 import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 FIXTURES_DIR = Path("crm/fixtures")
+HOOKS_FILE = Path("crm/hooks.py")
 
 # Bookkeeping that differs between any two exports without being a real change.
 IGNORED_KEYS = frozenset({"modified", "modified_by", "creation", "owner", "idx"})
@@ -44,6 +50,43 @@ def load_git(ref, path):
 	if result.returncode != 0:
 		return None
 	return json.loads(result.stdout)
+
+
+class FixtureSpec(NamedTuple):
+	doctype: str
+	filters: list | None = None
+	or_filters: list | None = None
+
+
+def fixture_specs():
+	"""`fixtures` from the working-tree hooks.py, without importing frappe."""
+	tree = ast.parse(HOOKS_FILE.read_text())
+	for node in tree.body:
+		if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "fixtures" for t in node.targets):
+			specs = []
+			for entry in ast.literal_eval(node.value):
+				if isinstance(entry, str):
+					specs.append(FixtureSpec(entry))
+				else:
+					specs.append(
+						FixtureSpec(
+							entry.get("doctype") or entry["dt"], entry.get("filters"), entry.get("or_filters")
+						)
+					)
+			return specs
+	sys.exit(f"No `fixtures` list in {HOOKS_FILE}")
+
+
+def fixture_filename(doctype):
+	"""Mirror of frappe.scrub, which export-fixtures uses for file names."""
+	return doctype.replace(" ", "_").replace("-", "_").lower() + ".json"
+
+
+def load_base(base_dir, ref, path):
+	if base_dir is None:
+		return load_git(ref, path.as_posix())
+	base_file = base_dir / path.name
+	return json.loads(base_file.read_text()) if base_file.exists() else None
 
 
 def by_name(records):
@@ -147,31 +190,46 @@ def main():
 	parser.add_argument(
 		"--base", default="origin/custom/production", help="Git ref of what prod last deployed"
 	)
+	parser.add_argument(
+		"--base-dir",
+		type=Path,
+		help="Directory of the fixtures prod actually shipped; overrides --base",
+	)
 	parser.add_argument("--write", action="store_true", help="Write merged files into crm/fixtures")
 	args = parser.parse_args()
 
+	sys.exit(1 if run_merge(args.export_dir, args.base_dir, args.base, args.write) else 0)
+
+
+def run_merge(export_dir, base_dir=None, base_ref="origin/custom/production", write=False):
+	"""Merge every export file into crm/fixtures; returns the number of conflicts."""
 	if not FIXTURES_DIR.is_dir():
 		sys.exit("Run from the repo root (crm/fixtures not found).")
-	exports = sorted(args.export_dir.glob("*.json"))
+	exports = sorted(export_dir.glob("*.json"))
 	if not exports:
-		sys.exit(f"No .json files in {args.export_dir}")
+		sys.exit(f"No .json files in {export_dir}")
 
+	tracked = {fixture_filename(spec.doctype) for spec in fixture_specs()}
+	base_label = base_dir or base_ref
 	total_conflicts = 0
 	for export in exports:
 		fname = export.name
+		if fname not in tracked:
+			print(f"\n{fname}: not a fixture in {HOOKS_FILE} — skipped")
+			continue
 		our_path = FIXTURES_DIR / fname
 		prod_list = json.loads(export.read_text())
-		base_list = load_git(args.base, our_path.as_posix())
+		base_list = load_base(base_dir, base_ref, our_path)
 
 		if not our_path.exists():
 			print(f"\n{fname}: new file from prod ({len(prod_list)} records)")
-			if args.write:
+			if write:
 				our_path.write_text(dump_like(prod_list, None))
 			continue
 
 		our_text = our_path.read_text()
 		if base_list is None:
-			print(f"\n{fname}: not in {args.base}; treating every difference as a conflict")
+			print(f"\n{fname}: not in {base_label}; treating every difference as a conflict")
 		merged, report = merge_file(fname, base_list or [], json.loads(our_text), prod_list)
 
 		if not any(report.values()):
@@ -188,11 +246,11 @@ def main():
 		total_conflicts += len(report["conflicts"])
 
 		new_text = dump_like(merged, our_text)
-		if args.write and new_text != our_text:
+		if write and new_text != our_text:
 			our_path.write_text(new_text)
 
-	print(f"\n{'Wrote' if args.write else 'Dry run —'} merged fixtures; {total_conflicts} conflict(s).")
-	sys.exit(1 if total_conflicts else 0)
+	print(f"\n{'Wrote' if write else 'Dry run —'} merged fixtures; {total_conflicts} conflict(s).")
+	return total_conflicts
 
 
 if __name__ == "__main__":

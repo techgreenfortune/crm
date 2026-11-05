@@ -117,7 +117,7 @@ def delete_old_source_fixtures():
 
 	frappe.db.commit()  # nosemgrep: frappe-manual-commit
 	print(
-		"\nDone. Now edit fixtures in git and commit:"
-		"\n  crm/fixtures/crm_lead_source.json — remove IndiFrame Spotting, GreenFortune Spotting"
-		"\n  crm/fixtures/crm_sub_source.json  — remove Lead Spotting - Projects, Lead Spotting - Retail"
+		"\nDone. Now edit seed data in git and commit:"
+		"\n  crm/seed_data/crm_lead_source.json — remove IndiFrame Spotting, GreenFortune Spotting"
+		"\n  crm/seed_data/crm_sub_source.json  — remove Lead Spotting - Projects, Lead Spotting - Retail"
 	)

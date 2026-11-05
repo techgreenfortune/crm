@@ -41,15 +41,27 @@ def after_install(force=False):
 	add_email_template_custom_fields()
 	add_email_account_custom_field()
 	add_default_industries()
-	add_default_lead_sources()
-	add_default_lost_reasons()
+	seed_master_data()
 	add_default_quick_filters()
 	add_standard_dropdown_items()
 	add_default_scripts()
 	create_default_manager_dashboard(force)
 	create_assignment_rule_custom_fields()
 	add_assignment_rule_property_setters()
+	add_manager_data_import_permissions()
 	frappe.db.commit()
+
+
+def add_manager_data_import_permissions():
+	"""Data Import is System Manager-only by default; managers need it to use Import on CRM Lead."""
+	from frappe.permissions import add_permission, update_permission_property
+
+	for role in ("Sales Head", "Sales Coordinator"):
+		for doctype in ("Data Import", "Data Import Log"):
+			add_permission(doctype, role, 0)
+		for ptype in ("read", "write", "create", "delete"):
+			update_permission_property("Data Import", role, 0, ptype, 1)
+		update_permission_property("Data Import Log", role, 0, "read", 1)
 
 
 def add_default_lead_statuses():
@@ -516,67 +528,53 @@ def add_default_industries():
 		doc.insert()
 
 
-def add_default_lead_sources():
-	# IndiFrame canonical Lead Sources — kept in sync with
-	# crm/fixtures/crm_lead_source.json (PRD §7 attribution table).
-	# The previous demo set (Email, Existing Customer, Facebook, etc.)
-	# was retired when source attribution was scoped to indiframe.com lead origins.
-	lead_sources = [
-		"Paid",
-		"Organic Search",
-		"Direct",
-		"Chat",
-		"Referral",
-		"Channel Partner",
-		"Event",
-		"Lead Spotting",
-	]
+SEED_DATA_DIR = os.path.join(os.path.dirname(__file__), "seed_data")
+# Order matters: sub sources link to lead sources.
+SEED_FILES = ("crm_lead_source.json", "crm_sub_source.json", "crm_lost_reason.json")
+SEED_LEDGER_KEY = "crm_applied_seed_records"
 
-	for source in lead_sources:
-		if frappe.db.exists("CRM Lead Source", source):
+
+def seed_master_data():
+	"""Insert each record in crm/seed_data at most once per site, on install and every migrate.
+
+	Not fixtures: `bench migrate` force-imports those, overwriting Desk edits. A ledger of
+	applied records rather than insert-if-missing, so Desk deletes and renames stick; only
+	records new to crm/seed_data get inserted.
+	"""
+	records = [record for fname in SEED_FILES for record in _load_seed(fname)]
+	ledger = frappe.defaults.get_global_default(SEED_LEDGER_KEY)
+	if ledger is None and not frappe.flags.in_install:
+		# Existing site, first run: everything seeded so far arrived as force-imported
+		# fixtures, so a record missing now was deleted on purpose.
+		_save_seed_ledger({_seed_key(record) for record in records})
+		return
+
+	applied = set(json.loads(ledger or "[]"))
+	for record in records:
+		key = _seed_key(record)
+		if key in applied:
 			continue
+		if not frappe.db.exists(record["doctype"], record["name"]):
+			doc = frappe.get_doc({k: v for k, v in record.items() if k not in ("modified", "docstatus")})
+			doc.insert(ignore_permissions=True, set_name=record["name"])
+		applied.add(key)
+	_save_seed_ledger(applied)
 
-		doc = frappe.new_doc("CRM Lead Source")
-		doc.source_name = source
-		doc.insert()
+
+def _load_seed(fname):
+	return frappe.get_file_json(os.path.join(SEED_DATA_DIR, fname))
 
 
-def add_default_lost_reasons():
-	lost_reasons = [
-		{
-			"reason": "Pricing",
-			"description": "The prospect found the pricing to be too high or not competitive.",
-		},
-		{"reason": "Competition", "description": "The prospect chose a competitor's product or service."},
-		{
-			"reason": "Budget Constraints",
-			"description": "The prospect did not have the budget to proceed with the purchase.",
-		},
-		{
-			"reason": "Missing Features",
-			"description": "The prospect felt that the product or service was missing key features they needed.",
-		},
-		{
-			"reason": "Long Sales Cycle",
-			"description": "The sales process took too long, leading to loss of interest.",
-		},
-		{
-			"reason": "No Decision-Maker",
-			"description": "The prospect was not the decision-maker and could not proceed.",
-		},
-		{"reason": "Unresponsive Prospect", "description": "The prospect did not respond to follow-ups."},
-		{"reason": "Poor Fit", "description": "The prospect was not a good fit for the product or service."},
-		{"reason": "Other", "description": ""},
-	]
+def _seed_key(record):
+	return f"{record['doctype']}::{record['name']}"
 
-	for reason in lost_reasons:
-		if frappe.db.exists("CRM Lost Reason", reason["reason"]):
-			continue
 
-		doc = frappe.new_doc("CRM Lost Reason")
-		doc.lost_reason = reason["reason"]
-		doc.description = reason["description"]
-		doc.insert()
+def _save_seed_ledger(keys):
+	frappe.defaults.set_global_default(SEED_LEDGER_KEY, json.dumps(sorted(keys)))
+
+
+# Kept for the old patches that import them.
+add_default_lead_sources = add_default_lost_reasons = seed_master_data
 
 
 def add_default_quick_filters():
