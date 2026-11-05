@@ -1,14 +1,11 @@
 diff --git a/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue b/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
-index adad72d..30130de 100644
+index adad72d..e85ccb3 100644
 --- a/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
 +++ b/node_modules/frappe-ui/frappe/DataImport/UploadStep.vue
-@@ -19,7 +19,23 @@
-                 </Button>
-             </div>
+@@ -21,6 +21,22 @@
              <div class="leading-5">
--                Import data into your system using CSV files or Google Sheets.
-+                Import data into your system using CSV or XLSX files or Google Sheets.
-+            </div>
+                 Import data into your system using CSV files or Google Sheets.
+             </div>
 +            <div v-if="props.data?.name" class="pt-2 font-medium text-ink-gray-9">
 +                {{ importType }}
 +            </div>
@@ -24,24 +21,10 @@ index adad72d..30130de 100644
 +            </div>
 +            <div v-if="importType === 'Update Existing Records'" class="leading-5 text-ink-gray-5">
 +                Keep the ID column in your CSV. Rows are matched to existing records by ID. Export the records from the list view to get their IDs.
-             </div>
++            </div>
          </div>
  
-@@ -34,12 +50,12 @@
-                     <input
-                         ref="fileInput"
-                         type="file"
--                        accept=".csv"
-+                        accept=".csv,.xlsx"
-                         class="hidden"
-                         @change="(e) => uploadFile(e)"
-                     />
-                     <div class="leading-5 text-ink-gray-9">
--                        Drag and drop a CSV file, or upload from your 
-+                        Drag and drop a CSV or XLSX file, or upload from your 
-                         <span @click="openFileSelector" class="cursor-pointer font-semibold hover:underline">Device</span> 
-                         or 
-                         <span @click="openSheetSelector" class="cursor-pointer font-semibold hover:underline"> 
+         <div class="space-y-4">
 @@ -176,6 +192,8 @@ const showFileSelector = ref(true)
  const showSheetSelector = ref(false)
  const showLibrarySelector = ref(false)
@@ -51,21 +34,7 @@ index adad72d..30130de 100644
  
  const props = defineProps<{
      dataImports: DataImports
-@@ -200,9 +218,10 @@ const uploadFile = (e: Event) => {
-     const file = extractFile(e)
-     if (!file) return;
-     
--    if (file.type !== 'text/csv') {
--        toast.error('Please upload a valid CSV file.')
--        console.error('Please upload a valid CSV file.')
-+    const isXlsx = file.name.toLowerCase().endsWith('.xlsx')
-+    if (file.type !== 'text/csv' && !isXlsx) {
-+        toast.error('Please upload a valid CSV or XLSX file.')
-+        console.error('Please upload a valid CSV or XLSX file.')
-         return;
-     }
- 
-@@ -245,7 +264,7 @@ const saveImport = () => {
+@@ -245,7 +263,7 @@ const saveImport = () => {
  const createImport = () => {
      props.dataImports.insert.submit({
          reference_doctype: props.doctype!,
@@ -74,7 +43,7 @@ index adad72d..30130de 100644
          mute_emails: true,
          status: 'Pending',
          google_sheets_url: googleSheet.value.trim(),
-@@ -373,6 +392,9 @@ const disableContinueButton = computed(() => {
+@@ -373,6 +391,9 @@ const disableContinueButton = computed(() => {
  
  watch(() => props.data, () => {
      if (props.data) {
