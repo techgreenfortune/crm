@@ -172,7 +172,7 @@
   ],
   "index_web_pages_for_search": 0,
   "links": [],
-  "modified": "2026-05-23 16:00:00.000000",
+  "modified": "2026-11-07 17:00:00.000000",
   "modified_by": "Administrator",
   "module": "FCRM",
   "name": "CRM Quote Request",
@@ -186,7 +186,8 @@
       "report": 1,
       "role": "System Manager",
       "share": 1,
-      "write": 1
+      "write": 1,
+      "export": 1
     },
     {
       "create": 1,
@@ -195,7 +196,8 @@
       "report": 1,
       "role": "Sales Head",
       "share": 1,
-      "write": 1
+      "write": 1,
+      "export": 1
     },
     {
       "create": 1,
@@ -219,7 +221,8 @@
       "read": 1,
       "report": 1,
       "role": "Sales Coordinator",
-      "write": 1
+      "write": 1,
+      "export": 1
     },
     {
       "create": 1,
@@ -389,7 +392,8 @@
       "create": 1,
       "read": 1,
       "role": "Sales Head",
-      "write": 1
+      "write": 1,
+      "export": 1
     },
     {
       "read": 1,
@@ -409,7 +413,9 @@
     },
     {
       "read": 1,
-      "role": "Management"
+      "report": 1,
+      "role": "Management",
+      "export": 1
     },
     {
       "permlevel": 1,
