@@ -80,6 +80,13 @@ class LeadSyncSource(Document):
 
 		frappe.enqueue_doc(self.doctype, self.name, "_sync_leads", queue="long")
 
+	@frappe.whitelist()
+	def refresh_forms(self):
+		"""Pages and forms are fetched from Meta when the source is created. Instant
+		Forms published after that only show up in the Lead Form picker once this runs."""
+		if self.type == "Facebook" and self.access_token:
+			fetch_and_store_pages_from_facebook(self.get_password("access_token"))
+
 	def _sync_leads(self):
 		if self.type == "Facebook" and self.access_token:
 			if not self.facebook_lead_form:

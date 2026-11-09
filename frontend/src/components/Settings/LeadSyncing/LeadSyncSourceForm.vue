@@ -2,7 +2,7 @@
   <div class="flex h-full flex-col text-ink-gray-8">
     <!-- Header -->
     <div class="flex justify-between px-2 pt-2">
-      <div class="flex gap-1 -ml-4 w-9/12">
+      <div class="flex gap-1 -ml-4 min-w-0 flex-1">
         <Button
           variant="ghost"
           icon-left="chevron-left"
@@ -12,11 +12,19 @@
           @click="() => emit('updateStep', 'source-list')"
         />
       </div>
-      <div class="flex item-center space-x-4 w-3/12 justify-end">
+      <div class="flex item-center space-x-4 shrink-0 justify-end">
         <div class="flex items-center space-x-2">
           <Switch v-model="syncSource.enabled" size="sm" />
           <span class="text-sm text-ink-gray-7">{{ __('Enabled') }}</span>
         </div>
+
+        <Button
+          v-if="!isLocal && docResource?.document?.refreshForms"
+          :label="__('Refresh Forms')"
+          variant="outline"
+          :loading="docResource?.document?.refreshForms.loading"
+          @click="docResource?.document?.refreshForms.submit()"
+        />
 
         <Button
           v-if="!isLocal && docResource?.document?.syncLeads"
@@ -386,6 +394,15 @@ const leadFields = computed(() => {
 function getSourceDocResource(name) {
   return useDocument('Lead Sync Source', name, {
     whitelistedMethods: {
+      refreshForms: {
+        method: 'refresh_forms',
+        onSuccess() {
+          toast.success(__('Pages and lead forms refreshed from Meta'))
+        },
+        onError(e) {
+          toast.error(e.messages?.[0] || __('Error refreshing lead forms'))
+        },
+      },
       syncLeads: {
         method: 'sync_leads',
         onSuccess() {
