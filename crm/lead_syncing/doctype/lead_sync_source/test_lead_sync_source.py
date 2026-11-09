@@ -247,7 +247,10 @@ class TestUpdateLastSyncedAt(FrappeTestCase):
 		self.assertIsNone(lead_sync_source.last_synced_at)
 
 		source = FacebookSyncSource("token", "form-uls-1", source_name=lead_sync_source.name)
-		with patch.object(FacebookSyncSource, "fetch_leads", return_value=[]):
+		with (
+			patch.object(FacebookSyncSource, "fetch_leads", return_value=[]),
+			patch.object(FacebookSyncSource, "get_form_questions_mapping", return_value=_QUESTION_MAP),
+		):
 			source.sync()
 
 		lead_sync_source.reload()
@@ -425,11 +428,10 @@ class TestCreateFacebookLeadFormInDb(FrappeTestCase):
 		self.assertEqual(doc.first_name, "harish")
 		self.assertEqual(doc.mobile_no, "+919663796219")
 
-	def test_form_with_no_recognized_name_field_skipped_not_raised(self):
-		"""fetch_and_store_leadgen_forms_from_facebook must isolate one bad form's
-		mandatory-field failure — must not abort discovery for every other
-		page/form in the same token-connect flow (mirrors sync_single_lead's own
-		per-lead isolation)."""
+	def test_form_with_no_recognized_name_field_stored_for_manual_mapping(self):
+		"""A custom name question auto-map can't recognize must still be stored, so
+		the admin can pick the form and map it. Skipping it made the form's leads
+		impossible to sync."""
 		with patch(
 			"crm.lead_syncing.doctype.lead_sync_source.facebook.make_get_request",
 			return_value={
@@ -450,8 +452,99 @@ class TestCreateFacebookLeadFormInDb(FrappeTestCase):
 			forms = fetch_and_store_leadgen_forms_from_facebook(self.page.name, "page-token")
 
 		self.assertEqual(len(forms), 2)
-		self.assertFalse(frappe.db.exists("Facebook Lead Form", "form-automap-bad"))
+		self.assertTrue(frappe.db.exists("Facebook Lead Form", "form-automap-bad"))
 		self.assertTrue(frappe.db.exists("Facebook Lead Form", "form-automap-good"))
+
+
+class TestNewInstantFormAfterSourceCreated(FrappeTestCase):
+	"""Regression: a new Instant Form published after the Lead Sync Source was
+	created never reached the CRM. Forms were only fetched from Meta on source
+	insert, so the new form could not be picked and its leads never synced."""
+
+	FB_REQUEST = "crm.lead_syncing.doctype.lead_sync_source.facebook.make_get_request"
+
+	def setUp(self):
+		super().setUp()
+		self.meta_forms = [
+			{"id": "e2e-old-form", "name": "Old Form", "questions": [{"key": "full_name", "label": "Name"}]}
+		]
+		self.meta_leads = {}
+		patcher = patch(self.FB_REQUEST, side_effect=self._fake_graph)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def tearDown(self):
+		frappe.db.rollback()
+		super().tearDown()
+
+	def _fake_graph(self, url, params=None, **kwargs):
+		if url.endswith("/me"):
+			return {"id": "e2e-acct"}
+		if url.endswith("/me/accounts"):
+			return {"data": [{"id": "e2e-page", "name": "GF", "category": "Biz", "access_token": "pt"}]}
+		if url.endswith("/leadgen_forms"):
+			return {"data": self.meta_forms}
+		form_id = url.rstrip("/").split("/")[-2]
+		return {"data": self.meta_leads.get(form_id, [])}
+
+	def test_new_form_discovered_mapped_and_synced(self):
+		source = frappe.get_doc(
+			{
+				"doctype": "Lead Sync Source",
+				"name": "E2E Meta Source",
+				"type": "Facebook",
+				"access_token": "tok",
+			}
+		).insert(ignore_permissions=True)
+		source.facebook_page = "e2e-page"
+		source.facebook_lead_form = "e2e-old-form"
+		source.save(ignore_permissions=True)
+
+		# Marketing publishes a new Instant Form with a custom name question.
+		self.meta_forms.append(
+			{
+				"id": "e2e-new-form",
+				"name": "New Campaign Form",
+				"questions": [
+					{"key": "your_name", "label": "Your name"},
+					{"key": "phone_number", "label": "Phone"},
+				],
+			}
+		)
+		self.meta_leads["e2e-new-form"] = [
+			{
+				"id": "e2e-lead-1",
+				"created_time": "2026-11-09T05:00:00+0000",
+				"field_data": [
+					{"name": "your_name", "values": ["Asha"]},
+					{"name": "phone_number", "values": ["+919812340099"]},
+				],
+			}
+		]
+
+		self.assertFalse(frappe.db.exists("Facebook Lead Form", "e2e-new-form"))
+		source.refresh_forms()
+		self.assertTrue(frappe.db.exists("Facebook Lead Form", "e2e-new-form"))
+
+		source.facebook_lead_form = "e2e-new-form"
+		source.save(ignore_permissions=True)
+
+		# Name question not mapped yet: sync refuses instead of failing per lead.
+		with self.assertRaises(frappe.ValidationError):
+			source._sync_leads()
+		self.assertFalse(frappe.db.exists("CRM Lead", {"facebook_lead_id": "e2e-lead-1"}))
+
+		form = frappe.get_doc("Facebook Lead Form", "e2e-new-form")
+		for q in form.questions:
+			if q.key == "your_name":
+				q.mapped_to_crm_field = "first_name"
+		form.save(ignore_permissions=True)
+
+		source._sync_leads()
+		lead = frappe.get_doc("CRM Lead", {"facebook_lead_id": "e2e-lead-1"})
+		self.assertEqual(lead.first_name, "Asha")
+		self.assertEqual(lead.mobile_no, "+919812340099")
+		self.assertEqual(lead.facebook_form_id, "e2e-new-form")
 
 
 class TestValidateDuplicateLead(FrappeTestCase):

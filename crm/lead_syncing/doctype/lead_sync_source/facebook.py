@@ -118,6 +118,15 @@ class FacebookSyncSource:
 			)
 			return
 
+		# Discovery stores forms whose name question is custom and unmapped. Refuse
+		# to sync those rather than fail every lead with a missing-name error.
+		if "first_name" not in self.get_form_questions_mapping().values():
+			frappe.throw(
+				frappe._("Map the name question of lead form {0} to First Name before syncing.").format(
+					self.form_id
+				)
+			)
+
 		leads = self.fetch_leads()
 		for lead in leads:
 			self.sync_single_lead(lead)
@@ -325,15 +334,11 @@ def fetch_and_store_leadgen_forms_from_facebook(page_id: str, page_access_token:
 		try:
 			create_facebook_lead_form_in_db(form, page_id)
 		except frappe.ValidationError:
-			# check_mandatory_crm_fields_mapped (facebook_lead_form.py) rejects a form
-			# with no first_name mapping — e.g. a fully custom name question
-			# _auto_map_questions doesn't recognize. One bad form must not abort
-			# discovery for every other page/form in this same token-connect flow;
-			# skip it, log for visibility, admin maps it manually via Desk if needed.
+			# One bad form must not abort discovery for every other page/form.
 			frappe.log_error(
 				title="Facebook Lead Form not created",
-				message=f"Form {form_id!r} ({form.get('name')!r}) on page {page_id!r} "
-				f"has no recognized name field mapping; skipped.",
+				message=f"Form {form_id!r} ({form.get('name')!r}) on page {page_id!r}:\n"
+				f"{frappe.get_traceback(with_context=True)}",
 			)
 
 	return forms
@@ -349,6 +354,11 @@ def create_facebook_lead_form_in_db(form: dict, page_id: str) -> None:
 			"questions": _auto_map_questions(form["questions"]),
 		}
 	)
+	# Store the form even when its name question is custom (auto-map can't guess
+	# first_name). Skipping it left the form unselectable in the UI, so its leads
+	# could never sync. The admin maps the name question in the Questions grid;
+	# that save, and every sync, still enforce the first_name mapping.
+	form_doc.flags.skip_mandatory_mapping_check = True
 	form_doc.insert(ignore_permissions=True)
 
 
