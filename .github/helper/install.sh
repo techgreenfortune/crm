@@ -16,6 +16,10 @@ mkdir ~/frappe-bench/sites/test_site
 
 cp -r "${GITHUB_WORKSPACE}/.github/helper/site_config.json" ~/frappe-bench/sites/test_site/site_config.json
 
+# MariaDB client 11.4+ requires TLS by default; the mariadb:10.6 service container has none.
+# Client-wide so bench's own mariadb CLI calls (reinstall, restore) skip it too.
+printf "[client]\nskip-ssl\n" > ~/.my.cnf
+
 mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
 mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 

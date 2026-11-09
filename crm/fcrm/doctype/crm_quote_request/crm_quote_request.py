@@ -419,8 +419,17 @@ class CRMQuoteRequest(Document):
 
 		if old_status != self.status and self.status == "Quote Received" and old_status != "Accepted":
 			updates = _build_lead_updates(self)
-			if updates:
-				frappe.db.set_value("CRM Lead", self.lead, updates)
+			# Each revision round is a new QR, so any older QR on the lead makes this one a revision.
+			updates["custom_quotation_sent_on"] = frappe.utils.now_datetime()
+			updates["custom_last_quote_type"] = (
+				"Revised"
+				if frappe.db.exists(
+					"CRM Quote Request",
+					{"lead": self.lead, "name": ["!=", self.name], "creation": ["<", self.creation]},
+				)
+				else "New"
+			)
+			frappe.db.set_value("CRM Lead", self.lead, updates)
 
 			open_upload_task = frappe.db.get_value(
 				"CRM Task",
