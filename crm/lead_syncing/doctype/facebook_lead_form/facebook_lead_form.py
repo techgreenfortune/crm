@@ -26,7 +26,8 @@ class FacebookLeadForm(Document):
 	# end: auto-generated types
 
 	def validate(self):
-		self.check_mandatory_crm_fields_mapped()
+		if not self.flags.skip_mandatory_mapping_check:
+			self.check_mandatory_crm_fields_mapped()
 
 	def check_mandatory_crm_fields_mapped(self):
 		# right now only first name is mandatory
