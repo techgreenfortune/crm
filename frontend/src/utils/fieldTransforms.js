@@ -72,6 +72,19 @@ export function processField(rawField, options = {}) {
 }
 
 /**
+ * Mark admin-restricted fields hidden so mandatory checks skip them —
+ * the server keeps their real values, the client just never receives them.
+ */
+export function withHiddenOverrides(overrides = {}, hiddenFields = []) {
+  if (!hiddenFields?.length) return overrides
+  const result = { ...overrides }
+  for (const fieldname of hiddenFields) {
+    result[fieldname] = { ...result[fieldname], hidden: true }
+  }
+  return result
+}
+
+/**
  * Find mandatory fields that are missing values in the doc.
  * Respects script overrides for reqd and hidden.
  *

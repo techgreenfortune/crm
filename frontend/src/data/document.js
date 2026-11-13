@@ -1,10 +1,14 @@
 import { getScript } from '@/data/script'
 import { globalStore } from '@/stores/global'
 import { getMeta } from '@/stores/meta'
+import { restrictedFieldsStore } from '@/stores/restrictedFields'
 import { useAttachments } from '@/composables/useAttachments'
 import { showSettings, activeSettingsPage } from '@/composables/settings'
 import { runSequentially, parseAssignees } from '@/utils'
-import { findMissingMandatory } from '@/utils/fieldTransforms'
+import {
+  findMissingMandatory,
+  withHiddenOverrides,
+} from '@/utils/fieldTransforms'
 import { getFriendlyDocError } from '@/utils/friendlyError'
 import { createDocumentResource, createResource, toast } from 'frappe-ui'
 import { ref, reactive } from 'vue'
@@ -304,8 +308,10 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
 
     if (!fields || fields.length === 0) return
 
-    const overrides =
-      documentsCache[doctype][docname || '']?.fieldPropertyOverrides || {}
+    const overrides = withHiddenOverrides(
+      documentsCache[doctype][docname || '']?.fieldPropertyOverrides || {},
+      restrictedFieldsStore().getHiddenFields(doctype),
+    )
 
     const missingFields = findMissingMandatory(fields, doc, {
       propertyOverrides: overrides,
