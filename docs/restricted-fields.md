@@ -63,9 +63,10 @@ the union of field-group fields for rules matching the user or any of their role
 
 ## Enforcement — Frappe chokepoints
 
-`field_visibility.install()` patches five Frappe methods by fieldname. It is
-idempotent and runs on `import crm` (`crm/__init__.py`), so it covers web,
-workers, console and tests.
+`field_visibility.install()` patches five Frappe methods by fieldname (plus
+`BaseDocument.__getstate__`, see below). It is idempotent and runs from the
+`before_request` and `before_job` hooks (so Frappe-native report/export jobs that
+never import CRM code are covered) and on `import crm` (console, tests).
 
 | # | Patched method | Covers |
 |---|---|---|
@@ -76,6 +77,17 @@ workers, console and tests.
 | 5 | `Document.run_post_save_methods` | Marks the doc after save hooks, so `client.set_value`/`save`/`insert` and REST PUT/POST responses omit hidden fields |
 
 `frappe.get_all` and `ignore_permissions` server code bypass all of this by design.
+
+**Post-save mark.** After a hidden user's save the doc stays marked for the rest of
+the request, so any same-request `doc.as_dict()` omits hidden fields. The mark is
+dropped on pickling (`__getstate__`), so enqueued jobs, webhooks and caches get full
+values. Same-request server code that needs the full dict wraps it in
+`with field_visibility.unmasked(): ...`.
+
+**Upgrade guard.** Wrappers keep `__wrapped__` and a tag. Tests assert all patches are
+installed and that Frappe's original signatures still match (`user` keyword-only on
+`get_permitted_fieldnames`, `self`-only for the rest). A Frappe upgrade that changes
+them fails CI instead of silently disabling enforcement.
 
 ### CRM-specific points (not reachable through the chokepoints)
 
@@ -105,7 +117,7 @@ workers, console and tests.
 
 ## Tests
 
-Backend `crm/tests/test_restricted_fields.py` (21 tests):
+Backend `crm/tests/test_restricted_fields.py` (25 tests):
 - rule resolution: no rules, role, user, exempt role, Administrator, manager roles hideable.
 - validation: unknown group and rule without role/user rejected; non–System Manager can't save.
 - doc load: hidden key absent (not `0`); other users still see it.
@@ -114,6 +126,7 @@ Backend `crm/tests/test_restricted_fields.py` (21 tests):
 - get_data strip; group-by/kanban on hidden field blocked.
 - notification and upload comment carry no margin; revisions read margin from QR.
 - activity feed, layout.
+- patches installed, Frappe signatures unchanged, install wired to `before_request`/`before_job`, save mark dropped on pickle and bypassed by `unmasked()`.
 
 Frontend: `withHiddenOverrides` in `tests/unit/`.
 
@@ -122,7 +135,8 @@ Frontend: `withHiddenOverrides` in `tests/unit/`.
 - Filtering/sorting by a hidden field (via `filters` / `order_by`) could let a user infer values by probing. Not blocked.
 - `listview.get_group_by_count` on a hidden field drops the value column, but per-group counts are still computed.
 - Frontend caches (meta, layout, hidden fields) are per browser; after a rule change users pick it up on reload.
-- The patches wrap Frappe internals (v15); re-verify signatures on Frappe upgrades.
+- The patches wrap Frappe internals (verified on v15.107). The signature test catches signature changes, not behavioural ones — re-run `test_restricted_fields` on every Frappe upgrade.
+- `ignore_permissions` saves skip the restore. Server code that saves a whole doc **received from a hidden user's client** with `ignore_permissions` would write the missing value as `None`. Nothing does this today; don't add it.
 
 ## Extending later
 

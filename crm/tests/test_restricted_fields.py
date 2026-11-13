@@ -311,3 +311,47 @@ class TestRestrictedFields(FrappeTestCase):
 		self.assertTrue(contents)
 		self.assertFalse(any("Margin" in c for c in contents))
 		self.assertEqual(get_quote_revisions(lead.name)[0]["margin"], 18)
+
+	# ---------- install / upgrade guards ----------
+
+	def test_all_chokepoint_patches_installed(self):
+		missing = [
+			f"{cls.__name__}.{name}"
+			for cls, name in fv.patch_targets()
+			if not getattr(getattr(cls, name), fv._PATCH_TAG, False)
+		]
+		self.assertEqual(missing, [])
+
+	def test_frappe_signatures_match_wrappers(self):
+		"""Fails on a Frappe upgrade that changes a patched method — re-verify the wrappers."""
+		import inspect
+
+		from frappe.model.meta import Meta
+
+		params = inspect.signature(Meta.get_permitted_fieldnames.__wrapped__).parameters
+		self.assertEqual(params["user"].kind, inspect.Parameter.KEYWORD_ONLY)
+		for cls, name in fv.patch_targets():
+			if name == "get_permitted_fieldnames":
+				continue
+			original = getattr(cls, name).__wrapped__
+			if name != "as_dict":
+				self.assertEqual(list(inspect.signature(original).parameters), ["self"], name)
+
+	def test_install_runs_on_request_and_job_hooks(self):
+		for hook in ("before_request", "before_job"):
+			self.assertIn("crm.permissions.field_visibility.install", frappe.get_hooks(hook))
+		fv.install(method="x", kwargs={}, transaction_type="job")
+
+	def test_save_mark_dropped_on_pickle_and_unmasked(self):
+		import pickle
+
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000009")
+		frappe.set_user(HIDDEN_USER)
+		doc = frappe.get_doc("CRM Lead", lead.name)
+		doc.first_name = "Pickled"
+		doc.save()
+		self.assertNotIn("custom_final_margin", doc.as_dict())
+		with fv.unmasked():
+			self.assertEqual(doc.as_dict()["custom_final_margin"], 18)
+		self.assertEqual(pickle.loads(pickle.dumps(doc)).as_dict()["custom_final_margin"], 18)

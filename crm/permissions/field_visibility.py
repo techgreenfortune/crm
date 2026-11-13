@@ -10,6 +10,7 @@ for any doctype listed in :data:`FIELD_GROUPS`. ``ignore_permissions`` / ``frapp
 server code is unaffected by design.
 """
 
+import functools
 import re
 
 import frappe
@@ -151,15 +152,61 @@ def restore_hidden_on_save(doc) -> None:
 		doc.set(fieldname, current.get(fieldname))
 
 
-_installed = False
+_PATCH_TAG = "_crm_restricted_fields"
 
 
-def install() -> None:
-	"""Patch Frappe's field-permission chokepoints. Idempotent; called on ``import crm``."""
-	global _installed
-	if _installed:
+class unmasked:
+	"""Same-request server code that needs a saved doc's full ``as_dict()`` (e.g. an
+	integration payload built after a hidden user's save) wraps the call in this."""
+
+	def __enter__(self):
+		frappe.local.crm_unmasked = getattr(frappe.local, "crm_unmasked", 0) + 1
+
+	def __exit__(self, *exc):
+		frappe.local.crm_unmasked -= 1
+
+
+def _wrap(orig):
+	"""Like ``functools.wraps`` (keeps ``__wrapped__`` so tests can check Frappe's
+	original signature) plus a tag so :func:`is_installed` can tell it is ours."""
+
+	def decorator(fn):
+		fn = functools.wraps(orig)(fn)
+		setattr(fn, _PATCH_TAG, True)
+		return fn
+
+	return decorator
+
+
+def patch_targets():
+	"""``(owner class, method name)`` pairs wrapped by :func:`install`."""
+	from frappe.model.base_document import BaseDocument
+	from frappe.model.document import Document
+	from frappe.model.meta import Meta
+
+	return (
+		(Meta, "get_permitted_fieldnames"),
+		(Document, "apply_fieldlevel_read_permissions"),
+		(BaseDocument, "as_dict"),
+		(BaseDocument, "__getstate__"),
+		(Document, "validate_higher_perm_levels"),
+		(Document, "run_post_save_methods"),
+	)
+
+
+def is_installed() -> bool:
+	return all(getattr(getattr(cls, name, None), _PATCH_TAG, False) for cls, name in patch_targets())
+
+
+def install(*args, **kwargs) -> None:
+	"""Patch Frappe's field-permission chokepoints. Idempotent.
+
+	Runs on ``import crm`` and from the ``before_request`` / ``before_job`` hooks, so
+	desk/REST requests and Frappe-native jobs (report/export) are covered even when they
+	never import CRM code. Accepts and ignores hook kwargs.
+	"""
+	if is_installed():
 		return
-	_installed = True
 
 	from frappe.model.base_document import BaseDocument
 	from frappe.model.document import Document
@@ -167,6 +214,7 @@ def install() -> None:
 
 	orig_permitted = Meta.get_permitted_fieldnames
 
+	@_wrap(orig_permitted)
 	def get_permitted_fieldnames(self, *args, **kwargs):
 		fieldnames = orig_permitted(self, *args, **kwargs)
 		hidden = get_hidden_fields(self.name, kwargs.get("user"))
@@ -176,6 +224,7 @@ def install() -> None:
 
 	orig_read = Document.apply_fieldlevel_read_permissions
 
+	@_wrap(orig_read)
 	def apply_fieldlevel_read_permissions(self):
 		orig_read(self)
 		_mark_hidden(self)
@@ -185,24 +234,36 @@ def install() -> None:
 
 	orig_as_dict = BaseDocument.as_dict
 
+	@_wrap(orig_as_dict)
 	def as_dict(self, *args, **kwargs):
 		d = orig_as_dict(self, *args, **kwargs)
 		marked = self.__dict__.get(_HIDDEN_MARK)
 		if marked:
-			# Re-check against the current user: a marked doc may be pickled into a job.
-			for fieldname in marked & get_hidden_fields(self.doctype):
-				d.pop(fieldname, None)
 			d.pop(_HIDDEN_MARK, None)
+			if not getattr(frappe.local, "crm_unmasked", 0):
+				for fieldname in marked & get_hidden_fields(self.doctype):
+					d.pop(fieldname, None)
 		return d
+
+	orig_getstate = BaseDocument.__getstate__
+
+	@_wrap(orig_getstate)
+	def __getstate__(self):
+		# The mark only shapes this request's response; jobs/webhooks/cache get full values.
+		state = orig_getstate(self)
+		state.pop(_HIDDEN_MARK, None)
+		return state
 
 	orig_validate_perm = Document.validate_higher_perm_levels
 
+	@_wrap(orig_validate_perm)
 	def validate_higher_perm_levels(self):
 		orig_validate_perm(self)
 		restore_hidden_on_save(self)
 
 	orig_post_save = Document.run_post_save_methods
 
+	@_wrap(orig_post_save)
 	def run_post_save_methods(self):
 		orig_post_save(self)
 		# Hooks above saw real values; the response (client.set_value/save/insert) must not.
@@ -212,6 +273,7 @@ def install() -> None:
 	Meta.get_permitted_fieldnames = get_permitted_fieldnames
 	Document.apply_fieldlevel_read_permissions = apply_fieldlevel_read_permissions
 	BaseDocument.as_dict = as_dict
+	BaseDocument.__getstate__ = __getstate__
 	Document.validate_higher_perm_levels = validate_higher_perm_levels
 	Document.run_post_save_methods = run_post_save_methods
 
