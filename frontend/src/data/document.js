@@ -45,6 +45,7 @@ function showErrorToastOnce(message) {
 export function useDocument(doctype, docname, resourceOverrides = {}) {
   const { setupScript, scripts } = getScript(doctype)
   const meta = getMeta(doctype)
+  const restrictedFields = restrictedFieldsStore()
   const { trackOldFile, processPendingDeletions } = useAttachments(
     doctype,
     docname,
@@ -144,7 +145,9 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
           console.error(err)
           return
         }
-        const mandatory = checkMandatory(documentsCache[doctype][docname].doc)
+        const mandatory = await checkMandatory(
+          documentsCache[doctype][docname].doc,
+        )
         if (mandatory) {
           revertOptimistic()
           return
@@ -303,14 +306,15 @@ export function useDocument(doctype, docname, resourceOverrides = {}) {
     return []
   }
 
-  function checkMandatory(doc) {
+  async function checkMandatory(doc) {
     let fields = meta?.doctypesMeta?.[doctype]?.fields || []
 
     if (!fields || fields.length === 0) return
 
+    await restrictedFields.ensureLoaded()
     const overrides = withHiddenOverrides(
       documentsCache[doctype][docname || '']?.fieldPropertyOverrides || {},
-      restrictedFieldsStore().getHiddenFields(doctype),
+      restrictedFields.getHiddenFields(doctype),
     )
 
     const missingFields = findMissingMandatory(fields, doc, {

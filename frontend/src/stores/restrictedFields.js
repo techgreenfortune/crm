@@ -14,6 +14,17 @@ export const restrictedFieldsStore = defineStore(
       return hiddenFields.data?.[doctype] || []
     }
 
-    return { hiddenFields, getHiddenFields }
+    // Callers that act on the result (mandatory check) must not read the empty
+    // initialData before the first fetch resolves.
+    async function ensureLoaded() {
+      if (hiddenFields.fetched) return
+      try {
+        await (hiddenFields.promise || hiddenFields.fetch())
+      } catch {
+        // Fall back to "nothing hidden"; the server still enforces.
+      }
+    }
+
+    return { hiddenFields, getHiddenFields, ensureLoaded }
   },
 )
