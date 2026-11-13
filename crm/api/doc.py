@@ -11,6 +11,7 @@ from pypika import Criterion
 
 from crm.api.views import get_views
 from crm.fcrm.doctype.crm_form_script.crm_form_script import get_form_script
+from crm.permissions.field_visibility import filter_fields, get_hidden_fields, strip_rows
 from crm.utils import get_dynamic_linked_docs, get_linked_docs, is_frappe_version
 
 COUNT_NAME = (
@@ -607,6 +608,19 @@ def get_data(
 					"options": get_options(field.get("fieldtype"), field.get("options")),
 				}
 
+	hidden = get_hidden_fields(doctype)
+	if hidden:
+		columns = [c for c in columns or [] if c.get("key") not in hidden]
+		rows = [r for r in rows if r not in hidden]
+		fields = [f for f in fields if f.get("fieldname") not in hidden]
+		if view_type == "kanban":
+			kanban_fields = [f for f in kanban_fields or [] if f not in hidden]
+			for column in data:
+				column["fields"] = kanban_fields
+				strip_rows(doctype, column.get("data"))
+		else:
+			strip_rows(doctype, data)
+
 	return {
 		"data": data,
 		"columns": columns,
@@ -933,6 +947,7 @@ def export_pdf(
 	# Server-side PDF export of a list view. Returns the PDF as a file download
 	# via frappe.local.response (the pattern Frappe uses for binary downloads).
 	fields_list = json.loads(fields)
+	fields_list = filter_fields(doctype, fields_list)
 	filters_list = json.loads(filters)
 	selected = json.loads(selected_items) if selected_items else None
 

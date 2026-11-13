@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 
 from crm.integrations.brevo.quote_emails import fire_quote_requested
+from crm.permissions.field_visibility import strip_rows
 from crm.utils import notify_role_users
 
 
@@ -78,6 +79,8 @@ def list_lead_quote_requests(lead: str) -> list[dict]:
 	)
 	if not qrs:
 		return []
+
+	strip_rows("CRM Quote Request", qrs)
 
 	# Child rows: safe to read with get_all since visibility is already gated
 	# by their parent QR being in the filtered set above.

@@ -3,6 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cstr
 
+from crm.permissions.field_visibility import restore_hidden_on_save, strip_doc
 from crm.permissions.role_config import (
 	DOWNSTREAM_SCOPE_ROLES,
 	QUOTE_REVERT_LOCKED_STAGES,
@@ -101,7 +102,12 @@ class CRMQuoteRequest(Document):
 		self._validate_quote_number_unique()
 		self._validate_positive_quote_values()
 
+	def apply_fieldlevel_read_permissions(self):
+		super().apply_fieldlevel_read_permissions()
+		strip_doc(self)
+
 	def validate(self):
+		restore_hidden_on_save(self)
 		self._guard_accepted_edits()
 		self._guard_status_transition()
 		if self.status == "Revision Requested" and not (self.notes or "").strip():

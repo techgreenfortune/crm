@@ -9,6 +9,7 @@ from frappe.translate import get_translated_doctypes
 
 from crm.fcrm.doctype.crm_call_log.crm_call_log import parse_call_log
 from crm.fcrm.doctype.crm_task.crm_task import POOL_TASK_ROLES
+from crm.permissions.field_visibility import get_hidden_fields, mask_text, strip_version_changes
 from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES, TIER1_FULL_RW
 
 
@@ -28,6 +29,7 @@ def get_deal_activities(name: str):
 
 	get_docinfo("", "CRM Deal", name)
 	docinfo = frappe.response["docinfo"]
+	_apply_field_visibility("CRM Deal", docinfo)
 	deal_meta = frappe.get_meta("CRM Deal")
 	deal_fields = {
 		field.fieldname: {"label": field.label, "options": field.options} for field in deal_meta.fields
@@ -194,6 +196,7 @@ def get_lead_activities(name: str):
 
 	get_docinfo("", "CRM Lead", name)
 	docinfo = frappe.response["docinfo"]
+	_apply_field_visibility("CRM Lead", docinfo)
 	lead_meta = frappe.get_meta("CRM Lead")
 	lead_fields = {
 		field.fieldname: {"label": field.label, "options": field.options} for field in lead_meta.fields
@@ -339,6 +342,15 @@ def get_lead_activities(name: str):
 	activities = handle_multiple_versions(activities)
 
 	return activities, calls, notes, tasks, attachments
+
+
+def _apply_field_visibility(doctype: str, docinfo) -> None:
+	"""Mutates ``docinfo`` in place — it is also sent back raw in ``frappe.response``."""
+	for version in docinfo.get("versions") or []:
+		version.data = json.dumps(strip_version_changes(doctype, json.loads(version.data)))
+	for key in ("comments", "info_logs"):
+		for comment in docinfo.get(key) or []:
+			comment.content = mask_text(comment.content)
 
 
 def get_attachments(doctype: str, name: str):
@@ -689,6 +701,7 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	upload_comments = [c for c in all_comments if "[AUTOMATION] Quote uploaded" in c["content"]]
 	revision_comments = [c for c in all_comments if "[AUTOMATION] Quote revision requested" in c["content"]]
 
+	margin_hidden = "quote_margin" in get_hidden_fields("CRM Quote Request")
 	revisions: list[dict] = []
 	for round_idx, c in enumerate(upload_comments, start=1):
 		next_upload_time = (
@@ -708,12 +721,13 @@ def get_quote_revisions(lead: str) -> list[dict]:
 			if qr["creation"] <= c["creation"]:
 				qr_name = qr["name"]
 
+		margin = None if margin_hidden else _extract_currency(c["content"], "Margin: ", trailing="%")
 		revisions.append(
 			{
 				"round": round_idx,
 				"quote_request": qr_name,
 				"value": _extract_currency(c["content"], "Value: "),
-				"margin": _extract_currency(c["content"], "Margin: ", trailing="%"),
+				"margin": margin,
 				"file_url": _extract_file_url(c["content"]),
 				"timestamp": str(c["creation"]),
 				"revision_after": revision_after,
