@@ -10,6 +10,7 @@ from frappe.model.document import Document
 
 from crm.demo.api import create_demo_data
 from crm.install import after_install
+from crm.permissions.field_visibility import validate_rules
 
 
 class FCRMSettings(Document):
@@ -23,6 +24,9 @@ class FCRMSettings(Document):
 		from frappe.types import DF
 
 		from crm.fcrm.doctype.crm_dropdown_item.crm_dropdown_item import CRMDropdownItem
+		from crm.fcrm.doctype.crm_restricted_field_rule.crm_restricted_field_rule import (
+			CRMRestrictedFieldRule,
+		)
 
 		access_key: DF.Data | None
 		all_day_event_notifications: DF.Table[EventNotifications]
@@ -37,6 +41,7 @@ class FCRMSettings(Document):
 		enable_forecasting: DF.Check
 		event_notifications: DF.Table[EventNotifications]
 		favicon: DF.Attach | None
+		restricted_field_rules: DF.Table[CRMRestrictedFieldRule]
 		service_provider: DF.Literal[
 			"frankfurter.app", "fawazahmed-exchange-api", "exchangerate.host", "exchangerate-api"
 		]
@@ -55,6 +60,7 @@ class FCRMSettings(Document):
 		self.do_not_allow_to_delete_if_standard()
 		self.setup_forecasting()
 		self.make_currency_read_only()
+		validate_rules(self.get("restricted_field_rules") or [])
 
 	def on_update(self):
 		frappe.clear_document_cache("FCRM Settings", "FCRM Settings")

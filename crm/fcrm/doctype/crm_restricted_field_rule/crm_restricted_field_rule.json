@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "creation": "2026-11-13 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "field_group",
+  "applies_to",
+  "role",
+  "user"
+ ],
+ "fields": [
+  {
+   "fieldname": "field_group",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Field Group",
+   "reqd": 1
+  },
+  {
+   "default": "Role",
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Applies To",
+   "options": "Role\nUser",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.applies_to == 'Role'",
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role",
+   "mandatory_depends_on": "eval:doc.applies_to == 'Role'",
+   "options": "Role"
+  },
+  {
+   "depends_on": "eval:doc.applies_to == 'User'",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "mandatory_depends_on": "eval:doc.applies_to == 'User'",
+   "options": "User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "FCRM",
+ "name": "CRM Restricted Field Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

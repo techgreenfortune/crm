@@ -144,6 +144,12 @@ MANAGERIAL_ROLES: frozenset[str] = TIER1_FULL_RW | DOWNSTREAM_SCOPE_ROLES
 # it is left out here too — otherwise the settings page would offer it fields it can't save.
 TELEPHONY_AGENT_MANAGER_ROLES: frozenset[str] = TIER1_FULL_RW - {"Management"}
 
+# Roles no Restricted Field rule can hide fields from (crm/permissions/field_visibility.py).
+# Estimation Team fills the restricted quote fields, so hiding them would break its own form.
+RESTRICTED_FIELD_EXEMPT_ROLES: frozenset[str] = frozenset(
+	{"System Manager", "Sales Head", "Management", "Estimation Team"}
+)
+
 
 @frappe.whitelist()
 def get_hierarchy_role_config() -> dict:
