@@ -89,9 +89,11 @@ class TestRestrictedFields(FrappeTestCase):
 		self.assertEqual(fv.get_hidden_groups(EXEMPT_USER), frozenset())
 		self.assertEqual(fv.get_hidden_groups("Administrator"), frozenset())
 
-	def test_sales_head_is_hideable(self):
-		_set_rules(_role_rule("Sales Head"))
-		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
+	def test_manager_roles_are_hideable(self):
+		for role in ("Sales Head", "Management"):
+			frappe.get_doc("User", SALES_HEAD_USER).add_roles(role)
+			_set_rules(_role_rule(role))
+			self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
 		_set_rules(_user_rule(SALES_HEAD_USER))
 		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
 

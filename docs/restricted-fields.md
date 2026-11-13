@@ -14,7 +14,7 @@ Jira: [INDF-2009](https://indiframe.atlassian.net/browse/INDF-2009) — "CRM: % 
 | Default | Everyone sees margin (current behaviour). Nothing changes until an admin adds a rule. |
 | Who configures | System Manager, from CRM Settings → Restricted Fields. |
 | Granularity | Per role **or** per user. Roles can't express "hide from this one SE", so rules live in FCRM Settings, not in docperms. |
-| Always visible | System Manager, Management, Estimation Team, Administrator — no rule can hide fields from them. Sales Head is hideable (role or per-user rule). |
+| Always visible | System Manager, Estimation Team, Administrator — no rule can hide fields from them. Every other role, including all manager roles (Sales Head, Sales Coordinator, Management, RSM, ASM), is hideable by role or per-user rule. |
 | Scope | Generic "field groups". Margin is the first group; new sensitive fields = one mapping entry. |
 | Enforcement | All CRM UI/API paths. `/app` desk is admin-only, so out of scope. |
 | Old comments | Not rewritten in the DB. Masked at read time for hidden users. |
