@@ -246,8 +246,6 @@ class CRMQuoteRequest(Document):
 			parts = []
 			if self.quote_value:
 				parts.append(f"Value: {self.quote_value}")
-			if self.quote_margin:
-				parts.append(f"Margin: {self.quote_margin}%")
 			meta = ", ".join(parts) if parts else "Quote uploaded."
 			file_link = (
 				f" — <a href='{self.quote_file}' target='_blank' rel='noopener'>View File</a>"

@@ -681,7 +681,7 @@ def get_quote_revisions(lead: str) -> list[dict]:
 	qr_data = frappe.get_all(
 		"CRM Quote Request",
 		filters={"lead": lead},
-		fields=["name", "creation"],
+		fields=["name", "creation", "quote_margin"],
 		order_by="creation asc",
 	)
 	if not qr_data:
@@ -716,12 +716,18 @@ def get_quote_revisions(lead: str) -> list[dict]:
 
 		# Match this upload comment to the QR that was created most recently
 		# before (or at) the comment timestamp — works for single and multi-QR leads.
-		qr_name = None
+		matched_qr = None
 		for qr in qr_data:
 			if qr["creation"] <= c["creation"]:
-				qr_name = qr["name"]
+				matched_qr = qr
+		qr_name = matched_qr["name"] if matched_qr else None
 
-		margin = None if margin_hidden else _extract_currency(c["content"], "Margin: ", trailing="%")
+		margin = None
+		if not margin_hidden:
+			# Upload comments stopped carrying the margin (INDF-2009); older ones still do.
+			margin = _extract_currency(c["content"], "Margin: ", trailing="%")
+			if margin is None and matched_qr:
+				margin = matched_qr["quote_margin"] or None
 		revisions.append(
 			{
 				"round": round_idx,
