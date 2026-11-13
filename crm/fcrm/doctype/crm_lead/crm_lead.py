@@ -12,7 +12,6 @@ from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
 from crm.fcrm.doctype.utils import add_or_remove_lost_reason_section_in_sidepanel
-from crm.permissions.field_visibility import restore_hidden_on_save, strip_doc
 from crm.permissions.role_config import DOWNSTREAM_SCOPE_ROLES
 from crm.utils import CLOSED_LEAD_STAGES, parse_phone_number, phone_dedup_candidates
 
@@ -255,12 +254,7 @@ class CRMLead(Document):
 		):
 			self.custom_pincode = "000000"
 
-	def apply_fieldlevel_read_permissions(self):
-		super().apply_fieldlevel_read_permissions()
-		strip_doc(self)
-
 	def validate(self):
-		restore_hidden_on_save(self)
 		self._check_write_permission()
 		self.set_full_name()
 		self.set_lead_name()

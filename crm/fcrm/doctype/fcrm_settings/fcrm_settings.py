@@ -10,6 +10,7 @@ from frappe.model.document import Document
 
 from crm.demo.api import create_demo_data
 from crm.install import after_install
+from crm.permissions.field_visibility import clear_cache as clear_field_visibility_cache
 from crm.permissions.field_visibility import validate_rules
 
 
@@ -64,6 +65,7 @@ class FCRMSettings(Document):
 
 	def on_update(self):
 		frappe.clear_document_cache("FCRM Settings", "FCRM Settings")
+		clear_field_visibility_cache()
 
 	def do_not_allow_to_delete_if_standard(self):
 		if not self.has_value_changed("dropdown_items"):

@@ -137,10 +137,13 @@ def get_group_by_fields(doctype: str):
 	]
 
 	fields = frappe.get_meta(doctype).fields
+	hidden = get_hidden_fields(doctype)
 	fields = [
 		field
 		for field in fields
-		if field.fieldtype not in no_value_fields and field.fieldtype in allowed_fieldtypes
+		if field.fieldtype not in no_value_fields
+		and field.fieldtype in allowed_fieldtypes
+		and field.fieldname not in hidden
 	]
 	fields = [
 		{
@@ -309,6 +312,11 @@ def get_data(
 	custom_view_name = view.get("custom_view_name") if view else None
 	view_type = view.get("view_type") if view else None
 	group_by_field = view.get("group_by_field") if view else None
+
+	# Grouping/kanban on a hidden field would expose its values as column names.
+	hidden = get_hidden_fields(doctype)
+	if column_field in hidden or group_by_field in hidden:
+		frappe.throw(_("Not permitted to group by a restricted field"), frappe.PermissionError)
 
 	for key in filters:
 		value = filters[key]
