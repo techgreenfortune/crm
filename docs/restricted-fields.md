@@ -15,9 +15,10 @@ Jira: [INDF-2009](https://indiframe.atlassian.net/browse/INDF-2009) — "CRM: % 
 | Who configures | System Manager, from CRM Settings → Restricted Fields. |
 | Granularity | Per role **or** per user. Roles can't express "hide from this one SE", so rules live in FCRM Settings, not in docperms. |
 | Always visible | System Manager, Estimation Team, Administrator — no rule can hide fields from them. Every other role, including all manager roles (Sales Head, Sales Coordinator, Management, RSM, ASM), is hideable by role or per-user rule. |
-| Scope | Generic "field groups". Margin is the first group; new sensitive fields = one mapping entry. |
-| Enforcement | All CRM UI/API paths. `/app` desk is admin-only, so out of scope. |
-| Old comments | Not rewritten in the DB. Masked at read time for hidden users. |
+| Scope | Generic "field groups". Margin is the first group; a new sensitive field on any doctype = one `FIELD_GROUPS` entry, no controller code. |
+| Enforcement | At Frappe's own field-permission chokepoints, so every API that honours permlevels honours rules too — CRM UI, `/api/resource`, `frappe.client.*`, reportview/export and `/app` desk (CRM users are System Users; there is no desk gate). |
+| Notifications / comments | Margin removed from the "Quote Received — Review & Share" notification for everyone and no longer written into upload comments. "Quote Accepted" keeps it (goes only to Estimation Team, exempt). Legacy comments are masked at read time. |
+| Precedence | Rules only **remove** access, never grant. A docperm/permlevel denial still applies; a rule hides a field even if docperms grant it. |
 
 ## Model
 
@@ -40,7 +41,8 @@ FIELD_GROUPS = {
             "CRM Quote Request": ("quote_margin",),
             "CRM Lead": ("custom_final_margin",),
         },
-        "comment_patterns": (r",?\s*Margin:\s*[-\d.,]+%",),
+        # legacy upload comments only; new ones carry no margin
+        "comment_patterns": (r",?\s*Margin:\s*[-\d.,]+\s*%",),
     },
 }
 ```
@@ -51,27 +53,41 @@ Always-visible roles live in `crm/permissions/role_config.py`
 ## Single decision point
 
 `get_hidden_fields(doctype, user=None) -> frozenset[str]` — every enforcement
-point calls only this. Rules: Administrator / exempt role → nothing hidden;
-otherwise union of field-group fields for rules matching the user or any of
-their roles.
+point calls only this. Administrator / exempt role → nothing hidden; otherwise
+the union of field-group fields for rules matching the user or any of their roles.
 
-Helpers built on it: `strip_doc`, `strip_rows`, `mask_comment`,
-`restore_hidden_on_save`.
+- Fast path: returns empty for doctypes not in any group (`RESTRICTED_DOCTYPES`),
+  since the patches below run for every doctype.
+- Rule resolution is `@request_cache`d per user; `clear_cache()` is called on
+  FCRM Settings `on_update` so a same-request rule change is seen immediately.
 
-## Enforcement points
+## Enforcement — Frappe chokepoints
 
-| # | Path | Change |
+`field_visibility.install()` patches five Frappe methods by fieldname. It is
+idempotent and runs on `import crm` (`crm/__init__.py`), so it covers web,
+workers, console and tests.
+
+| # | Patched method | Covers |
 |---|---|---|
-| 1 | Doc load (`frappe.client.get`, `/api/resource`, getdoc) | Override `apply_fieldlevel_read_permissions` on `CRMLead` and `CRMQuoteRequest` |
-| 2 | Whole-doc save by a hidden user | `validate` (first line) always restores hidden fields to their before-save value. `as_dict` re-adds stripped numeric fields as `0`, so the client echoes `0` back — treated as no edit. In-save syncs (`_sync_accepted_quote_on_won`) run later, `db.set_value` syncs bypass it |
-| 3 | `crm.api.doc.get_data` (list / kanban / group-by / map) | Strip hidden values from rows; drop hidden fields from columns, rows and the filter/sort field list |
-| 4 | `crm.api.doc.export_pdf` | Drop hidden fields |
-| 5 | `frappe.desk.reportview.export_query` (list Export) | No change: the CRM UI builds export fields from `get_data` columns, which are already stripped |
-| 6 | `crm.api.quotes.list_lead_quote_requests` | Strip `quote_margin` |
-| 7 | `crm.api.activities.get_quote_revisions` | `margin = None` |
-| 8 | `crm.api.activities.get_lead_activities` | Skip Version changes on hidden fields, mask comments, sanitise the `docinfo` response payload too |
-| 9 | Layout (`get_fields_layout`, `get_sidepanel_sections`) | `handle_perm_level_restrictions` marks hidden fields `hidden=1` |
-| 10 | Frontend `checkMandatory` | Treat hidden fields as hidden so SE can still move a lead to C4 (server value is intact) |
+| 1 | `Meta.get_permitted_fieldnames` | `get_list`, `frappe.client.get_list/get_value`, `/api/resource` lists, `reportview.get`, `export_query`, group-by counts. Hidden fields are silently dropped; `"*"` expands without them |
+| 2 | `Document.apply_fieldlevel_read_permissions` | `frappe.client.get`, desk `getdoc`, REST read — removes hidden values (incl. child rows) and marks the doc |
+| 3 | `BaseDocument.as_dict` | Pops marked fields so they are **absent**, not a fake `0` (`get_valid_dict` re-adds missing floats as 0). `db_update` uses `get_valid_dict`, so DB writes are unaffected |
+| 4 | `Document.validate_higher_perm_levels` | Whole-doc save/`set_value` by a hidden user: hidden fields are reset to the DB value, so an echoed `0`/`None` is not an edit. Runs before controller hooks, so in-save syncs (`_sync_accepted_quote_on_won`) still write. Skipped for `ignore_permissions`, install and new docs (`request_quote` seeds margin on insert) |
+| 5 | `Document.run_post_save_methods` | Marks the doc after save hooks, so `client.set_value`/`save`/`insert` and REST PUT/POST responses omit hidden fields |
+
+`frappe.get_all` and `ignore_permissions` server code bypass all of this by design.
+
+### CRM-specific points (not reachable through the chokepoints)
+
+| Path | Change |
+|---|---|
+| `crm.api.doc.get_data` (list / kanban / group-by / map) | Drop hidden fields from columns/rows/filter fields and strip values. Kanban `column_field` or `group_by_field` on a hidden field → `PermissionError` |
+| `crm.api.doc.get_group_by_fields` | Hidden fields not offered |
+| `crm.api.doc.export_pdf` | Drop hidden fields |
+| `crm.api.activities.get_lead_activities` / deal | Skip Version changes on hidden fields, mask legacy comments, sanitise `docinfo` |
+| `crm.api.activities.get_quote_revisions` | Margin read from the matched QR's `quote_margin` (legacy comments parsed as fallback); `None` when hidden |
+| Layout (`handle_perm_level_restrictions`) | Marks hidden fields `hidden=1` (it uses its own permlevel check) |
+| Frontend `checkMandatory` | Treats hidden fields as hidden so an SE can still move a lead to C4 / save a QR |
 
 ## Admin API
 
@@ -81,35 +97,38 @@ Helpers built on it: `strip_doc`, `strip_rows`, `mask_comment`,
 
 ## Frontend
 
-- `stores/restrictedFields.js` — loads `get_my_hidden_fields` once.
+- `stores/restrictedFields.js` — loads `get_my_hidden_fields` once, created in `useDocument`. `ensureLoaded()` awaits the first fetch.
 - `utils/fieldTransforms.js` — pure `withHiddenOverrides(overrides, hidden)`; unit-tested.
-- `data/document.js` — `checkMandatory` uses it.
+- `data/document.js` — async `checkMandatory` awaits `ensureLoaded()` before using it (otherwise the first C4 save read the empty initial data and failed on "Latest Quoted Margin").
 - `components/Settings/RestrictedFieldsSettings.vue` — rules editor, under System Configuration, visible to `isAdmin()`.
 - `QuoteArea.vue` already hides margin when `null` (`v-if`).
 
 ## Tests
 
-Backend `crm/tests/test_restricted_fields.py`:
-- no rules → nothing hidden; role rule; user rule; exempt role beats rule; Administrator.
-- doc load strips; whole-doc save keeps DB value.
-- `list_lead_quote_requests`, `get_quote_revisions`, `get_data` strip.
-- activity feed: version skipped, comment masked.
-- layout marks hidden.
-- non–System Manager can't save rules.
+Backend `crm/tests/test_restricted_fields.py` (21 tests):
+- rule resolution: no rules, role, user, exempt role, Administrator, manager roles hideable.
+- validation: unknown group and rule without role/user rejected; non–System Manager can't save.
+- doc load: hidden key absent (not `0`); other users still see it.
+- generic APIs: `frappe.client.get_list` / `get_value`, `frappe.get_list(fields=["*"])`, `reportview.get`.
+- save: whole-doc save and `client.set_value` keep the DB value; response omits the field; `ignore_permissions` save not reverted.
+- get_data strip; group-by/kanban on hidden field blocked.
+- notification and upload comment carry no margin; revisions read margin from QR.
+- activity feed, layout.
 
 Frontend: `withHiddenOverrides` in `tests/unit/`.
 
 ## Known limitations
 
-- Filtering/sorting a list by a hidden field could let a user infer values by probing. Not blocked in v1.
-- `/app` desk is not covered (admin-only).
-- Frontend caches (meta, layout) are per browser; after a rule change users pick it up on reload.
+- Filtering/sorting by a hidden field (via `filters` / `order_by`) could let a user infer values by probing. Not blocked.
+- `listview.get_group_by_count` on a hidden field drops the value column, but per-group counts are still computed.
+- Frontend caches (meta, layout, hidden fields) are per browser; after a rule change users pick it up on reload.
+- The patches wrap Frappe internals (v15); re-verify signatures on Frappe upgrades.
 
 ## Extending later
 
 | Need | Change |
 |---|---|
-| Hide another field | Add a `FIELD_GROUPS` entry |
+| Hide another field (any doctype) | Add a `FIELD_GROUPS` entry |
 | Read-only instead of hidden | Add `mode` column; layout sets `read_only`, save guard already resets |
 | Stage-conditional | Add optional `status` column; `get_hidden_fields` takes `doc` |
 | Allow-list exceptions | Add `effect` (Hide/Allow) column; user row overrides role row |
