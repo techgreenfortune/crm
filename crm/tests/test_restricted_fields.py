@@ -16,6 +16,7 @@ from crm.tests.factories import make_lead, make_user
 HIDDEN_USER = "rf-coordinator@test.local"
 OTHER_USER = "rf-coordinator2@test.local"
 EXEMPT_USER = "rf-estimator@test.local"
+SALES_HEAD_USER = "rf-saleshead@test.local"
 
 
 def _set_rules(*rules):
@@ -41,6 +42,7 @@ class TestRestrictedFields(FrappeTestCase):
 		make_user(email=HIDDEN_USER, roles=["Sales Coordinator"])
 		make_user(email=OTHER_USER, roles=["Sales Coordinator"])
 		make_user(email=EXEMPT_USER, roles=["Sales Coordinator", "Estimation Team"])
+		make_user(email=SALES_HEAD_USER, roles=["Sales Head"])
 		frappe.db.commit()
 
 	def setUp(self):
@@ -86,6 +88,12 @@ class TestRestrictedFields(FrappeTestCase):
 		_set_rules(_role_rule(), _user_rule(EXEMPT_USER))
 		self.assertEqual(fv.get_hidden_groups(EXEMPT_USER), frozenset())
 		self.assertEqual(fv.get_hidden_groups("Administrator"), frozenset())
+
+	def test_sales_head_is_hideable(self):
+		_set_rules(_role_rule("Sales Head"))
+		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
+		_set_rules(_user_rule(SALES_HEAD_USER))
+		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
 
 	def test_unknown_group_rejected(self):
 		with self.assertRaises(frappe.ValidationError):

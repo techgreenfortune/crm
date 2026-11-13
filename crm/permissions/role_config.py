@@ -146,9 +146,7 @@ TELEPHONY_AGENT_MANAGER_ROLES: frozenset[str] = TIER1_FULL_RW - {"Management"}
 
 # Roles no Restricted Field rule can hide fields from (crm/permissions/field_visibility.py).
 # Estimation Team fills the restricted quote fields, so hiding them would break its own form.
-RESTRICTED_FIELD_EXEMPT_ROLES: frozenset[str] = frozenset(
-	{"System Manager", "Sales Head", "Management", "Estimation Team"}
-)
+RESTRICTED_FIELD_EXEMPT_ROLES: frozenset[str] = frozenset({"System Manager", "Management", "Estimation Team"})
 
 
 @frappe.whitelist()
