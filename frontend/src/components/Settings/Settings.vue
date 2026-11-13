@@ -46,6 +46,7 @@
 import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import LucideNetwork from '~icons/lucide/network'
 import MonitorCogIcon from '~icons/lucide/monitor-cog'
+import LucideLockKeyhole from '~icons/lucide/lock-keyhole'
 import SlidersIcon from '@/components/Icons/SlidersIcon.vue'
 import SparkleIcon from '@/components/Icons/SparkleIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
@@ -65,6 +66,7 @@ import LeadSyncSourcePage from '@/components/Settings/LeadSyncing/LeadSyncSource
 import BrevoSettings from '@/components/Settings/BrevoSettings.vue'
 import AISensySettings from '@/components/Settings/AISensySettings.vue'
 import DefaultsSettings from '@/components/Settings/DefaultsSettings.vue'
+import RestrictedFieldsSettings from '@/components/Settings/RestrictedFieldsSettings.vue'
 import BrandSettings from '@/components/Settings/BrandSettings.vue'
 import HomeActions from '@/components/Settings/HomeActions.vue'
 import GeneralSettings from '@/components/Settings/GeneralSettings.vue'
@@ -83,7 +85,7 @@ import {
 import { Dialog, Avatar } from 'frappe-ui'
 import { ref, markRaw, computed, watch, h } from 'vue'
 
-const { isManager, getUser } = usersStore()
+const { isManager, isAdmin, getUser } = usersStore()
 
 const user = computed(() => getUser() || {})
 
@@ -131,6 +133,12 @@ const tabs = computed(() => {
           label: __('Brand'),
           icon: SparkleIcon,
           component: markRaw(BrandSettings),
+        },
+        {
+          label: __('Restricted Fields'),
+          icon: LucideLockKeyhole,
+          component: markRaw(RestrictedFieldsSettings),
+          condition: () => isAdmin(),
         },
       ],
       condition: () => isManager(),
