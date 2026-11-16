@@ -56,8 +56,23 @@
           v-if="rule.applies_to === 'User'"
           v-model="rule.user"
           doctype="User"
+          url="crm.api.session.search_crm_users"
+          :hideMe="true"
           :placeholder="__('Select user')"
-        />
+        >
+          <template #item-label="{ option }">
+            <div class="flex flex-col gap-1 min-w-0">
+              <div class="font-semibold truncate text-ink-gray-7">
+                {{ option.label }}
+              </div>
+              <div class="text-sm truncate text-ink-gray-5">
+                {{
+                  [option.description, option.value].filter(Boolean).join(' · ')
+                }}
+              </div>
+            </div>
+          </template>
+        </Link>
         <Link
           v-else
           v-model="rule.role"
