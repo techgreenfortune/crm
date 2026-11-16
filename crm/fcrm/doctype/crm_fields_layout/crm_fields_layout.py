@@ -8,6 +8,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import random_string
 
+from crm.permissions.field_visibility import get_hidden_fields
+
 
 class CRMFieldsLayout(Document):
 	# begin: auto-generated types
@@ -147,6 +149,9 @@ def get_sidepanel_sections(doctype: str):
 
 
 def handle_perm_level_restrictions(field, doctype, parent_doctype=None):
+	if field.fieldname in get_hidden_fields(doctype):
+		field.hidden = 1
+		return
 	if field.permlevel == 0:
 		return
 	field_has_write_access = field.permlevel in get_permlevel_access("write", doctype, parent_doctype)

@@ -28,7 +28,9 @@
   "brand_logo",
   "favicon",
   "dropdown_items_tab",
-  "dropdown_items"
+  "dropdown_items",
+  "restricted_fields_tab",
+  "restricted_field_rules"
  ],
  "fields": [
   {
@@ -174,12 +176,25 @@
    "fieldname": "restore_demo_data",
    "fieldtype": "Button",
    "label": "Restore Demo Data"
+  },
+  {
+   "fieldname": "restricted_fields_tab",
+   "fieldtype": "Tab Break",
+   "label": "Restricted Fields"
+  },
+  {
+   "description": "Hide field groups (e.g. Quote Margin) from roles or users. Everyone sees them by default.",
+   "fieldname": "restricted_field_rules",
+   "fieldtype": "Table",
+   "label": "Restricted Field Rules",
+   "options": "CRM Restricted Field Rule",
+   "permlevel": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-27 18:02:14.802197",
+ "modified": "2026-11-13 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "FCRM Settings",
@@ -251,6 +266,12 @@
    "print": 1,
    "read": 1,
    "role": "Management"
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "write": 1,
+   "role": "System Manager"
   }
  ],
  "row_format": "Dynamic",

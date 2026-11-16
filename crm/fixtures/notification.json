@@ -242,7 +242,7 @@
   "event": "Value Change",
   "from_attach_field": null,
   "is_standard": 0,
-  "message": "<p>Estimation has uploaded the quote for <strong>{{ doc.lead_name }}</strong> (Value: {{ doc.quote_value }}, Margin: {{ doc.quote_margin }}%).</p><p>Review and share with the customer.</p>",
+  "message": "<p>Estimation has uploaded the quote for <strong>{{ doc.lead_name }}</strong> (Value: {{ doc.quote_value }}).</p><p>Review and share with the customer.</p>",
   "message_type": null,
   "method": null,
   "modified": "2026-05-21 12:00:00",
