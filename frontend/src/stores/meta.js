@@ -1,6 +1,7 @@
 import { createResource } from 'frappe-ui'
 import { noValueFieldTypes, standardFieldsMeta } from '@/utils/model.js'
 import { formatCurrency, formatNumber } from '@/utils/numberFormat.js'
+import { restrictedFieldsStore } from '@/stores/restrictedFields'
 import { computed, reactive } from 'vue'
 
 const doctypesMeta = reactive({})
@@ -89,11 +90,14 @@ export function getMeta(doctype) {
       restrictedFieldTypes = [],
     } = options
 
+    const hidden = restrictedFieldsStore().getHiddenFields(dt)
+
     let fieldsMeta =
       doctypesMeta[dt]?.fields
         .filter(
           (f) =>
             !f.hidden &&
+            !hidden.includes(f.fieldname) &&
             (!restrictNoValueFields ||
               !noValueFieldTypes.includes(f.fieldtype)) &&
             (!restrictedFieldTypes.length ||

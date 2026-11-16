@@ -48,7 +48,8 @@ def sort_options(doctype: str):
 		field["value"] = field["fieldname"]
 		fields.append(field)
 
-	return fields
+	hidden = get_hidden_fields(doctype)
+	return [f for f in fields if f["fieldname"] not in hidden]
 
 
 @frappe.whitelist()
@@ -73,9 +74,9 @@ def get_filterable_fields(doctype: str):
 	]
 
 	c = get_controller(doctype)
-	restricted_fields = []
+	restricted_fields = list(get_hidden_fields(doctype))
 	if hasattr(c, "get_non_filterable_fields"):
-		restricted_fields = c.get_non_filterable_fields()
+		restricted_fields += c.get_non_filterable_fields()
 
 	fields = []
 
@@ -195,6 +196,9 @@ def get_quick_filters(doctype: str, cached: bool = True):
 
 	else:
 		fields = [field for field in meta.fields if field.in_standard_filter]
+
+	hidden = get_hidden_fields(doctype)
+	fields = [field for field in fields if field.get("fieldname") not in hidden]
 
 	for field in fields:
 		if doctype == "CRM Lead" and field.get("fieldname") == "status":
@@ -737,11 +741,16 @@ def get_fields(doctype: str, allow_all_fieldtypes: bool = False):
 	if allow_all_fieldtypes:
 		not_allowed_fieldtypes = []
 	fields = frappe.get_meta(doctype).fields
+	hidden = get_hidden_fields(doctype)
 
 	_fields = []
 
 	for field in fields:
-		if field.fieldtype not in not_allowed_fieldtypes and field.fieldname:
+		if (
+			field.fieldtype not in not_allowed_fieldtypes
+			and field.fieldname
+			and field.fieldname not in hidden
+		):
 			_fields.append(field)
 
 	return _fields

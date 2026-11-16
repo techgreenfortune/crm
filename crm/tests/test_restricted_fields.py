@@ -275,6 +275,22 @@ class TestRestrictedFields(FrappeTestCase):
 				view={"view_type": "group_by", "group_by_field": "custom_final_margin"},
 			)
 
+	def test_field_pickers_drop_hidden_field(self):
+		from crm.api.doc import get_fields, sort_options
+
+		_set_rules(_user_rule())
+
+		def offered():
+			return (
+				"custom_final_margin" in [f["fieldname"] for f in sort_options("CRM Lead")],
+				"custom_final_margin" in [f.fieldname for f in get_fields("CRM Lead")],
+			)
+
+		frappe.set_user(HIDDEN_USER)
+		self.assertEqual(offered(), (False, False))
+		frappe.set_user(OTHER_USER)
+		self.assertEqual(offered(), (True, True))
+
 	def test_quote_received_notification_has_no_margin(self):
 		path = frappe.get_app_path("crm", "fixtures", "notification.json")
 		with open(path) as f:
