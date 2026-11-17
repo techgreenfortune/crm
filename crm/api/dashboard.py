@@ -8,7 +8,7 @@ from pypika.functions import Function
 
 from crm.fcrm.doctype.crm_dashboard.crm_dashboard import create_default_manager_dashboard
 from crm.overrides.crm_lead_permissions import downstream_users
-from crm.permissions.role_config import TIER1_FULL_RW
+from crm.permissions.role_config import C6_EXPORT_ROLES, TIER1_FULL_RW
 from crm.utils import sales_user_only
 
 
@@ -2318,12 +2318,21 @@ def download_c6_export(
 ):
 	"""Excel export of leads currently at C6 (Lost) with lost reason context.
 
-	Same hierarchy scoping as ``download_lead_export``. The date range applies
+	Restricted to ``C6_EXPORT_ROLES`` (tier-1 + ASM/RSM/Dealer). Rows use the
+	same hierarchy scoping as ``download_lead_export``. The date range applies
 	to when the lead entered C6: ``custom_c6_entered_on`` (set by imports),
 	else the latest C6 entry in the lead's status change log, else
 	``modified`` for legacy rows with neither.
 	"""
 	from frappe.utils.xlsxutils import make_xlsx
+
+	# Not frappe.only_for: it is a no-op under tests.
+	if not set(frappe.get_roles()) & C6_EXPORT_ROLES:
+		frappe.throw(
+			_("You are not permitted to download the C6 report."),
+			title=_("Not Allowed"),
+			exc=frappe.PermissionError,
+		)
 
 	scoped_owners = _scope_users(frappe.session.user, _coerce_users_arg(owners))
 

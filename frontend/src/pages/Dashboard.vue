@@ -24,7 +24,7 @@
           @click="downloadCalls"
         />
         <Button
-          v-if="!editing"
+          v-if="!editing && canExportC6()"
           :label="__('Download C6 (Lost)')"
           :iconLeft="LucideDownload"
           @click="downloadC6"
@@ -159,7 +159,7 @@ import {
 } from 'frappe-ui'
 import { ref, reactive, computed, provide } from 'vue'
 
-const { isAdmin } = usersStore()
+const { isAdmin, canExportC6 } = usersStore()
 
 const editing = ref(false)
 

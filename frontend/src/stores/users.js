@@ -66,6 +66,11 @@ export const usersStore = defineStore('crm-users', () => {
   const telephonyAgentManagerRoles = computed(
     () => new Set(roleConfig.data?.telephony_agent_manager_roles || []),
   )
+  // Roles that may download the C6 (Lost) export. Sourced from
+  // role_config.py:C6_EXPORT_ROLES.
+  const c6ExportRoles = computed(
+    () => new Set(roleConfig.data?.c6_export_roles || []),
+  )
 
   function getUser(email) {
     if (!email || email === 'sessionUser') {
@@ -107,6 +112,11 @@ export const usersStore = defineStore('crm-users', () => {
   function isReviewer(email) {
     const role = getUser(email).role
     return !!role && reviewerRoles.value.has(role)
+  }
+
+  function canExportC6(email) {
+    const role = getUser(email).role
+    return !!role && c6ExportRoles.value.has(role)
   }
 
   function isWebsiteUser(email) {
@@ -152,6 +162,7 @@ export const usersStore = defineStore('crm-users', () => {
     isManager,
     isTelephonyAgentManager,
     isReviewer,
+    canExportC6,
     isSalesUser,
     isTelephonyAgent,
     getUserRole,
