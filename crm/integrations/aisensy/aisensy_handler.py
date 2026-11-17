@@ -29,7 +29,9 @@ def send_template_message(
 ) -> dict:
 	settings = get_aisensy_settings()
 	api_key = settings.get_password("api_key")
-	user_name = settings.default_user_name or ""
+	# Prefer the actual lead/recipient's name for personalization; fall back
+	# to the static default only when no recipient_name was passed in.
+	user_name = recipient_name or settings.default_user_name or ""
 
 	phone = "".join(c for c in to if c.isdigit())
 	if phone.startswith("91") and len(phone) == 12:
