@@ -21,17 +21,26 @@ describe('isAutomatedComment', () => {
 })
 
 describe('activityCategory', () => {
-  it('classifies by actor and automation markers', () => {
+  it('classifies sales work as user, automation as system, rest as other', () => {
     const cases = [
-      [{ activity_type: 'changed', owner: human }, 'user'],
-      [{ activity_type: 'changed', owner: 'Administrator' }, 'system'],
+      [{ activity_type: 'changed', owner: human, is_status_change: true }, 'user'],
+      [
+        {
+          activity_type: 'changed',
+          owner: 'Administrator',
+          is_status_change: true,
+        },
+        'user',
+      ],
+      [{ activity_type: 'changed', owner: human }, 'other'],
+      [{ activity_type: 'added', owner: human }, 'other'],
+      [{ activity_type: 'creation', owner: human }, 'other'],
       [{ activity_type: 'creation', owner: 'Guest' }, 'system'],
-      [{ activity_type: 'assignment_log', owner: 'Administrator' }, 'system'],
       [{ activity_type: 'comment', owner: human, content: 'hi' }, 'user'],
       [
         {
           activity_type: 'comment',
-          owner: human,
+          owner: 'Administrator',
           content: '[AUTOMATION] Lead reactivated',
         },
         'system',
@@ -55,7 +64,7 @@ describe('activityCategory', () => {
       ],
       [
         { activity_type: 'communication', communication_type: 'Communication' },
-        'user',
+        'other',
       ],
     ]
     for (const [activity, expected] of cases) {
@@ -67,17 +76,26 @@ describe('activityCategory', () => {
 })
 
 describe('filterActivities', () => {
-  const list = [
-    { activity_type: 'changed', owner: human },
-    { activity_type: 'changed', owner: 'Administrator' },
-  ]
+  const stage = { activity_type: 'changed', owner: human, is_status_change: true }
+  const edit = { activity_type: 'changed', owner: human }
+  const automation = {
+    activity_type: 'comment',
+    owner: 'Administrator',
+    content: '[AUTOMATION] Lead reactivated',
+  }
+  const list = [stage, edit, automation]
 
   it('returns everything for All', () => {
-    expect(filterActivities(list, 'All')).toHaveLength(2)
+    expect(filterActivities(list, 'All')).toBe(list)
   })
 
-  it('splits User and System', () => {
-    expect(filterActivities(list, 'User')).toEqual([list[0]])
-    expect(filterActivities(list, 'System')).toEqual([list[1]])
+  it('keeps only sales work for User and automation for System', () => {
+    expect(filterActivities(list, 'User')).toEqual([stage])
+    expect(filterActivities(list, 'System')).toEqual([automation])
+  })
+
+  it('pulls a stage change out of a grouped version', () => {
+    const group = { ...edit, other_versions: [stage] }
+    expect(filterActivities([group], 'User')).toEqual([stage])
   })
 })
