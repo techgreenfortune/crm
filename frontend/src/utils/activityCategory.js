@@ -1,5 +1,5 @@
 // Same split as crm/utils/user_activity.py — keep the two in sync.
-// User: calls, C-stage changes, comments, notes, quote events.
+// User: outgoing/answered calls, C-stage changes, comments, notes, quote events.
 // System: automation. Everything else (data corrections, reassignment,
 // emails, lead creation) is neither and only shows under All.
 const SYSTEM_USERS = ['Guest']
@@ -24,8 +24,13 @@ export function isAutomatedComment(content) {
 
 export function activityCategory(activity) {
   const type = activity.activity_type
-  // Telephony webhooks save calls as Guest, but every call is a person's action.
-  if (CALL_TYPES.includes(type)) return 'user'
+  // Telephony webhooks save calls as Guest, so the actor is the call itself.
+  // A missed incoming call means nobody did anything.
+  if (CALL_TYPES.includes(type)) {
+    return type === 'outgoing_call' || activity.status === 'Completed'
+      ? 'user'
+      : 'other'
+  }
   if (type === 'communication') {
     return activity.communication_type === 'Automated Message'
       ? 'system'

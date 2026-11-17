@@ -2,8 +2,12 @@
 
 User activity = calls, C-stage (status) changes, comments, notes and quote
 events. Data corrections and owner reassignment don't count, and neither does
-automation. frontend/src/utils/activityCategory.js applies the same split to
-the Activity timeline's User filter — keep the two in sync.
+automation. Missed incoming calls don't count either: nobody did anything.
+frontend/src/utils/activityCategory.js applies the same split to the Activity
+timeline's User filter — keep the two in sync.
+
+Administrator counts as a person, so stage changes run as Administrator from
+bench console or scripts also stamp the lead.
 """
 
 import re
@@ -77,9 +81,13 @@ def on_note_update(doc, method=None):
 	touch(doc.reference_docname)
 
 
+def is_user_call(call_type: str | None, status: str | None) -> bool:
+	return call_type == "Outgoing" or status == "Completed"
+
+
 def on_call_log_update(doc, method=None):
-	# Telephony webhooks save calls as Guest, but every call is a person's action.
-	if _skip():
+	# Telephony webhooks save calls as Guest, so the actor is the call itself.
+	if _skip() or not is_user_call(doc.type, doc.status):
 		return
 	touch(doc._resolve_linked_lead(), doc.start_time or doc.creation)
 
@@ -97,7 +105,7 @@ def backfill(lead: str | None = None) -> int:
 			COALESCE((SELECT MAX(v.creation) FROM `tabVersion` v
 				WHERE v.ref_doctype = 'CRM Lead' AND v.docname = l.name
 				AND v.owner NOT IN %(system_users)s
-				AND v.data REGEXP '[[][[:space:]]*"status",'), '1900-01-01'),
+				AND JSON_EXTRACT(v.data, '$.changed[*][0]') LIKE '%%"status"%%'), '1900-01-01'),
 			COALESCE((SELECT MAX(c.creation) FROM `tabComment` c
 				WHERE c.reference_doctype = 'CRM Lead' AND c.reference_name = l.name
 				AND c.comment_type = 'Comment' AND c.owner NOT IN %(system_users)s
@@ -108,10 +116,11 @@ def backfill(lead: str | None = None) -> int:
 				WHERE n.reference_doctype = 'CRM Lead' AND n.reference_docname = l.name
 				AND n.modified_by NOT IN %(system_users)s), '1900-01-01'),
 			COALESCE((SELECT MAX(COALESCE(cl.start_time, cl.creation)) FROM `tabCRM Call Log` cl
-				WHERE (cl.reference_doctype = 'CRM Lead' AND cl.reference_docname = l.name)
+				WHERE (cl.type = 'Outgoing' OR cl.status = 'Completed')
+				AND ((cl.reference_doctype = 'CRM Lead' AND cl.reference_docname = l.name)
 				OR EXISTS (SELECT 1 FROM `tabDynamic Link` dl
 					WHERE dl.parenttype = 'CRM Call Log' AND dl.parent = cl.name
-					AND dl.link_doctype = 'CRM Lead' AND dl.link_name = l.name)),
+					AND dl.link_doctype = 'CRM Lead' AND dl.link_name = l.name))),
 				'1900-01-01')
 		) AS last_at
 		FROM `tabCRM Lead` l

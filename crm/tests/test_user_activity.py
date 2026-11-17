@@ -98,6 +98,40 @@ class TestLastUserActivity(FrappeTestCase):
 		make_call_log(lead_name=lead, start_time="2026-03-10 10:00:00")
 		self.assertEqual(str(self._stamp(lead)), "2026-03-10 10:00:00")
 
+	def test_missed_incoming_call_does_not_stamp(self):
+		lead = make_lead(phone="+919800000989").name
+		make_call_log(lead_name=lead, status="Call Not Answered", start_time="2026-03-10 10:00:00")
+		self.assertIsNone(self._stamp(lead))
+		frappe.db.set_value("CRM Lead", lead, FIELD, None, update_modified=False)
+		self.assertEqual(backfill(lead), 0)
+
+		make_call_log(lead_name=lead, status="Busy", call_type="Outgoing", start_time="2026-03-11 10:00:00")
+		self.assertEqual(str(self._stamp(lead)), "2026-03-11 10:00:00")
+
+	def test_backfill_ignores_child_row_status_changes(self):
+		lead = make_lead(phone="+919800000990").name
+		frappe.get_doc(
+			{
+				"doctype": "Version",
+				"ref_doctype": "CRM Lead",
+				"docname": lead,
+				"data": json.dumps(
+					{"changed": [], "row_changed": [["rolling_responses", 0, "x", [["status", "A", "B"]]]]}
+				),
+			}
+		).insert(ignore_permissions=True)
+		self.assertEqual(backfill(lead), 0)
+
+		frappe.get_doc(
+			{
+				"doctype": "Version",
+				"ref_doctype": "CRM Lead",
+				"docname": lead,
+				"data": json.dumps({"changed": [["custom_city", None, "Pune"], ["status", "C0", "C1"]]}),
+			}
+		).insert(ignore_permissions=True)
+		self.assertEqual(backfill(lead), 1)
+
 	def test_touch_never_moves_backward(self):
 		lead = make_lead(phone="+919800000985").name
 		touch(lead, "2026-03-10 10:00:00")

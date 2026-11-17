@@ -53,7 +53,19 @@ describe('activityCategory', () => {
         },
         'user',
       ],
-      [{ activity_type: 'incoming_call', owner: 'Guest' }, 'user'],
+      [
+        { activity_type: 'incoming_call', owner: 'Guest', status: 'Completed' },
+        'user',
+      ],
+      [
+        {
+          activity_type: 'incoming_call',
+          owner: 'Guest',
+          status: 'Call Not Answered',
+        },
+        'other',
+      ],
+      [{ activity_type: 'outgoing_call', status: 'Busy' }, 'user'],
       [{ activity_type: 'note', owner: human }, 'user'],
       [
         {
