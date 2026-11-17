@@ -2307,3 +2307,130 @@ def download_calls_export(
 	frappe.response["filename"] = f"calls_export_{scope}_{frappe.utils.today()}.xlsx"
 	frappe.response["filecontent"] = xlsx_file.getvalue()
 	frappe.response["type"] = "binary"
+
+
+@frappe.whitelist()
+@sales_user_only
+def download_c6_export(
+	from_date: str | None = None,
+	to_date: str | None = None,
+	owners: list[str] | str | None = None,
+):
+	"""Excel export of leads currently at C6 (Lost) with lost reason context.
+
+	Same hierarchy scoping as ``download_lead_export``. The date range applies
+	to when the lead entered C6: ``custom_c6_entered_on`` (set by imports),
+	else the latest C6 entry in the lead's status change log, else
+	``modified`` for legacy rows with neither.
+	"""
+	from frappe.utils.xlsxutils import make_xlsx
+
+	scoped_owners = _scope_users(frappe.session.user, _coerce_users_arg(owners))
+
+	c6_entered_on = "COALESCE(l.custom_c6_entered_on, c6_log.entered_on, l.modified)"
+	conditions = ["l.status = 'C6'"]
+	params: dict = {}
+
+	if from_date and to_date:
+		conditions.append(f"{c6_entered_on} >= %(from_date)s")
+		conditions.append(f"{c6_entered_on} < %(to_date_exclusive)s")
+		params["from_date"] = from_date
+		params["to_date_exclusive"] = frappe.utils.add_days(to_date, 1)
+
+	owner_clause = _owner_sql_in(scoped_owners, "l.lead_owner")
+	if owner_clause:
+		conditions.append(owner_clause[5:])
+
+	where_clause = " AND ".join(conditions)
+
+	rows = frappe.db.sql(  # nosemgrep
+		f"""
+		SELECT
+			l.name                              AS lead_id,
+			l.lead_name,
+			l.mobile_no,
+			l.email,
+			l.custom_lead_type                  AS lead_type,
+			l.custom_customer_type              AS customer_type,
+			l.source,
+			l.custom_sub_source                 AS sub_source,
+			l.lead_owner,
+			owner_user.full_name                AS lead_owner_name,
+			l.custom_city                       AS city,
+			l.custom_state                      AS state,
+			l.custom_pincode                    AS pincode,
+			l.custom_tentative_area_sqft        AS area_sqft,
+			l.custom_tentative_value            AS tentative_value,
+			l.lost_reason,
+			l.lost_notes,
+			(SELECT s.`from`
+				FROM `tabCRM Status Change Log` s
+				WHERE s.parenttype = 'CRM Lead'
+				  AND s.parent = l.name
+				  AND s.`to` = 'C6'
+				ORDER BY s.to_date DESC LIMIT 1)    AS previous_stage,
+			{c6_entered_on}                     AS c6_entered_on,
+			l.creation                          AS created_on,
+			DATEDIFF({c6_entered_on}, l.creation) AS days_to_lost,
+			q.name                              AS latest_quote_id,
+			q.status                            AS latest_quote_status,
+			q.quote_value                       AS latest_quote_value,
+			(SELECT COUNT(*) FROM `tabCRM Quote Request` WHERE lead = l.name)
+				AS total_quotes,
+			COALESCE(call_stats.total_calls, 0) AS total_calls,
+			call_stats.last_call_at,
+			(SELECT cl.disposition
+				FROM `tabCRM Call Log` cl
+				WHERE cl.reference_doctype='CRM Lead'
+				  AND cl.reference_docname = l.name
+				ORDER BY cl.start_time DESC LIMIT 1) AS last_call_disposition
+		FROM `tabCRM Lead` l
+		LEFT JOIN `tabUser` owner_user
+			ON owner_user.name = l.lead_owner
+		LEFT JOIN (
+			SELECT parent, MAX(from_date) AS entered_on
+			FROM `tabCRM Status Change Log`
+			WHERE parenttype = 'CRM Lead' AND `from` = 'C6'
+			GROUP BY parent
+		) c6_log ON c6_log.parent = l.name
+		LEFT JOIN `tabCRM Quote Request` q
+			ON q.lead = l.name
+			AND q.creation = (
+				SELECT MAX(creation) FROM `tabCRM Quote Request` WHERE lead = l.name
+			)
+		LEFT JOIN (
+			SELECT
+				reference_docname                   AS lead_name,
+				COUNT(*)                            AS total_calls,
+				MAX(start_time)                     AS last_call_at
+			FROM `tabCRM Call Log`
+			WHERE reference_doctype = 'CRM Lead'
+			GROUP BY reference_docname
+		) call_stats ON call_stats.lead_name = l.name
+		WHERE {where_clause}
+		ORDER BY c6_entered_on DESC
+		LIMIT 50000
+		""",
+		params,
+		as_dict=True,
+	)
+
+	if rows:
+		keys = list(rows[0].keys())
+		headers = [_humanize_header(k) for k in keys]
+		data = [headers] + [[row.get(k) for k in keys] for row in rows]
+	else:
+		keys = ["lead_id", "lead_name", "lead_owner", "lost_reason", "lost_notes", "c6_entered_on"]
+		data = [[_humanize_header(k) for k in keys]]
+
+	xlsx_file = make_xlsx(data, "C6 Lost Leads")
+
+	if scoped_owners is None:
+		scope = "all"
+	elif len(scoped_owners) == 1 and frappe.session.user in scoped_owners:
+		scope = frappe.session.user
+	else:
+		scope = "team"
+	frappe.response["filename"] = f"c6_lost_export_{scope}_{frappe.utils.today()}.xlsx"
+	frappe.response["filecontent"] = xlsx_file.getvalue()
+	frappe.response["type"] = "binary"
