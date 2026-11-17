@@ -1,17 +1,18 @@
-"""Track the last time a human (not automation) acted on a CRM Lead.
+"""Track the last time a person did real sales work on a CRM Lead.
 
-Mirrors frontend/src/utils/activityCategory.js, which splits the Activity
-timeline into User / System using the same rules.
+User activity = calls, C-stage (status) changes, comments, notes and quote
+events. Data corrections and owner reassignment don't count, and neither does
+automation. frontend/src/utils/activityCategory.js applies the same split to
+the Activity timeline's User filter — keep the two in sync.
 """
 
 import re
 
 import frappe
-from frappe.core.doctype.version.version import get_diff
 from frappe.utils import get_datetime, now_datetime
 
 FIELD = "custom_last_user_activity_on"
-SYSTEM_USERS = frozenset({"Administrator", "Guest"})
+SYSTEM_USERS = frozenset({"Guest"})
 AUTOMATION_PREFIX = "[AUTOMATION]"
 # Quote comments carry the automation prefix but record a person's action
 # (request, upload, revision, accept), so they count as user activity.
@@ -47,15 +48,19 @@ def touch(lead: str | None, at=None) -> None:
 	frappe.db.set_value("CRM Lead", lead, FIELD, at, update_modified=False)
 
 
+def on_lead_before_save(doc, method=None):
+	# The stamp is written only via touch(); a whole-doc save carries the
+	# client's possibly stale copy, which must not overwrite a newer value.
+	if not doc.is_new():
+		doc.set(FIELD, frappe.db.get_value("CRM Lead", doc.name, FIELD))
+
+
 def on_lead_update(doc, method=None):
 	if _skip() or not is_human(frappe.session.user):
 		return
 	old = doc.get_doc_before_save()
-	if old and not get_diff(old, doc):
-		return
-	now = now_datetime()
-	doc.set(FIELD, now)
-	touch(doc.name, now)
+	if old and old.status != doc.status:
+		touch(doc.name)
 
 
 def on_comment_insert(doc, method=None):
@@ -91,24 +96,28 @@ def backfill(lead: str | None = None) -> int:
 		SELECT l.name, GREATEST(
 			COALESCE((SELECT MAX(v.creation) FROM `tabVersion` v
 				WHERE v.ref_doctype = 'CRM Lead' AND v.docname = l.name
-				AND v.owner NOT IN %(system_users)s), '1900-01-01'),
+				AND v.owner NOT IN %(system_users)s
+				AND v.data REGEXP '[[][[:space:]]*"status",'), '1900-01-01'),
 			COALESCE((SELECT MAX(c.creation) FROM `tabComment` c
 				WHERE c.reference_doctype = 'CRM Lead' AND c.reference_name = l.name
 				AND c.comment_type = 'Comment' AND c.owner NOT IN %(system_users)s
-				AND (c.content NOT LIKE '[AUTOMATION]%%' OR c.content LIKE '[AUTOMATION] Quote%%')),
+				AND (REGEXP_REPLACE(c.content, %(leading_tags)s, '') NOT LIKE '[AUTOMATION]%%'
+					OR REGEXP_REPLACE(c.content, %(leading_tags)s, '') LIKE '[AUTOMATION] Quote%%')),
 				'1900-01-01'),
 			COALESCE((SELECT MAX(n.modified) FROM `tabFCRM Note` n
 				WHERE n.reference_doctype = 'CRM Lead' AND n.reference_docname = l.name
 				AND n.modified_by NOT IN %(system_users)s), '1900-01-01'),
 			COALESCE((SELECT MAX(COALESCE(cl.start_time, cl.creation)) FROM `tabCRM Call Log` cl
-				WHERE cl.reference_doctype = 'CRM Lead' AND cl.reference_docname = l.name),
-				'1900-01-01'),
-			IF(l.owner NOT IN %(system_users)s, l.creation, '1900-01-01')
+				WHERE (cl.reference_doctype = 'CRM Lead' AND cl.reference_docname = l.name)
+				OR EXISTS (SELECT 1 FROM `tabDynamic Link` dl
+					WHERE dl.parenttype = 'CRM Call Log' AND dl.parent = cl.name
+					AND dl.link_doctype = 'CRM Lead' AND dl.link_name = l.name)),
+				'1900-01-01')
 		) AS last_at
 		FROM `tabCRM Lead` l
 		WHERE l.{FIELD} IS NULL {lead_filter}
 		""",
-		{"system_users": system_users, "lead": lead},
+		{"system_users": system_users, "lead": lead, "leading_tags": _LEADING_TAGS.pattern},
 	)
 	count = 0
 	for name, last_at in rows:

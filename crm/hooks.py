@@ -222,7 +222,10 @@ doc_events = {
 		# commission %, the affiliate, or the is_affiliate_lead toggle changes
 		# after a previous submit/approve/reject.  See crm.api.affiliate
 		# for the rationale.
-		"before_save": ["crm.api.affiliate.on_lead_before_save"],
+		"before_save": [
+			"crm.api.affiliate.on_lead_before_save",
+			"crm.utils.user_activity.on_lead_before_save",
+		],
 		"on_trash": [
 			"crm.overrides.crm_lead_permissions.bust_downstream_users_cache",
 			"crm.fcrm.doctype.crm_lead.crm_lead.clear_contact_lead_link",
