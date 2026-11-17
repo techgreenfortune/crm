@@ -1409,6 +1409,12 @@ class CRMLead(Document):
 				"width": "10rem",
 			},
 			{
+				"label": "Last User Activity",
+				"type": "Datetime",
+				"key": "custom_last_user_activity_on",
+				"width": "9rem",
+			},
+			{
 				"label": "Last Modified",
 				"type": "Datetime",
 				"key": "modified",
@@ -1428,6 +1434,7 @@ class CRMLead(Document):
 			"response_by",
 			"first_response_time",
 			"first_responded_on",
+			"custom_last_user_activity_on",
 			"modified",
 			"image",
 		]
