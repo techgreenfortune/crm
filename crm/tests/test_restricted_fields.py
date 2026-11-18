@@ -1,0 +1,373 @@
+"""INDF-2009 — admin-configurable restricted fields (Quote Margin).
+
+Hidden user: a Sales Coordinator (reads every lead and permlevel-1 QR fields, not
+exempt). Rules are set on FCRM Settings and wiped after each test.
+"""
+
+import json
+from unittest.mock import patch
+
+import frappe
+from frappe.tests.utils import FrappeTestCase
+
+from crm.permissions import field_visibility as fv
+from crm.tests.factories import make_lead, make_user
+
+HIDDEN_USER = "rf-coordinator@test.local"
+OTHER_USER = "rf-coordinator2@test.local"
+EXEMPT_USER = "rf-estimator@test.local"
+SALES_HEAD_USER = "rf-saleshead@test.local"
+
+
+def _set_rules(*rules):
+	settings = frappe.get_doc("FCRM Settings")
+	settings.set("restricted_field_rules", [])
+	for rule in rules:
+		settings.append("restricted_field_rules", rule)
+	settings.save(ignore_permissions=True)
+
+
+def _role_rule(role="Sales Coordinator"):
+	return {"field_group": "Quote Margin", "applies_to": "Role", "role": role}
+
+
+def _user_rule(user=HIDDEN_USER):
+	return {"field_group": "Quote Margin", "applies_to": "User", "user": user}
+
+
+class TestRestrictedFields(FrappeTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		make_user(email=HIDDEN_USER, roles=["Sales Coordinator"])
+		make_user(email=OTHER_USER, roles=["Sales Coordinator"])
+		make_user(email=EXEMPT_USER, roles=["Sales Coordinator", "Estimation Team"])
+		make_user(email=SALES_HEAD_USER, roles=["Sales Head"])
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for user in (HIDDEN_USER, OTHER_USER, EXEMPT_USER, SALES_HEAD_USER):
+			frappe.delete_doc("User", user, ignore_permissions=True, force=True)
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		self._enqueue = patch("frappe.enqueue")
+		self._enqueue.start()
+		frappe.set_user("Administrator")
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		self._enqueue.stop()
+		frappe.db.rollback()
+		frappe.clear_document_cache("FCRM Settings", "FCRM Settings")
+		fv.clear_cache()
+		super().tearDown()
+
+	def _lead_with_qr(self, phone):
+		lead = make_lead(phone=phone)
+		frappe.db.set_value("CRM Lead", lead.name, "custom_final_margin", 18)
+		qr = frappe.new_doc("CRM Quote Request")
+		qr.update({"lead": lead.name, "status": "Pending", "quote_margin": 18})
+		qr.flags.ignore_mandatory = True
+		qr.insert(ignore_permissions=True)
+		return lead, qr
+
+	# ---------- rule resolution ----------
+
+	def test_no_rules_hides_nothing(self):
+		_set_rules()
+		self.assertEqual(fv.get_hidden_fields("CRM Lead", HIDDEN_USER), frozenset())
+
+	def test_role_rule_hides_for_every_holder(self):
+		_set_rules(_role_rule())
+		for user in (HIDDEN_USER, OTHER_USER):
+			self.assertEqual(fv.get_hidden_fields("CRM Quote Request", user), {"quote_margin"})
+			self.assertEqual(fv.get_hidden_fields("CRM Lead", user), {"custom_final_margin"})
+
+	def test_user_rule_hides_only_that_user(self):
+		_set_rules(_user_rule())
+		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", HIDDEN_USER), {"quote_margin"})
+		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", OTHER_USER), frozenset())
+
+	def test_exempt_role_and_administrator_beat_rules(self):
+		_set_rules(_role_rule(), _user_rule(EXEMPT_USER))
+		self.assertEqual(fv.get_hidden_groups(EXEMPT_USER), frozenset())
+		self.assertEqual(fv.get_hidden_groups("Administrator"), frozenset())
+
+	def test_manager_roles_are_hideable(self):
+		for role in ("Sales Head", "Management"):
+			frappe.get_doc("User", SALES_HEAD_USER).add_roles(role)
+			_set_rules(_role_rule(role))
+			self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
+		_set_rules(_user_rule(SALES_HEAD_USER))
+		self.assertEqual(fv.get_hidden_fields("CRM Quote Request", SALES_HEAD_USER), {"quote_margin"})
+
+	def test_unknown_group_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			_set_rules({"field_group": "Nope", "applies_to": "Role", "role": "Sales Coordinator"})
+
+	def test_rule_without_target_rejected(self):
+		for rule in (
+			{"field_group": "Quote Margin", "applies_to": "Role"},
+			{"field_group": "Quote Margin", "applies_to": "User"},
+		):
+			with self.assertRaises(frappe.ValidationError):
+				_set_rules(rule)
+
+	def test_save_api_requires_system_manager(self):
+		frappe.set_user(HIDDEN_USER)
+		with self.assertRaises(frappe.PermissionError):
+			fv.save_restricted_field_rules(json.dumps([_role_rule()]))
+
+	def test_my_hidden_fields(self):
+		_set_rules(_user_rule())
+		frappe.set_user(HIDDEN_USER)
+		self.assertEqual(
+			fv.get_my_hidden_fields(),
+			{"CRM Lead": ["custom_final_margin"], "CRM Quote Request": ["quote_margin"]},
+		)
+
+	# ---------- enforcement ----------
+
+	def test_doc_load_strips_hidden_fields(self):
+		from frappe.client import get
+
+		_set_rules(_user_rule())
+		lead, qr = self._lead_with_qr("+919870000001")
+		frappe.set_user(HIDDEN_USER)
+		# Absent, not a fake 0.
+		self.assertNotIn("custom_final_margin", get("CRM Lead", lead.name))
+		self.assertNotIn("quote_margin", get("CRM Quote Request", qr.name))
+		frappe.set_user(OTHER_USER)
+		self.assertEqual(get("CRM Quote Request", qr.name)["quote_margin"], 18)
+
+	def test_whole_doc_save_keeps_hidden_value(self):
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000002")
+		frappe.set_user(HIDDEN_USER)
+		for echoed in (None, 0):
+			doc = frappe.get_doc("CRM Lead", lead.name)
+			doc.custom_final_margin = echoed
+			doc.first_name = "Renamed"
+			doc.save()
+			self.assertEqual(frappe.db.get_value("CRM Lead", lead.name, "custom_final_margin"), 18)
+
+	def test_quote_list_and_revisions_strip_margin(self):
+		from crm.api.activities import get_quote_revisions
+		from crm.api.quotes import list_lead_quote_requests
+
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000003")
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Comment",
+				"reference_doctype": "CRM Lead",
+				"reference_name": lead.name,
+				"content": "[AUTOMATION] Quote uploaded — Value: 1000, Margin: 18%",
+			}
+		).insert(ignore_permissions=True)
+
+		frappe.set_user(HIDDEN_USER)
+		self.assertIsNone(list_lead_quote_requests(lead.name)[0].get("quote_margin"))
+		revisions = get_quote_revisions(lead.name)
+		self.assertTrue(revisions)
+		self.assertIsNone(revisions[0]["margin"])
+
+	def test_get_data_strips_columns_and_values(self):
+		from crm.api.doc import get_data
+
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000004")
+		frappe.set_user(HIDDEN_USER)
+		data = get_data(
+			"CRM Lead",
+			{"name": lead.name},
+			"modified desc",
+			columns=[{"label": "Margin", "key": "custom_final_margin"}],
+			rows=["name", "custom_final_margin"],
+		)
+		self.assertNotIn("custom_final_margin", [c.get("key") for c in data["columns"]])
+		self.assertNotIn("custom_final_margin", data["rows"])
+		for row in data["data"]:
+			self.assertIsNone(row.get("custom_final_margin"))
+
+	def test_activity_text_masked(self):
+		_set_rules(_user_rule())
+		frappe.set_user(HIDDEN_USER)
+		self.assertEqual(
+			fv.mask_text("[AUTOMATION] Quote uploaded — Value: 1000, Margin: 18.5%"),
+			"[AUTOMATION] Quote uploaded — Value: 1000",
+		)
+		data = fv.strip_version_changes(
+			"CRM Lead", {"changed": [["custom_final_margin", 1, 2], ["first_name", "a", "b"]]}
+		)
+		self.assertEqual(data["changed"], [["first_name", "a", "b"]])
+
+	def test_layout_marks_field_hidden(self):
+		from crm.fcrm.doctype.crm_fields_layout.crm_fields_layout import handle_perm_level_restrictions
+
+		_set_rules(_user_rule())
+		frappe.set_user(HIDDEN_USER)
+		field = frappe._dict(fieldname="quote_margin", hidden=0)
+		handle_perm_level_restrictions(field, "CRM Quote Request")
+		self.assertEqual(field.hidden, 1)
+
+	def test_generic_list_apis_drop_hidden_fields(self):
+		from frappe.client import get_list, get_value
+		from frappe.desk.reportview import get as reportview_get
+
+		_set_rules(_user_rule())
+		lead, qr = self._lead_with_qr("+919870000005")
+		frappe.set_user(HIDDEN_USER)
+		rows = get_list("CRM Quote Request", fields=["name", "quote_margin"], filters={"name": qr.name})
+		self.assertEqual(rows, [{"name": qr.name}])
+		rows = frappe.get_list("CRM Lead", fields=["*"], filters={"name": lead.name})
+		self.assertNotIn("custom_final_margin", rows[0])
+		self.assertFalse(get_value("CRM Lead", "custom_final_margin", {"name": lead.name}))
+
+		frappe.local.form_dict = frappe._dict(
+			doctype="CRM Lead",
+			fields=json.dumps(["name", "custom_final_margin"]),
+			filters=json.dumps({"name": lead.name}),
+		)
+		self.assertNotIn("custom_final_margin", reportview_get()["keys"])
+
+		frappe.set_user(OTHER_USER)
+		rows = get_list("CRM Quote Request", fields=["name", "quote_margin"], filters={"name": qr.name})
+		self.assertEqual(rows[0]["quote_margin"], 18)
+
+	def test_save_response_omits_hidden_and_keeps_value(self):
+		from frappe.client import set_value
+
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000006")
+		frappe.set_user(HIDDEN_USER)
+		response = set_value("CRM Lead", lead.name, {"first_name": "Echo", "custom_final_margin": 0})
+		self.assertNotIn("custom_final_margin", response)
+		self.assertEqual(response["first_name"], "Echo")
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead.name, "custom_final_margin"), 18)
+
+	def test_ignore_permissions_server_save_not_reverted(self):
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000007")
+		frappe.set_user(HIDDEN_USER)
+		doc = frappe.get_doc("CRM Lead", lead.name)
+		doc.custom_final_margin = 25
+		doc.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead.name, "custom_final_margin"), 25)
+
+	def test_group_by_on_hidden_field_blocked(self):
+		from crm.api.doc import get_data, get_group_by_fields
+
+		_set_rules(_user_rule())
+		frappe.set_user(HIDDEN_USER)
+		self.assertNotIn("custom_final_margin", [f["fieldname"] for f in get_group_by_fields("CRM Lead")])
+		with self.assertRaises(frappe.PermissionError):
+			get_data(
+				"CRM Lead",
+				{},
+				"modified desc",
+				view={"view_type": "group_by", "group_by_field": "custom_final_margin"},
+			)
+
+	def test_field_pickers_drop_hidden_field(self):
+		from crm.api.doc import get_fields, sort_options
+
+		_set_rules(_user_rule())
+
+		def offered():
+			return (
+				"custom_final_margin" in [f["fieldname"] for f in sort_options("CRM Lead")],
+				"custom_final_margin" in [f.fieldname for f in get_fields("CRM Lead")],
+			)
+
+		frappe.set_user(HIDDEN_USER)
+		self.assertEqual(offered(), (False, False))
+		frappe.set_user(OTHER_USER)
+		self.assertEqual(offered(), (True, True))
+
+	def test_quote_received_notification_has_no_margin(self):
+		path = frappe.get_app_path("crm", "fixtures", "notification.json")
+		with open(path) as f:
+			notifications = json.load(f)
+		received = [n for n in notifications if n["name"].startswith("Quote Received")]
+		self.assertTrue(received)
+		for n in received:
+			self.assertNotIn("quote_margin", n["message"] + (n.get("subject") or ""))
+
+	def test_upload_comment_has_no_margin_but_revisions_do(self):
+		from crm.api.activities import get_quote_revisions
+
+		_set_rules()
+		lead, qr = self._lead_with_qr("+919870000008")
+		qr.reload()
+		qr.update(
+			{
+				"status": "Quote Received",
+				"quote_value": 1000,
+				"quote_margin": 18,
+				"quote_file": "/files/q.pdf",
+				"quote_number": "RF-TEST-0008",
+				"quote_sq_ft": 10,
+				"total_quantity": 1,
+			}
+		)
+		qr.flags.ignore_mandatory = True
+		qr.save(ignore_permissions=True)
+		contents = frappe.get_all(
+			"Comment",
+			filters={"reference_name": lead.name, "content": ["like", "%Quote uploaded%"]},
+			pluck="content",
+		)
+		self.assertTrue(contents)
+		self.assertFalse(any("Margin" in c for c in contents))
+		self.assertEqual(get_quote_revisions(lead.name)[0]["margin"], 18)
+
+	# ---------- install / upgrade guards ----------
+
+	def test_all_chokepoint_patches_installed(self):
+		missing = [
+			f"{cls.__name__}.{name}"
+			for cls, name in fv.patch_targets()
+			if not getattr(getattr(cls, name), fv._PATCH_TAG, False)
+		]
+		self.assertEqual(missing, [])
+
+	def test_frappe_signatures_match_wrappers(self):
+		"""Fails on a Frappe upgrade that changes a patched method — re-verify the wrappers."""
+		import inspect
+
+		from frappe.model.meta import Meta
+
+		params = inspect.signature(Meta.get_permitted_fieldnames.__wrapped__).parameters
+		self.assertEqual(params["user"].kind, inspect.Parameter.KEYWORD_ONLY)
+		for cls, name in fv.patch_targets():
+			if name == "get_permitted_fieldnames":
+				continue
+			original = getattr(cls, name).__wrapped__
+			if name != "as_dict":
+				self.assertEqual(list(inspect.signature(original).parameters), ["self"], name)
+
+	def test_install_runs_on_request_and_job_hooks(self):
+		for hook in ("before_request", "before_job"):
+			self.assertIn("crm.permissions.field_visibility.install", frappe.get_hooks(hook))
+		fv.install(method="x", kwargs={}, transaction_type="job")
+
+	def test_save_mark_dropped_on_pickle_and_unmasked(self):
+		import pickle
+
+		_set_rules(_user_rule())
+		lead, _qr = self._lead_with_qr("+919870000009")
+		frappe.set_user(HIDDEN_USER)
+		doc = frappe.get_doc("CRM Lead", lead.name)
+		doc.first_name = "Pickled"
+		doc.save()
+		self.assertNotIn("custom_final_margin", doc.as_dict())
+		with fv.unmasked():
+			self.assertEqual(doc.as_dict()["custom_final_margin"], 18)
+		self.assertEqual(pickle.loads(pickle.dumps(doc)).as_dict()["custom_final_margin"], 18)

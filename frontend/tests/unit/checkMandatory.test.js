@@ -1,4 +1,7 @@
-import { findMissingMandatory } from '@/utils/fieldTransforms'
+import {
+  findMissingMandatory,
+  withHiddenOverrides,
+} from '@/utils/fieldTransforms'
 import { leadFields } from '../fixtures/leadMeta'
 
 describe('findMissingMandatory', () => {
@@ -188,5 +191,41 @@ describe('findMissingMandatory', () => {
     const doc = { custom_field: '' }
     const missing = findMissingMandatory(fields, doc)
     expect(missing).toContain('custom_field')
+  })
+})
+
+describe('withHiddenOverrides', () => {
+  const fields = [
+    {
+      fieldname: 'custom_final_margin',
+      label: 'Latest Quoted Margin',
+      fieldtype: 'Percent',
+      mandatory_depends_on: 'eval:doc.status == "C4"',
+    },
+  ]
+
+  it('skips a restricted field the client never received', () => {
+    const overrides = withHiddenOverrides({}, ['custom_final_margin'])
+    const missing = findMissingMandatory(
+      fields,
+      { status: 'C4' },
+      {
+        propertyOverrides: overrides,
+      },
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('keeps existing script overrides for the same field', () => {
+    const overrides = withHiddenOverrides(
+      { custom_final_margin: { reqd: true } },
+      ['custom_final_margin'],
+    )
+    expect(overrides.custom_final_margin).toEqual({ reqd: true, hidden: true })
+  })
+
+  it('returns overrides unchanged when nothing is hidden', () => {
+    const overrides = { lead_name: { hidden: false } }
+    expect(withHiddenOverrides(overrides, [])).toBe(overrides)
   })
 })

@@ -11,6 +11,7 @@ from pypika import Criterion
 
 from crm.api.views import get_views
 from crm.fcrm.doctype.crm_form_script.crm_form_script import get_form_script
+from crm.permissions.field_visibility import filter_fields, get_hidden_fields, strip_rows
 from crm.utils import get_dynamic_linked_docs, get_linked_docs, is_frappe_version
 
 COUNT_NAME = (
@@ -47,7 +48,8 @@ def sort_options(doctype: str):
 		field["value"] = field["fieldname"]
 		fields.append(field)
 
-	return fields
+	hidden = get_hidden_fields(doctype)
+	return [f for f in fields if f["fieldname"] not in hidden]
 
 
 @frappe.whitelist()
@@ -72,9 +74,9 @@ def get_filterable_fields(doctype: str):
 	]
 
 	c = get_controller(doctype)
-	restricted_fields = []
+	restricted_fields = list(get_hidden_fields(doctype))
 	if hasattr(c, "get_non_filterable_fields"):
-		restricted_fields = c.get_non_filterable_fields()
+		restricted_fields += c.get_non_filterable_fields()
 
 	fields = []
 
@@ -136,10 +138,13 @@ def get_group_by_fields(doctype: str):
 	]
 
 	fields = frappe.get_meta(doctype).fields
+	hidden = get_hidden_fields(doctype)
 	fields = [
 		field
 		for field in fields
-		if field.fieldtype not in no_value_fields and field.fieldtype in allowed_fieldtypes
+		if field.fieldtype not in no_value_fields
+		and field.fieldtype in allowed_fieldtypes
+		and field.fieldname not in hidden
 	]
 	fields = [
 		{
@@ -191,6 +196,9 @@ def get_quick_filters(doctype: str, cached: bool = True):
 
 	else:
 		fields = [field for field in meta.fields if field.in_standard_filter]
+
+	hidden = get_hidden_fields(doctype)
+	fields = [field for field in fields if field.get("fieldname") not in hidden]
 
 	for field in fields:
 		if doctype == "CRM Lead" and field.get("fieldname") == "status":
@@ -308,6 +316,11 @@ def get_data(
 	custom_view_name = view.get("custom_view_name") if view else None
 	view_type = view.get("view_type") if view else None
 	group_by_field = view.get("group_by_field") if view else None
+
+	# Grouping/kanban on a hidden field would expose its values as column names.
+	hidden = get_hidden_fields(doctype)
+	if column_field in hidden or group_by_field in hidden:
+		frappe.throw(_("Not permitted to group by a restricted field"), frappe.PermissionError)
 
 	for key in filters:
 		value = filters[key]
@@ -607,6 +620,19 @@ def get_data(
 					"options": get_options(field.get("fieldtype"), field.get("options")),
 				}
 
+	hidden = get_hidden_fields(doctype)
+	if hidden:
+		columns = [c for c in columns or [] if c.get("key") not in hidden]
+		rows = [r for r in rows if r not in hidden]
+		fields = [f for f in fields if f.get("fieldname") not in hidden]
+		if view_type == "kanban":
+			kanban_fields = [f for f in kanban_fields or [] if f not in hidden]
+			for column in data:
+				column["fields"] = kanban_fields
+				strip_rows(doctype, column.get("data"))
+		else:
+			strip_rows(doctype, data)
+
 	return {
 		"data": data,
 		"columns": columns,
@@ -715,11 +741,16 @@ def get_fields(doctype: str, allow_all_fieldtypes: bool = False):
 	if allow_all_fieldtypes:
 		not_allowed_fieldtypes = []
 	fields = frappe.get_meta(doctype).fields
+	hidden = get_hidden_fields(doctype)
 
 	_fields = []
 
 	for field in fields:
-		if field.fieldtype not in not_allowed_fieldtypes and field.fieldname:
+		if (
+			field.fieldtype not in not_allowed_fieldtypes
+			and field.fieldname
+			and field.fieldname not in hidden
+		):
 			_fields.append(field)
 
 	return _fields
@@ -933,6 +964,7 @@ def export_pdf(
 	# Server-side PDF export of a list view. Returns the PDF as a file download
 	# via frappe.local.response (the pattern Frappe uses for binary downloads).
 	fields_list = json.loads(fields)
+	fields_list = filter_fields(doctype, fields_list)
 	filters_list = json.loads(filters)
 	selected = json.loads(selected_items) if selected_items else None
 
