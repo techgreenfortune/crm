@@ -208,9 +208,10 @@ def install(*args, **kwargs) -> None:
 	if is_installed():
 		return
 
-	from frappe.model.base_document import BaseDocument
-	from frappe.model.document import Document
-	from frappe.model.meta import Meta
+	# Frappe exposes no hook for these chokepoints, so patching is intentional.
+	from frappe.model.base_document import BaseDocument  # nosemgrep
+	from frappe.model.document import Document  # nosemgrep
+	from frappe.model.meta import Meta  # nosemgrep
 
 	orig_permitted = Meta.get_permitted_fieldnames
 
