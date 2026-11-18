@@ -58,7 +58,5 @@ function expandGroups(activities) {
 export function filterActivities(activities, filter) {
   if (!filter || filter === 'All') return activities
   const wanted = filter.toLowerCase()
-  return expandGroups(activities).filter(
-    (a) => activityCategory(a) === wanted,
-  )
+  return expandGroups(activities).filter((a) => activityCategory(a) === wanted)
 }

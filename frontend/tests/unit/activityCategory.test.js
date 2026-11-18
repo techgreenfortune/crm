@@ -23,7 +23,10 @@ describe('isAutomatedComment', () => {
 describe('activityCategory', () => {
   it('classifies sales work as user, automation as system, rest as other', () => {
     const cases = [
-      [{ activity_type: 'changed', owner: human, is_status_change: true }, 'user'],
+      [
+        { activity_type: 'changed', owner: human, is_status_change: true },
+        'user',
+      ],
       [
         {
           activity_type: 'changed',
@@ -88,7 +91,11 @@ describe('activityCategory', () => {
 })
 
 describe('filterActivities', () => {
-  const stage = { activity_type: 'changed', owner: human, is_status_change: true }
+  const stage = {
+    activity_type: 'changed',
+    owner: human,
+    is_status_change: true,
+  }
   const edit = { activity_type: 'changed', owner: human }
   const automation = {
     activity_type: 'comment',
