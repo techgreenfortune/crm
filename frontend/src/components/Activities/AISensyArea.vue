@@ -26,6 +26,9 @@
             </span>
           </Tooltip>
         </div>
+        <div class="mt-0.5 text-xs text-ink-gray-4">
+          {{ triggerLabel(msg.triggered_by) }}
+        </div>
       </div>
     </div>
   </div>
@@ -45,5 +48,16 @@ function formatVariables(vars) {
   } catch {
     return vars
   }
+}
+
+// `triggered_by` holds either a real user email (manual send from the
+// WhatsApp tab) or an "Automated - ..." label (Server Script driven
+// stage-change/scheduler drips). Render each distinctly.
+function triggerLabel(triggeredBy) {
+  if (!triggeredBy) return ''
+  if (triggeredBy.startsWith('Automated')) {
+    return __('🤖 {0}', [triggeredBy])
+  }
+  return __('Sent by {0}', [triggeredBy])
 }
 </script>
