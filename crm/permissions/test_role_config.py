@@ -85,7 +85,13 @@ class TestRoleConfigAPI(IntegrationTestCase):
 		payload = get_hierarchy_role_config()
 		self.assertEqual(
 			set(payload.keys()),
-			{"role_rank", "tier1_full_rw", "reviewer_roles", "telephony_agent_manager_roles"},
+			{
+				"role_rank",
+				"tier1_full_rw",
+				"reviewer_roles",
+				"telephony_agent_manager_roles",
+				"c6_export_roles",
+			},
 		)
 		self.assertEqual(payload["role_rank"], ROLE_RANK)
 		self.assertEqual(payload["tier1_full_rw"], sorted(TIER1_FULL_RW))
