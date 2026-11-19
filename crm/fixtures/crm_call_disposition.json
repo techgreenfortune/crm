@@ -136,23 +136,6 @@
   "requires_routing_reason": 0
  },
  {
-  "color": "gray",
-  "default_lost_reason": "Junk",
-  "disposition_name": "Junk",
-  "docstatus": 0,
-  "doctype": "CRM Call Disposition",
-  "enabled": 1,
-  "label": "Junk",
-  "modified": "2026-05-15 00:00:00",
-  "name": "Junk",
-  "next_lead_status": "Archived",
-  "next_status": null,
-  "position": 10,
-  "requires_callback_datetime": 0,
-  "requires_lost_reason": 0,
-  "requires_routing_reason": 0
- },
- {
   "color": "blue",
   "default_lost_reason": null,
   "disposition_name": "Requested Callback",
@@ -166,6 +149,23 @@
   "next_status": null,
   "position": 2,
   "requires_callback_datetime": 1,
+  "requires_lost_reason": 0,
+  "requires_routing_reason": 0
+ },
+ {
+  "color": "gray",
+  "default_lost_reason": "Junk",
+  "disposition_name": "Junk",
+  "docstatus": 0,
+  "doctype": "CRM Call Disposition",
+  "enabled": 1,
+  "label": "Junk",
+  "modified": "2026-05-15 00:00:00",
+  "name": "Junk",
+  "next_lead_status": "Archived",
+  "next_status": null,
+  "position": 10,
+  "requires_callback_datetime": 0,
   "requires_lost_reason": 0,
   "requires_routing_reason": 0
  },

@@ -4,6 +4,7 @@
     v-model:showWhatsappTemplates="showWhatsappTemplates"
     v-model:showFilesUploader="showFilesUploader"
     v-model:emailBox="emailBox"
+    v-model:activityFilter="activityFilter"
     :tabs="tabs"
     :title="title"
     :doc="doc"
@@ -245,6 +246,35 @@
                 class="inline-flex items-center flex-wrap gap-1.5 text-ink-gray-5"
               >
                 <span>{{ __(activity.data.text) }}</span>
+              </div>
+              <div class="ml-auto whitespace-nowrap">
+                <Tooltip :text="formatDate(activity.creation)">
+                  <div class="text-sm text-ink-gray-5">
+                    {{ __(timeAgo(activity.creation)) }}
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+          <div
+            v-else-if="activity.activity_type == 'note'"
+            :id="activity.name"
+            class="mb-4 flex flex-col gap-2 py-1.5"
+          >
+            <div class="flex items-center justify-stretch gap-2 text-base">
+              <div
+                class="inline-flex min-w-0 items-center gap-1.5 text-ink-gray-5"
+              >
+                <span class="font-medium text-ink-gray-8">
+                  {{ activity.owner_name }}
+                </span>
+                <span>{{ __('added a note') }}</span>
+                <button
+                  class="truncate font-medium text-ink-gray-8 hover:underline"
+                  @click="modalRef.showNote(activity.note)"
+                >
+                  {{ activity.note.title }}
+                </button>
               </div>
               <div class="ml-auto whitespace-nowrap">
                 <Tooltip :text="formatDate(activity.creation)">
@@ -518,6 +548,7 @@ import WhatsappTemplateSelectorModal from '@/components/Modals/WhatsappTemplateS
 import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import { timeAgo, formatDate, startCase } from '@/utils'
+import { filterActivities } from '@/utils/activityCategory'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { whatsappEnabled, aisensyEnabled } from '@/composables/settings'
@@ -561,6 +592,7 @@ const doc = computed(() => _document.doc || {})
 const reload_email = ref(false)
 const modalRef = ref(null)
 const showFilesUploader = ref(false)
+const activityFilter = ref('All')
 
 const title = computed(() => props.tabs?.[tabIndex.value]?.name || 'Activity')
 
@@ -671,9 +703,18 @@ const replyMessage = ref({})
 
 function get_activities() {
   if (!all_activities.data?.versions) return []
-  if (!all_activities.data?.calls.length)
-    return all_activities.data.versions || []
-  return [...all_activities.data.versions, ...all_activities.data.calls]
+  const notes = (all_activities.data.notes || []).map((note) => ({
+    name: note.name,
+    activity_type: 'note',
+    owner: note.owner,
+    creation: note.creation || note.modified,
+    note,
+  }))
+  return [
+    ...all_activities.data.versions,
+    ...(all_activities.data.calls || []),
+    ...notes,
+  ]
 }
 
 const activities = computed(() => {
@@ -732,7 +773,10 @@ const activities = computed(() => {
       })
     }
   })
-  return sortByCreation(_activities)
+  const sorted = sortByCreation(_activities)
+  return title.value == 'Activity'
+    ? filterActivities(sorted, activityFilter.value)
+    : sorted
 })
 
 function sortByCreation(list) {
@@ -858,6 +902,9 @@ function timelineIcon(activity_type, is_lead) {
       break
     case 'comment':
       icon = CommentIcon
+      break
+    case 'note':
+      icon = NoteIcon
       break
     case 'incoming_call':
       icon = InboundCallIcon

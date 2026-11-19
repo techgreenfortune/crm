@@ -175,7 +175,7 @@ doc_events = {
 		"on_update": ["crm.utils.on_communication_update"],
 	},
 	"Comment": {
-		"after_insert": ["crm.utils.on_comment_insert"],
+		"after_insert": ["crm.utils.on_comment_insert", "crm.utils.user_activity.on_comment_insert"],
 		"on_update": ["crm.api.comment.on_update"],
 	},
 	"WhatsApp Message": {
@@ -222,7 +222,10 @@ doc_events = {
 		# commission %, the affiliate, or the is_affiliate_lead toggle changes
 		# after a previous submit/approve/reject.  See crm.api.affiliate
 		# for the rationale.
-		"before_save": ["crm.api.affiliate.on_lead_before_save"],
+		"before_save": [
+			"crm.api.affiliate.on_lead_before_save",
+			"crm.utils.user_activity.on_lead_before_save",
+		],
 		"on_trash": [
 			"crm.overrides.crm_lead_permissions.bust_downstream_users_cache",
 			"crm.fcrm.doctype.crm_lead.crm_lead.clear_contact_lead_link",
@@ -231,6 +234,13 @@ doc_events = {
 		# to the configured audience. No-ops if CRM Meta Audience Settings is
 		# disabled/incomplete.
 		"after_insert": ["crm.integrations.meta.handlers.on_lead_created"],
+		"on_update": ["crm.utils.user_activity.on_lead_update"],
+	},
+	"FCRM Note": {
+		"on_update": ["crm.utils.user_activity.on_note_update"],
+	},
+	"CRM Call Log": {
+		"on_update": ["crm.utils.user_activity.on_call_log_update"],
 	},
 	"Notification": {
 		"on_update": ["crm.api.desk_audit.on_desk_edit"],
