@@ -3,8 +3,19 @@
     v-if="title !== 'Data'"
     class="mx-4 my-3 flex items-center justify-between text-lg font-medium sm:mx-10 sm:mb-4 sm:mt-8"
   >
-    <div class="flex h-8 items-center text-xl font-semibold text-ink-gray-8">
-      {{ __(title) }}
+    <div class="flex h-8 items-center gap-3">
+      <div class="text-xl font-semibold text-ink-gray-8">
+        {{ __(title) }}
+      </div>
+      <Dropdown v-if="title == 'Activity'" :options="activityFilterOptions">
+        <template #default="{ open }">
+          <Button
+            :label="__(activityFilter)"
+            iconLeft="filter"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          />
+        </template>
+      </Dropdown>
     </div>
     <Button
       v-if="title == 'Emails'"
@@ -91,6 +102,7 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import { globalStore } from '@/stores/global'
 import { whatsappEnabled, callEnabled } from '@/composables/settings'
+import { ACTIVITY_FILTERS } from '@/utils/activityCategory'
 import { Dropdown } from 'frappe-ui'
 import { computed, h } from 'vue'
 
@@ -111,6 +123,17 @@ const showWhatsappTemplates = defineModel('showWhatsappTemplates', {
 })
 const showFilesUploader = defineModel('showFilesUploader', { type: Boolean })
 const emailBox = defineModel('emailBox', { type: Object, default: () => ({}) })
+const activityFilter = defineModel('activityFilter', {
+  type: String,
+  default: 'All',
+})
+
+const activityFilterOptions = computed(() =>
+  ACTIVITY_FILTERS.map((filter) => ({
+    label: __(filter),
+    onClick: () => (activityFilter.value = filter),
+  })),
+)
 
 const defaultActions = computed(() => {
   let actions = [

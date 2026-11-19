@@ -75,7 +75,11 @@ def get_deal_activities(name: str):
 		if not data.get("changed"):
 			continue
 
-		if change := data.get("changed")[0]:
+		changed = data.get("changed")
+		# Surface the stage change when a save touched several fields, so the
+		# timeline and the User activity filter don't hide it behind another one.
+		status_change = next((c for c in changed if c[0] == "status"), None)
+		if change := status_change or changed[0]:
 			field = deal_fields.get(change[0], None)
 
 			if not field or change[0] in avoid_fields or (not change[1] and not change[2]):
@@ -120,6 +124,7 @@ def get_deal_activities(name: str):
 			"data": data,
 			"is_lead": False,
 			"options": field_option,
+			"is_status_change": bool(status_change),
 		}
 		activities.append(activity)
 
@@ -229,7 +234,11 @@ def get_lead_activities(name: str):
 		if not data.get("changed"):
 			continue
 
-		if change := data.get("changed")[0]:
+		changed = data.get("changed")
+		# Surface the stage change when a save touched several fields, so the
+		# timeline and the User activity filter don't hide it behind another one.
+		status_change = next((c for c in changed if c[0] == "status"), None)
+		if change := status_change or changed[0]:
 			field = lead_fields.get(change[0], None)
 
 			if not field or change[0] in avoid_fields or (not change[1] and not change[2]):
@@ -274,6 +283,7 @@ def get_lead_activities(name: str):
 			"data": data,
 			"is_lead": True,
 			"options": field_option,
+			"is_status_change": bool(status_change),
 		}
 		activities.append(activity)
 
