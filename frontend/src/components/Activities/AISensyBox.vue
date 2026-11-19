@@ -11,61 +11,6 @@
         @update:modelValue="templateName = $event?.value || ''"
       />
     </div>
-    <div>
-      <div class="mb-1 text-sm font-medium text-ink-gray-7">
-        {{ __('Variables') }}
-      </div>
-      <div class="space-y-2">
-        <div
-          v-for="(row, idx) in variables"
-          :key="idx"
-          class="flex items-center gap-2"
-        >
-          <span class="text-xs text-ink-gray-4 w-4 text-right shrink-0">
-            {{ idx + 1 }}
-          </span>
-          <FormControl
-            v-model="row.value"
-            type="text"
-            :placeholder="__('Value')"
-            class="flex-1"
-          />
-          <Button variant="ghost" icon="x" @click="removeVariable(idx)" />
-        </div>
-        <Button
-          variant="subtle"
-          icon-left="plus"
-          :label="__('Add Variable')"
-          @click="addVariable"
-        />
-      </div>
-    </div>
-    <div>
-      <div class="mb-1 text-sm font-medium text-ink-gray-7">
-        {{ __('Media URL') }}
-        <span class="text-xs font-normal text-ink-gray-4">
-          ({{ __('optional — for image/document templates') }})
-        </span>
-      </div>
-      <FormControl
-        v-model="mediaUrl"
-        type="text"
-        :placeholder="__('https://example.com/file.jpg')"
-      />
-    </div>
-    <div v-if="mediaUrl">
-      <div class="mb-1 text-sm font-medium text-ink-gray-7">
-        {{ __('Media Filename') }}
-        <span class="text-xs font-normal text-ink-gray-4">
-          ({{ __('optional — auto-derived from URL if blank') }})
-        </span>
-      </div>
-      <FormControl
-        v-model="mediaFilename"
-        type="text"
-        :placeholder="__('file.jpg')"
-      />
-    </div>
     <div class="flex justify-end">
       <Button
         variant="solid"
@@ -96,18 +41,7 @@ const aisensyMessages = defineModel('aisensyMessages', {
 })
 
 const templateName = ref('')
-const variables = ref([])
-const mediaUrl = ref('')
-const mediaFilename = ref('')
 const sending = ref(false)
-
-function addVariable() {
-  variables.value.push({ value: '' })
-}
-
-function removeVariable(idx) {
-  variables.value.splice(idx, 1)
-}
 
 const templatesResource = createResource({
   url: 'crm.integrations.aisensy.api.get_templates',
@@ -122,9 +56,6 @@ const templateOptions = computed(() => {
 
 async function send() {
   if (!templateName.value || !doc.value.mobile_no) return
-  const variableList = variables.value
-    .map((v) => v.value.trim())
-    .filter(Boolean)
 
   sending.value = true
   try {
@@ -133,15 +64,9 @@ async function send() {
       reference_name: doc.value.name,
       to: doc.value.mobile_no,
       template_name: templateName.value,
-      variables: variableList,
-      media_url: mediaUrl.value.trim() || null,
-      media_filename: mediaFilename.value.trim() || null,
     })
     toast.success(__('WhatsApp message sent'))
     templateName.value = ''
-    variables.value = []
-    mediaUrl.value = ''
-    mediaFilename.value = ''
     aisensyMessages.value.reload()
   } catch (err) {
     toast.error(err.messages?.[0] || __('Failed to send message'))
