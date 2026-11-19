@@ -1,8 +1,12 @@
 // Same split as crm/utils/user_activity.py — keep the two in sync.
 // User: outgoing/answered calls, C-stage changes, comments, notes, quote events.
-// System: automation. Everything else (data corrections, reassignment,
-// emails, lead creation) is neither and only shows under All.
+// System: automation, plus leads created by imports/webhooks/web forms.
+// Everything else (data corrections, reassignment, emails) is neither and
+// only shows under All. Lead creation is classified here only; it doesn't
+// move the Last User Activity stamp.
 const SYSTEM_USERS = ['Guest']
+// Imports, webhooks and web forms create leads as one of these.
+const AUTOMATED_CREATORS = ['Administrator', 'Guest']
 const AUTOMATION_PREFIX = '[AUTOMATION]'
 // Quote comments carry the automation prefix but record a person's action.
 const USER_TRIGGERED_AUTOMATION_PREFIX = '[AUTOMATION] Quote'
@@ -35,6 +39,9 @@ export function activityCategory(activity) {
     return activity.communication_type === 'Automated Message'
       ? 'system'
       : 'other'
+  }
+  if (type === 'creation') {
+    return AUTOMATED_CREATORS.includes(activity.owner) ? 'system' : 'user'
   }
   if (isSystemUser(activity.owner)) return 'system'
   if (type === 'comment') {

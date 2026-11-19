@@ -37,7 +37,8 @@ describe('activityCategory', () => {
       ],
       [{ activity_type: 'changed', owner: human }, 'other'],
       [{ activity_type: 'added', owner: human }, 'other'],
-      [{ activity_type: 'creation', owner: human }, 'other'],
+      [{ activity_type: 'creation', owner: human }, 'user'],
+      [{ activity_type: 'creation', owner: 'Administrator' }, 'system'],
       [{ activity_type: 'creation', owner: 'Guest' }, 'system'],
       [{ activity_type: 'comment', owner: human, content: 'hi' }, 'user'],
       [
