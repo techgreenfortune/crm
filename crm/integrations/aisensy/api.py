@@ -16,7 +16,7 @@ def is_aisensy_enabled() -> bool:
 @frappe.whitelist()
 def get_templates() -> list:
 	settings = frappe.get_single("CRM AISensy Settings")
-	return [row.template_name for row in settings.get("templates", [])]
+	return [row.template_name for row in settings.get("templates", []) if row.is_static]
 
 
 @frappe.whitelist()
@@ -34,6 +34,7 @@ def get_messages(reference_doctype: str, reference_name: str) -> list:
 			"variables",
 			"status",
 			"message_id",
+			"triggered_by",
 			"creation",
 		],
 		order_by="creation asc",
@@ -68,4 +69,7 @@ def send_message(
 		buttons=buttons,
 		attributes=attributes,
 		params_fallback_value=params_fallback_value,
+		# Manual send from the WhatsApp tab — attribute it to the logged-in
+		# user so history shows who actually triggered it (vs. automated).
+		triggered_by=frappe.session.user,
 	)

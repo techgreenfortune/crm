@@ -11,7 +11,8 @@
   "template_name",
   "variables",
   "status",
-  "message_id"
+  "message_id",
+  "triggered_by"
  ],
  "fields": [
   {
@@ -54,6 +55,12 @@
    "fieldname": "message_id",
    "fieldtype": "Data",
    "label": "Message ID"
+  },
+  {
+   "fieldname": "triggered_by",
+   "fieldtype": "Data",
+   "label": "Triggered By",
+   "description": "Email of the user who sent this manually from the WhatsApp tab, or a label (e.g. 'Automated - Stage Change', 'Automated - Scheduler (Day 3+)') when sent by a Server Script."
   }
  ],
  "index_web_pages_for_search": 1,

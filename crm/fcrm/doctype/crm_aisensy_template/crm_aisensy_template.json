@@ -5,7 +5,8 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "template_name"
+  "template_name",
+  "is_static"
  ],
  "fields": [
   {
@@ -13,6 +14,14 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Template Name"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_static",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Static (No Variables)",
+   "description": "Check this if the template has no variables/placeholders — only static templates are selectable from the CRM WhatsApp tab's quick-send list."
   }
  ],
  "index_web_pages_for_search": 0,

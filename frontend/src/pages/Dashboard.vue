@@ -24,6 +24,12 @@
           @click="downloadCalls"
         />
         <Button
+          v-if="!editing && canExportC6()"
+          :label="__('Download C6 (Lost)')"
+          :iconLeft="LucideDownload"
+          @click="downloadC6"
+        />
+        <Button
           v-if="!editing && isAdmin()"
           :label="__('Edit')"
           :iconLeft="LucidePenLine"
@@ -153,7 +159,7 @@ import {
 } from 'frappe-ui'
 import { ref, reactive, computed, provide } from 'vue'
 
-const { isAdmin } = usersStore()
+const { isAdmin, canExportC6 } = usersStore()
 
 const editing = ref(false)
 
@@ -216,6 +222,10 @@ function downloadLeads() {
 
 function downloadCalls() {
   window.location.href = `/api/method/crm.api.dashboard.download_calls_export?${buildExportParams()}`
+}
+
+function downloadC6() {
+  window.location.href = `/api/method/crm.api.dashboard.download_c6_export?${buildExportParams()}`
 }
 
 const options = computed(() => [

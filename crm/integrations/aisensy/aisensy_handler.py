@@ -26,6 +26,7 @@ def send_template_message(
 	buttons: list | None = None,
 	attributes: dict | None = None,
 	params_fallback_value: dict | None = None,
+	triggered_by: str | None = None,
 ) -> dict:
 	settings = get_aisensy_settings()
 	api_key = settings.get_password("api_key")
@@ -93,6 +94,12 @@ def send_template_message(
 			# `{"success": "true", "submitted_message_id": "<uuid>"}`). Earlier code read
 			# `messageId` which is not a real key — every row got message_id = "".
 			"message_id": result.get("submitted_message_id", ""),
+			# Who/what triggered this send — a real user's email for manual
+			# WhatsApp-tab sends, or an "Automated - ..." label for the
+			# Server Script driven stage-change/scheduler drips. Falls back
+			# to the current session user if the caller didn't pass one
+			# (covers any older/unmigrated call sites).
+			"triggered_by": triggered_by or frappe.session.user,
 		}
 	).insert(ignore_permissions=True)
 
