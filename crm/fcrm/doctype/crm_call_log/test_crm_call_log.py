@@ -359,6 +359,17 @@ class TestCRMCallLog(FrappeTestCase):
 		lead = frappe.get_doc("CRM Lead", lead_name)
 		self.assertEqual(lead.lead_owner, "Administrator")
 
+	def test_create_lead_from_outgoing_call_uses_customer_number(self):
+		call = create_test_call_log(
+			type="Outgoing",
+			from_number="agent@example.com",
+			to="+919876543210",
+		)
+
+		lead_name = create_lead_from_call_log(call_log=frappe.as_json({"name": call.name}))
+
+		self.assertEqual(frappe.db.get_value("CRM Lead", lead_name, "mobile_no"), "+919876543210")
+
 	def test_create_lead_from_call_log_no_details(self):
 		"""Test creating lead from call log without lead details"""
 		call = create_test_call_log(
