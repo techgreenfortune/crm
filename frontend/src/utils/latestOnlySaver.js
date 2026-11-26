@@ -1,7 +1,12 @@
 // Overlapping saves of the same record race on the server: one fails, and when it is the
 // newer one the older state is what persists. So keep one save in flight and, when it
 // settles, send only the latest state requested meanwhile.
-export function createLatestOnlySaver({ send, onSettled, onError, retries = 1 }) {
+export function createLatestOnlySaver({
+  send,
+  onSettled,
+  onError,
+  retries = 1,
+}) {
   let running = null
   let queued = null
 

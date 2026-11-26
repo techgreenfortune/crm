@@ -5,7 +5,9 @@ function controlledSend() {
   const calls = []
   const send = vi.fn(
     (payload) =>
-      new Promise((resolve, reject) => calls.push({ payload, resolve, reject })),
+      new Promise((resolve, reject) =>
+        calls.push({ payload, resolve, reject }),
+      ),
   )
   const settle = async (outcome = 'ok') => {
     const call = calls.shift()
@@ -70,7 +72,9 @@ describe('createLatestOnlySaver', () => {
     await settle('first')
     await settle('second')
 
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'second' }))
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'second' }),
+    )
     expect(onSettled).not.toHaveBeenCalled()
   })
 
