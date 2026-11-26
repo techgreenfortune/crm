@@ -129,28 +129,37 @@ class FacebookSyncSource:
 
 		leads = self.fetch_leads()
 		for lead in leads:
-			self.sync_single_lead(lead)
+			self._sync_lead_in_own_transaction(lead)
 		self.update_last_synced_at()
 
-	def sync_single_lead(self, lead, raise_exception=False):
-		question_to_field_map = self.get_form_questions_mapping()
-		lead_data = {item["name"]: item["values"][0] for item in lead["field_data"]}
-		crm_lead_data = {
-			question_to_field_map.get(k): v for k, v in lead_data.items() if k in question_to_field_map
-		}
-		crm_lead_data["source"] = PAID_LEAD_SOURCE
-		crm_lead_data["custom_sub_source"] = self.sub_source or DEFAULT_SUB_SOURCE
-		crm_lead_data["facebook_lead_id"] = lead["id"]
-		crm_lead_data["facebook_form_id"] = self.form_id
+	def _sync_lead_in_own_transaction(self, lead) -> None:
+		# One short transaction per lead. A run-long transaction keeps a stale
+		# snapshot of the shared CRM Lead naming-series row; once any other process
+		# creates a lead, the series FOR UPDATE fails (MariaDB snapshot isolation,
+		# error 1020), which can roll back leads inserted earlier in the run while
+		# last_synced_at still advances past them.
+		for attempt in range(2):
+			try:
+				self._insert_lead(lead)
+			except (frappe.UniqueValidationError, DuplicateLeadError):
+				frappe.db.rollback()
+				self.create_failure_log(lead, "Duplicate")
+			except frappe.QueryDeadlockError:
+				traceback = frappe.get_traceback(with_context=True)
+				frappe.db.rollback()
+				if attempt == 0:
+					continue
+				self.create_failure_log(lead, traceback=traceback)
+			except Exception:
+				traceback = frappe.get_traceback(with_context=True)
+				frappe.db.rollback()
+				self.create_failure_log(lead, traceback=traceback)
+			frappe.db.commit()
+			return
 
+	def sync_single_lead(self, lead, raise_exception=False):
 		try:
-			self.validate_duplicate_lead(crm_lead_data, question_to_field_map)
-			doc = frappe.get_doc(
-				{
-					"doctype": "CRM Lead",
-					**crm_lead_data,
-				}
-			).insert(ignore_permissions=True)
+			return self._insert_lead(lead)
 		except (frappe.UniqueValidationError, DuplicateLeadError):
 			self.create_failure_log(lead, "Duplicate")
 			if raise_exception:
@@ -161,6 +170,25 @@ class FacebookSyncSource:
 			if raise_exception:
 				raise
 			return None
+
+	def _insert_lead(self, lead):
+		question_to_field_map = self.get_form_questions_mapping()
+		lead_data = {item["name"]: item["values"][0] for item in lead["field_data"]}
+		crm_lead_data = {
+			question_to_field_map.get(k): v for k, v in lead_data.items() if k in question_to_field_map
+		}
+		crm_lead_data["source"] = PAID_LEAD_SOURCE
+		crm_lead_data["custom_sub_source"] = self.sub_source or DEFAULT_SUB_SOURCE
+		crm_lead_data["facebook_lead_id"] = lead["id"]
+		crm_lead_data["facebook_form_id"] = self.form_id
+
+		self.validate_duplicate_lead(crm_lead_data, question_to_field_map)
+		doc = frappe.get_doc(
+			{
+				"doctype": "CRM Lead",
+				**crm_lead_data,
+			}
+		).insert(ignore_permissions=True)
 
 		if lead.get("created_time"):
 			try:

@@ -18,6 +18,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from crm.lead_syncing.doctype.lead_sync_source.facebook import (
+	DuplicateLeadError,
 	FacebookSyncSource,
 	_auto_map_questions,
 	create_facebook_lead_form_in_db,
@@ -257,6 +258,88 @@ class TestUpdateLastSyncedAt(FrappeTestCase):
 		self.assertIsNotNone(lead_sync_source.last_synced_at)
 
 
+class TestSyncPerLeadTransaction(FrappeTestCase):
+	"""sync() must isolate each lead in its own transaction so a naming-series
+	snapshot conflict (MariaDB 1020, surfaced as QueryDeadlockError) can't roll
+	back leads already synced earlier in the run. commit/rollback are mocked so
+	the test transaction itself stays intact."""
+
+	def setUp(self):
+		super().setUp()
+		self.source = FacebookSyncSource("token", "form-txn-1")
+		for target, kwargs in (
+			(FacebookSyncSource, {"attribute": "get_form_questions_mapping", "return_value": _QUESTION_MAP}),
+			(FacebookSyncSource, {"attribute": "update_last_synced_at"}),
+			(frappe.db, {"attribute": "rollback"}),
+		):
+			patcher = patch.object(target, **kwargs)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+		commit_patcher = patch.object(frappe.db, "commit")
+		self.mock_commit = commit_patcher.start()
+		self.addCleanup(commit_patcher.stop)
+
+	def tearDown(self):
+		frappe.db.rollback()
+		super().tearDown()
+
+	def _sync(self, leads, insert_side_effect):
+		with (
+			patch.object(FacebookSyncSource, "fetch_leads", return_value=leads),
+			patch.object(FacebookSyncSource, "_insert_lead", side_effect=insert_side_effect) as mock_insert,
+			patch.object(FacebookSyncSource, "create_failure_log") as mock_log,
+		):
+			self.source.sync()
+		return mock_insert, mock_log
+
+	def test_each_lead_committed_separately(self):
+		leads = [_fb_lead(f"fb-txn-{i}", f"Txn {i}", f"+91981234700{i}") for i in range(3)]
+		mock_insert, mock_log = self._sync(leads, None)
+		self.assertEqual(mock_insert.call_count, 3)
+		self.assertEqual(self.mock_commit.call_count, 3)
+		mock_log.assert_not_called()
+
+	def test_series_conflict_retried_once_then_succeeds(self):
+		lead = _fb_lead("fb-txn-retry", "Txn Retry", "+919812347010")
+		mock_insert, mock_log = self._sync([lead], [frappe.QueryDeadlockError("1020"), None])
+		self.assertEqual(mock_insert.call_count, 2)
+		frappe.db.rollback.assert_called()
+		mock_log.assert_not_called()
+		self.mock_commit.assert_called_once()
+
+	def test_persistent_series_conflict_logged_and_later_leads_still_sync(self):
+		bad = _fb_lead("fb-txn-bad", "Txn Bad", "+919812347020")
+		good = _fb_lead("fb-txn-good", "Txn Good", "+919812347021")
+		conflict = frappe.QueryDeadlockError("1020")
+		mock_insert, mock_log = self._sync([bad, good], [conflict, conflict, None])
+		self.assertEqual(mock_insert.call_count, 3)
+		mock_log.assert_called_once()
+		self.assertEqual(mock_log.call_args.args[0], bad)
+		self.assertIn("traceback", mock_log.call_args.kwargs)
+		self.assertEqual(self.mock_commit.call_count, 2)
+
+	def test_failure_rolls_back_before_logging(self):
+		lead = _fb_lead("fb-txn-fail", "Txn Fail", "+919812347030")
+		events = []
+		frappe.db.rollback.side_effect = lambda *a, **k: events.append("rollback")
+		with (
+			patch.object(FacebookSyncSource, "fetch_leads", return_value=[lead]),
+			patch.object(FacebookSyncSource, "_insert_lead", side_effect=frappe.ValidationError("bad")),
+			patch.object(
+				FacebookSyncSource, "create_failure_log", side_effect=lambda *a, **k: events.append("log")
+			),
+		):
+			self.source.sync()
+		self.assertEqual(events, ["rollback", "log"])
+		self.mock_commit.assert_called_once()
+
+	def test_duplicate_logged_as_duplicate_without_retry(self):
+		lead = _fb_lead("fb-txn-dup", "Txn Dup", "+919812347040")
+		mock_insert, mock_log = self._sync([lead], DuplicateLeadError())
+		mock_insert.assert_called_once()
+		mock_log.assert_called_once_with(lead, "Duplicate")
+
+
 class TestGetFormQuestionsMapping(FrappeTestCase):
 	"""get_form_questions_mapping() must build {key: mapped_field} from DB,
 	drop unmapped questions, and cache the result after the first call."""
@@ -472,6 +555,10 @@ class TestNewInstantFormAfterSourceCreated(FrappeTestCase):
 		patcher = patch(self.FB_REQUEST, side_effect=self._fake_graph)
 		patcher.start()
 		self.addCleanup(patcher.stop)
+		# sync() commits per lead; keep this test's writes inside its rollback.
+		commit_patcher = patch.object(frappe.db, "commit")
+		commit_patcher.start()
+		self.addCleanup(commit_patcher.stop)
 
 	def tearDown(self):
 		frappe.db.rollback()
