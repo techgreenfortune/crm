@@ -86,6 +86,34 @@ describe('createLatestOnlySaver', () => {
     expect(send.mock.calls.map(([p]) => p.filters)).toEqual(['a', 'a+b'])
   })
 
+  test('a save requested from onSettled is sent, not dropped', async () => {
+    const { send, settle } = controlledSend()
+    let save
+    const onSettled = vi.fn(() => {
+      if (onSettled.mock.calls.length === 1) save({ filters: 'b' })
+    })
+    save = createLatestOnlySaver({ send, onSettled })
+
+    save({ filters: 'a' })
+    await settle()
+    await settle()
+
+    expect(send.mock.calls.map(([p]) => p.filters)).toEqual(['a', 'b'])
+  })
+
+  test('a save requested from onError is sent, not dropped', async () => {
+    const { send, settle } = controlledSend()
+    let save
+    const onError = vi.fn(() => save({ filters: 'b' }))
+    save = createLatestOnlySaver({ send, onError, retries: 0 })
+
+    save({ filters: 'a' })
+    await settle('boom')
+    await settle()
+
+    expect(send.mock.calls.map(([p]) => p.filters)).toEqual(['a', 'b'])
+  })
+
   test('saves again normally after the queue drains', async () => {
     const { send, settle } = controlledSend()
     const save = createLatestOnlySaver({ send })

@@ -21,11 +21,15 @@ export function createLatestOnlySaver({ send, onSettled, onError, retries = 1 })
         } else if (attempt < retries) {
           attempt++
         } else {
+          running = null
           onError?.(error)
           return
         }
       }
     }
+    // Cleared before the callback so a save it triggers starts a new flush instead of
+    // being queued behind one that is already finishing.
+    running = null
     onSettled?.()
   }
 
@@ -40,9 +44,7 @@ export function createLatestOnlySaver({ send, onSettled, onError, retries = 1 })
       queued = payload
       return running
     }
-    running = flush(payload).finally(() => {
-      running = null
-    })
+    running = flush(payload)
     return running
   }
 }

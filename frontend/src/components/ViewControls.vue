@@ -1149,7 +1149,7 @@ const saveStandardView = createLatestOnlySaver({
 function createOrUpdateStandardView() {
   if (route.query.view) return
   view.value.doctype = props.doctype
-  saveStandardView({ ...view.value })
+  saveStandardView(JSON.parse(JSON.stringify(view.value)))
 }
 
 function afterStandardViewSaved() {
