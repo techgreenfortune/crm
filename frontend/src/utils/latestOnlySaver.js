@@ -53,3 +53,27 @@ export function createLatestOnlySaver({
     return running
   }
 }
+
+const sharedSavers = new Map()
+
+// List pages remount on every navigation, so a per-component queue would let a save
+// still pending from before the remount race the new page's saves for the same row.
+// One queue per key lives for the tab; only the currently mounted list handles results.
+export function getSharedLatestOnlySaver(key, send) {
+  if (!sharedSavers.has(key)) {
+    let handlers = {}
+    const save = createLatestOnlySaver({
+      send,
+      onSettled: () => handlers.onSettled?.(),
+      onError: (error) => handlers.onError?.(error),
+    })
+    const bind = (next) => {
+      handlers = next
+      return () => {
+        if (handlers === next) handlers = {}
+      }
+    }
+    sharedSavers.set(key, { save, bind })
+  }
+  return sharedSavers.get(key)
+}

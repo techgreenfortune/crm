@@ -406,10 +406,18 @@ import {
   FeatherIcon,
   usePageMeta,
 } from 'frappe-ui'
-import { computed, ref, onMounted, watch, h, markRaw } from 'vue'
+import {
+  computed,
+  ref,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  h,
+  markRaw,
+} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
-import { createLatestOnlySaver } from '@/utils/latestOnlySaver'
+import { getSharedLatestOnlySaver } from '@/utils/latestOnlySaver'
 import { isMobileView } from '@/composables/settings'
 import Draggable from 'vuedraggable'
 import _ from 'lodash'
@@ -1132,12 +1140,15 @@ function loadMoreKanban(columnName) {
   list.value.reload()
 }
 
-const saveStandardView = createLatestOnlySaver({
-  send: (payload) =>
+const standardViewSaver = getSharedLatestOnlySaver(
+  `standard-view:${props.doctype}`,
+  (payload) =>
     call(
       'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_standard_view',
       { view: payload },
     ),
+)
+const unbindStandardViewSaver = standardViewSaver.bind({
   onSettled: afterStandardViewSaved,
   onError: (error) =>
     toast.error(
@@ -1145,11 +1156,12 @@ const saveStandardView = createLatestOnlySaver({
         __('Could not save your filters. Please apply them again.'),
     ),
 })
+onBeforeUnmount(unbindStandardViewSaver)
 
 function createOrUpdateStandardView() {
   if (route.query.view) return
   view.value.doctype = props.doctype
-  saveStandardView(JSON.parse(JSON.stringify(view.value)))
+  standardViewSaver.save(JSON.parse(JSON.stringify(view.value)))
 }
 
 function afterStandardViewSaved() {
