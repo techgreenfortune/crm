@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { createResource } from 'frappe-ui'
 import { reactive, ref } from 'vue'
+import { createViewsSync } from '@/utils/viewsSync'
 
 export const viewsStore = defineStore('crm-views', (doctype) => {
   if (typeof doctype !== 'string') {
@@ -66,8 +67,12 @@ export const viewsStore = defineStore('crm-views', (doctype) => {
     return publicViews.value
   }
 
+  const sync = createViewsSync({ onRemoteChange: () => views.reload() })
+  import.meta.hot?.dispose(() => sync.stop())
+
   async function reload() {
     await views.reload()
+    sync.notify()
   }
 
   return {

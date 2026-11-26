@@ -639,6 +639,20 @@ function reload() {
   list.value.reload()
 }
 
+// A saved view can change mid-fetch (another tab saved, or this tab regained focus).
+// Dropping that refresh would leave this tab's params stale, and its next save would
+// write the old filters back over the newer ones.
+let reloadPending = false
+function reloadWhenIdle() {
+  if (!isLoading.value) return reload()
+  reloadPending = true
+}
+watch(isLoading, (loading) => {
+  if (loading || !reloadPending) return
+  reloadPending = false
+  reload()
+})
+
 const showExportDialog = ref(false)
 const export_type = ref('Excel')
 const export_all = ref(false)
@@ -1455,7 +1469,7 @@ watch(
   () => getView(route.query.view, route.params.viewType, props.doctype),
   (value, old_value) => {
     if (_.isEqual(value, old_value)) return
-    reload()
+    reloadWhenIdle()
   },
   { deep: true },
 )
