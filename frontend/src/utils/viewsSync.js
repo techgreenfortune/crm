@@ -9,11 +9,17 @@ export function createViewsSync({
     ? null
     : new BroadcastChannel(CHANNEL_NAME),
   doc = globalThis.document,
+  minFocusRefreshMs = 5000,
+  now = () => Date.now(),
 }) {
   if (channel) channel.onmessage = () => onRemoteChange()
 
+  let lastFocusRefresh = -Infinity
   const onVisibilityChange = () => {
-    if (doc.visibilityState === 'visible') onRemoteChange()
+    if (doc.visibilityState !== 'visible') return
+    if (now() - lastFocusRefresh < minFocusRefreshMs) return
+    lastFocusRefresh = now()
+    onRemoteChange()
   }
   doc?.addEventListener('visibilitychange', onVisibilityChange)
 

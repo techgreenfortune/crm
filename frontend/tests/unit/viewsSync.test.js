@@ -60,6 +60,35 @@ describe('createViewsSync', () => {
     expect(onRemoteChange).toHaveBeenCalledTimes(1)
   })
 
+  test('rapid tab switching refreshes at most once per interval', () => {
+    const doc = fakeDocument()
+    const onRemoteChange = vi.fn()
+    let clock = 0
+    createViewsSync({ onRemoteChange, channel: null, doc, minFocusRefreshMs: 5000, now: () => clock })
+
+    doc.setVisibility('visible')
+    clock = 2000
+    doc.setVisibility('visible')
+    expect(onRemoteChange).toHaveBeenCalledTimes(1)
+
+    clock = 5000
+    doc.setVisibility('visible')
+    expect(onRemoteChange).toHaveBeenCalledTimes(2)
+  })
+
+  test('another tab saving always refreshes, even right after a focus refresh', () => {
+    const newChannel = fakeChannelBus()
+    const doc = fakeDocument()
+    const onRemoteChange = vi.fn()
+    createViewsSync({ onRemoteChange, channel: newChannel(), doc, now: () => 0 })
+    const other = createViewsSync({ onRemoteChange: vi.fn(), channel: newChannel(), doc: fakeDocument() })
+
+    doc.setVisibility('visible')
+    other.notify()
+
+    expect(onRemoteChange).toHaveBeenCalledTimes(2)
+  })
+
   test('stop detaches from both the channel and visibility changes', () => {
     const newChannel = fakeChannelBus()
     const doc = fakeDocument()

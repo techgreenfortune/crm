@@ -68,6 +68,7 @@ export const viewsStore = defineStore('crm-views', (doctype) => {
   }
 
   const sync = createViewsSync({ onRemoteChange: () => views.reload() })
+  import.meta.hot?.dispose(() => sync.stop())
 
   async function reload() {
     await views.reload()
