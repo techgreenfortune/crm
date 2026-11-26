@@ -409,6 +409,7 @@ import {
 import { computed, ref, onMounted, watch, h, markRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
+import { createLatestOnlySaver } from '@/utils/latestOnlySaver'
 import { isMobileView } from '@/composables/settings'
 import Draggable from 'vuedraggable'
 import _ from 'lodash'
@@ -1131,35 +1132,46 @@ function loadMoreKanban(columnName) {
   list.value.reload()
 }
 
+const saveStandardView = createLatestOnlySaver({
+  send: (payload) =>
+    call(
+      'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_standard_view',
+      { view: payload },
+    ),
+  onSettled: afterStandardViewSaved,
+  onError: (error) =>
+    toast.error(
+      error?.messages?.[0] ||
+        __('Could not save your filters. Please apply them again.'),
+    ),
+})
+
 function createOrUpdateStandardView() {
   if (route.query.view) return
   view.value.doctype = props.doctype
-  call(
-    'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_standard_view',
-    {
-      view: view.value,
-    },
-  ).then(() => {
-    reloadView()
-    view.value = {
-      label: view.value.label,
-      type: view.value.type || 'list',
-      icon: view.value.icon,
-      name: view.value.name,
-      filters: defaultParams.value.filters,
-      order_by: defaultParams.value.order_by,
-      group_by_field: defaultParams.value.view?.group_by_field,
-      column_field: defaultParams.value.column_field,
-      title_field: defaultParams.value.title_field,
-      kanban_columns: defaultParams.value.kanban_columns,
-      kanban_fields: defaultParams.value.kanban_fields,
-      columns: defaultParams.value.columns,
-      rows: defaultParams.value.rows,
-      route_name: route.name,
-      load_default_columns: view.value.load_default_columns,
-    }
-    viewUpdated.value = false
-  })
+  saveStandardView({ ...view.value })
+}
+
+function afterStandardViewSaved() {
+  reloadView()
+  view.value = {
+    label: view.value.label,
+    type: view.value.type || 'list',
+    icon: view.value.icon,
+    name: view.value.name,
+    filters: defaultParams.value.filters,
+    order_by: defaultParams.value.order_by,
+    group_by_field: defaultParams.value.view?.group_by_field,
+    column_field: defaultParams.value.column_field,
+    title_field: defaultParams.value.title_field,
+    kanban_columns: defaultParams.value.kanban_columns,
+    kanban_fields: defaultParams.value.kanban_fields,
+    columns: defaultParams.value.columns,
+    rows: defaultParams.value.rows,
+    route_name: route.name,
+    load_default_columns: view.value.load_default_columns,
+  }
+  viewUpdated.value = false
 }
 
 function updatePageLength(value, loadMore = false) {
