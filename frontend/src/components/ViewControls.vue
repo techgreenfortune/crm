@@ -418,6 +418,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { getSharedLatestOnlySaver } from '@/utils/latestOnlySaver'
+import { createSelfReloadGuard } from '@/utils/selfReloadGuard'
 import { isMobileView } from '@/composables/settings'
 import Draggable from 'vuedraggable'
 import _ from 'lodash'
@@ -1164,8 +1165,10 @@ function createOrUpdateStandardView() {
   standardViewSaver.save(JSON.parse(JSON.stringify(view.value)))
 }
 
+const selfReloadGuard = createSelfReloadGuard(() => reloadView())
+
 function afterStandardViewSaved() {
-  reloadView()
+  selfReloadGuard.reloadAfterSave()
   view.value = {
     label: view.value.label,
     type: view.value.type || 'list',
@@ -1478,6 +1481,7 @@ defineExpose({
 watch(
   () => getView(route.query.view, route.params.viewType, props.doctype),
   (value, old_value) => {
+    if (selfReloadGuard.consumeSelfReload()) return
     if (_.isEqual(value, old_value)) return
     reload()
   },
